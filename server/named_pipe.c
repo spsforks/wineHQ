@@ -99,6 +99,7 @@ struct named_pipe_device
 struct named_pipe_device_file
 {
     struct object             obj;         /* object header */
+    int                       is_rootdir;  /* is root directory file? */
     struct fd                *fd;          /* pseudo-fd for ioctls */
     struct named_pipe_device *device;      /* named pipe device */
 };
@@ -528,6 +529,7 @@ static struct object *named_pipe_device_open_file( struct object *obj, const str
     }
 
     if (!(file = alloc_object( &named_pipe_device_file_ops ))) return NULL;
+    file->is_rootdir = !!subpath->str;  /* TRUE: "\\Device\\NamedPipe\\" (trailing \\) */
     file->device = (struct named_pipe_device *)grab_object( obj );
     if (!(file->fd = alloc_pseudo_fd( &named_pipe_device_fd_ops, obj, options )))
     {
@@ -567,7 +569,8 @@ static void named_pipe_device_file_dump( struct object *obj, int verbose )
 {
     struct named_pipe_device_file *file = (struct named_pipe_device_file *)obj;
 
-    fprintf( stderr, "File on named pipe device %p\n", file->device );
+    fprintf( stderr, "%s on named pipe device %p\n",
+             file->is_rootdir ? "Root directory" : "File", file->device );
 }
 
 static struct fd *named_pipe_device_file_get_fd( struct object *obj )
@@ -576,10 +579,32 @@ static struct fd *named_pipe_device_file_get_fd( struct object *obj )
     return (struct fd *)grab_object( file->fd );
 }
 
-static WCHAR *named_pipe_device_file_get_full_name( struct object *obj, data_size_t *len )
+static WCHAR *named_pipe_device_file_get_full_name( struct object *obj, data_size_t *ret_len )
 {
     struct named_pipe_device_file *file = (struct named_pipe_device_file *)obj;
-    return file->device->obj.ops->get_full_name( &file->device->obj, len );
+    WCHAR *device_name;
+    data_size_t len;
+
+    device_name = file->device->obj.ops->get_full_name( &file->device->obj, &len );
+    if (!device_name) return NULL;
+
+    if (file->is_rootdir)
+    {
+        WCHAR *newbuf;
+
+        len += sizeof(WCHAR);
+        if (!(newbuf = realloc(device_name, len)))
+        {
+            free(device_name);
+            return NULL;
+        }
+
+        device_name = newbuf;
+        *(WCHAR *)((char *)device_name + len - sizeof(WCHAR)) = '\\';
+    }
+
+    *ret_len = len;
+    return device_name;
 }
 
 static enum server_fd_type named_pipe_device_file_get_fd_type( struct fd *fd )
@@ -590,6 +615,11 @@ static enum server_fd_type named_pipe_device_file_get_fd_type( struct fd *fd )
 static struct object *named_pipe_device_file_lookup_name( struct object *obj, struct unicode_str *name,
                                                           unsigned int attr, struct object *root )
 {
+    struct named_pipe_device_file *file = (struct named_pipe_device_file *)obj;
+
+    if (file->is_rootdir)
+        return grab_object( file->device );
+
     return no_lookup_name( obj, name, attr, root );
 }
 
@@ -1341,14 +1371,20 @@ static struct pipe_end *create_pipe_client( struct named_pipe *pipe, data_size_t
 
 static int named_pipe_link_name( struct object *obj, struct object_name *name, struct object *parent )
 {
-    struct named_pipe_device *dev = (struct named_pipe_device *)parent;
+    if (parent->ops == &named_pipe_device_file_ops)
+    {
+        struct named_pipe_device_file *file = (struct named_pipe_device_file *)parent;
+
+        if (file->is_rootdir)
+            parent = &((struct named_pipe_device_file *)parent)->device->obj;
+    }
 
     if (parent->ops != &named_pipe_device_ops)
     {
         set_error( STATUS_OBJECT_NAME_INVALID );
         return 0;
     }
-    namespace_add( dev->pipes, name );
+    namespace_add( ((struct named_pipe_device *)parent)->pipes, name );
     name->parent = grab_object( parent );
     return 1;
 }
