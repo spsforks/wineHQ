@@ -659,6 +659,89 @@ static void test_disk_query_property(void)
     CloseHandle(handle);
 }
 
+static void test_disk_get_device_number(void)
+{
+    STORAGE_DEVICE_NUMBER device_number = {0};
+    HANDLE handle;
+    DWORD error;
+    DWORD size;
+    BOOL ret;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+
+    handle = CreateFileA("\\\\.\\PhysicalDrive0", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+                         0, 0);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        win_skip("can't open \\\\.\\PhysicalDrive0 %#lx\n", GetLastError());
+        return;
+    }
+
+    /* DeviceIoControl */
+    SetLastError(0xdeadbeef);
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, &device_number, sizeof(device_number), &size, NULL);
+    error = GetLastError();
+    ok(ret, "expect ret %#x, got %#x\n", TRUE, ret);
+    ok(error == 0xdeadbeef, "expect err %#x, got err %#lx\n", 0xdeadbeef, error);
+    ok(size == sizeof(device_number), "got size %ld\n", size);
+
+    SetLastError(0xdeadbeef);
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 4, &device_number, sizeof(device_number), &size, NULL);
+    error = GetLastError();
+    ok(ret, "expect ret %#x, got %#x\n", TRUE, ret);
+    ok(error == 0xdeadbeef, "expect err %#x, got err %#lx\n", 0xdeadbeef, error);
+    ok(size == sizeof(device_number), "got size %ld\n", size);
+
+    SetLastError(0xdeadbeef);
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, (LPVOID)0xdeadbeef, 4, &device_number, sizeof(device_number), &size, NULL);
+    error = GetLastError();
+    ok(!ret, "expect ret %#x, got %#x\n", FALSE, ret);
+    ok(error == ERROR_NOACCESS, "expect err %#x, got err %#lx\n", 0xdeadbeef, error);
+    ok(size == sizeof(device_number), "got size %ld\n", size);
+
+    SetLastError(0xdeadbeef);
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, &device_number, sizeof(device_number), &device_number, sizeof(device_number), &size, NULL);
+    error = GetLastError();
+    ok(ret, "expect ret %#x, got %#x\n", TRUE, ret);
+    ok(error == 0xdeadbeef, "expect err %#x, got err %#lx\n", 0xdeadbeef, error);
+    ok(size == sizeof(device_number), "got size %ld\n", size);
+
+    /* NtDeviceIoControlFile */
+    io.Status = 0xdeadf00d;
+    io.Information = 0xdeadf00d;
+    status = NtDeviceIoControlFile(handle, NULL, NULL, NULL, &io,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, &device_number, sizeof(device_number));
+    ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+    ok(io.Status == STATUS_SUCCESS, "got status %#lx\n", io.Status);
+    ok(io.Information == sizeof(device_number), "got information %#Ix\n", io.Information);
+
+    io.Status = 0xdeadf00d;
+    io.Information = 0xdeadf00d;
+    status = NtDeviceIoControlFile(handle, NULL, NULL, NULL, &io,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 4, &device_number, sizeof(device_number));
+    ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+    ok(io.Status == STATUS_SUCCESS, "got status %#lx\n", io.Status);
+    ok(io.Information == sizeof(device_number), "got information %#Ix\n", io.Information);
+
+    io.Status = 0xdeadf00d;
+    io.Information = 0xdeadf00d;
+    status = NtDeviceIoControlFile(handle, NULL, NULL, NULL, &io,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER, (LPVOID)0xdeadbeef, 4, &device_number, sizeof(device_number));
+    ok(status == STATUS_ACCESS_VIOLATION, "got %#lx\n", status);
+    ok(io.Status == 0xdeadf00d, "got status %#lx\n", io.Status);
+    ok(io.Information == 0xdeadf00d, "got information %#Ix\n", io.Information);
+
+    io.Status = 0xdeadf00d;
+    io.Information = 0xdeadf00d;
+    status = NtDeviceIoControlFile(handle, NULL, NULL, NULL, &io,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER, &device_number, sizeof(device_number), &device_number, sizeof(device_number));
+    ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+    ok(io.Status == STATUS_SUCCESS, "got status %#lx\n", io.Status);
+    ok(io.Information == sizeof(device_number), "got information %#Ix\n", io.Information);
+
+    CloseHandle(handle);
+}
+
 static void test_GetVolumePathNameA(void)
 {
     char volume_path[MAX_PATH], cwd[MAX_PATH], expect_path[MAX_PATH];
@@ -1727,6 +1810,7 @@ START_TEST(volume)
     test_enum_vols();
     test_disk_extents();
     test_disk_query_property();
+    test_disk_get_device_number();
     test_GetVolumePathNamesForVolumeNameA();
     test_GetVolumePathNamesForVolumeNameW();
     test_cdrom_ioctl();
