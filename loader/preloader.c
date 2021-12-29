@@ -72,6 +72,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/mman.h>
 #ifdef HAVE_SYS_SYSCALL_H
 # include <sys/syscall.h>
@@ -85,6 +86,9 @@
 #endif
 #ifdef HAVE_SYS_LINK_H
 # include <sys/link.h>
+#endif
+#ifdef HAVE_SYS_UCONTEXT_H
+# include <sys/ucontext.h>
 #endif
 
 #include "wine/asm.h"
@@ -102,6 +106,11 @@
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
 #endif
+#ifndef MREMAP_FIXED
+#define MREMAP_FIXED 2
+#endif
+
+#define REMAP_TEST_SIG SIGIO  /* Any signal GDB doesn't stop on */
 
 static struct wine_preload_info preload_info[] =
 {
@@ -165,6 +174,19 @@ struct wld_auxv
     } a_un;
 };
 
+typedef unsigned long wld_sigset_t[8 / sizeof(unsigned long)];
+
+struct wld_sigaction
+{
+    /* Prefix all fields since they may collide with macros from libc headers */
+    void (*wld_sa_sigaction)(int, siginfo_t *, void *);
+    unsigned long wld_sa_flags;
+    void (*wld_sa_restorer)(void);
+    wld_sigset_t wld_sa_mask;
+};
+
+#define WLD_SA_SIGINFO 4
+
 /* Aggregates information about initial program stack and variables
  * (e.g. argv and envp) that reside in it.
  */
@@ -194,10 +216,61 @@ struct linebuffer
     int truncated;  /* line truncated? (if true, skip until next line) */
 };
 
+/*
+ * Flags that specify the kind of each VMA entry read from /proc/self/maps.
+ *
+ * On Linux, vDSO hard-codes vvar's address relative to vDSO.  Therefore, it is
+ * necessary to maintain vvar's position relative to vDSO when they are
+ * remapped.  We cannot just remap one of them and leave the other one behind;
+ * they have to be moved as a single unit.  Doing so requires identifying the
+ * *exact* size and boundaries of *both* mappings.  This is met by a few
+ * challenges:
+ *
+ * 1. vvar's size *and* its location relative to vDSO is *not* guaranteed by
+ *    Linux userspace ABI, and has changed all the time.
+ *
+ *    - x86: [vvar] orginally resided at a fixed address 0xffffffffff5ff000
+ *      (64-bit) [1], but was later changed so that it precedes [vdso] [2].
+ *      There, sym_vvar_start is a negative value [3]. text_start is the base
+ *      address of vDSO, and addr becomes the address of vvar.
+ *
+ *    - AArch32: [vvar] is a single page and precedes [vdso] [4].
+ *
+ *    - AArch64: [vvar] is two pages long and precedes [vdso] [5].
+ *      Before v5.9, however, [vvar] was a single page [6].
+ *
+ * 2. It's very difficult to infer vDSO and vvar's size and offset relative to
+ *    each other just from vDSO data.  Since vvar's symbol does not exist in
+ *    vDSO's symtab, determining the layout would require parsing vDSO's code.
+ *
+ * 3. Determining the size of both mappings is not a trivial task.  Even if we
+ *    parse vDSO's ELF header, we cannot still measure the size of vvar.
+ *
+ * Therefore, the only reliable method to identify the range of the mappings is
+ * to read from /proc/self/maps.  This is also what the CRIU (Checkpoint
+ * Restore In Userspace) project uses for relocating vDSO [7].
+ *
+ * [1] https://lwn.net/Articles/615809/
+ * [2] https://elixir.bootlin.com/linux/v5.16.3/source/arch/x86/entry/vdso/vma.c#L246
+ * [3] https://elixir.bootlin.com/linux/v5.16.3/source/arch/x86/include/asm/vdso.h#L21
+ * [4] https://elixir.bootlin.com/linux/v5.16.3/source/arch/arm/kernel/vdso.c#L236
+ * [5] https://elixir.bootlin.com/linux/v5.16.3/source/arch/arm64/kernel/vdso.c#L214
+ * [6] https://elixir.bootlin.com/linux/v5.8/source/arch/arm64/kernel/vdso.c#L161
+ * [7] https://github.com/checkpoint-restore/criu/blob/2f0f12839673c7d82cfc18e99d7e35ed7192906b/criu/vdso.c
+ */
+enum vma_type_flags
+{
+    VMA_NORMAL = 0x01,
+    VMA_VDSO   = 0x02,
+    VMA_VVAR   = 0x04,
+};
+
 struct vma_area
 {
     unsigned long start;
     unsigned long end;
+    unsigned char type_flags;  /* enum vma_type_flags */
+    unsigned char moved;       /* has been mremap()'d? */
 };
 
 struct vma_area_list
@@ -209,6 +282,60 @@ struct vma_area_list
 
 #define FOREACH_VMA(list, item) \
     for ((item) = (list)->base; (item) != (list)->list_end; (item)++)
+
+/*
+ * Allow the user to configure the remapping behaviour if it causes trouble.
+ * The "force" (REMAP_POLICY_FORCE) value can be used to test the remapping
+ * code path unconditionally.
+ */
+enum remap_policy
+{
+    REMAP_POLICY_ON_CONFLICT = 0,
+    REMAP_POLICY_FORCE = 1,
+    REMAP_POLICY_SKIP = 2,
+    LAST_REMAP_POLICY,
+
+    REMAP_POLICY_DEFAULT_VDSO = REMAP_POLICY_SKIP,
+};
+
+/*
+ * Used in the signal handler that tests if mremap() on vDSO works on the
+ * current kernel.
+ */
+struct remap_test_block
+{
+    /*
+     * The old address range of vDSO or sigpage.  Used to test if pages are
+     * remapped properly.
+     */
+    unsigned long old_mapping_start;
+    unsigned long old_mapping_size;
+
+    /*
+     * A snapshot of the VMA area list of the current process.  Used to restore
+     * vDSO mappings on remapping failure from the signal handler.
+     */
+    struct vma_area_list *vma_list;
+
+    /*
+     * The difference between the new mapping's address and the old mapping's
+     * address.  Set to 0 if the handler reverted mappings to old state before
+     * returning.
+     */
+    unsigned long delta;
+
+    /*
+     * Set to 1 by the signal handler if it determines that the remapping was
+     * successfully recognised by the kernel.
+     */
+    unsigned char is_successful;
+
+    /*
+     * Set to 1 by the signal handler if it determines that the remapping was
+     * not recognised by the kernel.
+     */
+    unsigned char is_failed;
+} remap_test;
 
 /*
  * The __bb_init_func is an empty function only called when file is
@@ -245,6 +372,16 @@ struct
     unsigned int  garbage : 25;
 } thread_ldt = { -1, (unsigned long)thread_data, 0xfffff, 1, 0, 0, 1, 0, 1, 0 };
 
+typedef unsigned long wld_old_sigset_t;
+
+struct wld_old_sigaction
+{
+    /* Prefix all fields since they may collide with macros from libc headers */
+    void (*wld_sa_sigaction)(int, siginfo_t *, void *);
+    wld_old_sigset_t wld_sa_mask;
+    unsigned long wld_sa_flags;
+    void (*wld_sa_restorer)(void);
+};
 
 /*
  * The _start function is the entry and exit point of this program
@@ -382,12 +519,83 @@ static inline int wld_munmap( void *addr, size_t len )
     return SYSCALL_RET(ret);
 }
 
+static inline void *wld_mremap( void *old_addr, size_t old_len, size_t new_size, int flags, void *new_addr )
+{
+    int ret;
+    __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
+                          : "=a" (ret) : "0" (163 /* SYS_mremap */), "r" (old_addr), "c" (old_len),
+                            "d" (new_size), "S" (flags), "D" (new_addr)
+                          : "memory" );
+    return (void *)SYSCALL_RET(ret);
+}
+
 static inline int wld_prctl( int code, long arg )
 {
     int ret;
     __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
                           : "=a" (ret) : "0" (172 /* SYS_prctl */), "r" (code), "c" (arg) );
     return SYSCALL_RET(ret);
+}
+
+static void copy_old_sigset( void *dest, const void *src )
+{
+    /* Avoid aliasing */
+    size_t i;
+    for (i = 0; i < sizeof(wld_old_sigset_t); i++)
+        *((unsigned char *)dest + i) = *((const unsigned char *)src + i);
+}
+
+static inline int wld_sigaction( int signum, const struct wld_sigaction *act, struct wld_sigaction *old_act )
+{
+    int ret;
+    __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
+                          : "=a" (ret) : "0" (174 /* SYS_rt_sigaction */), "r" (signum), "c" (act), "d" (old_act), "S" (sizeof(act->wld_sa_mask))
+                          : "memory" );
+    if (ret == -38 /* ENOSYS */)
+    {
+        struct wld_old_sigaction act_buf, old_act_buf, *act_real, *old_act_real;
+
+        if (act)
+        {
+            act_real = &act_buf;
+            act_buf.wld_sa_sigaction = act->wld_sa_sigaction;
+            copy_old_sigset(&act_buf.wld_sa_mask, &act->wld_sa_mask);
+            act_buf.wld_sa_flags = act->wld_sa_flags;
+            act_buf.wld_sa_restorer = act->wld_sa_restorer;
+        }
+
+        if (old_act) old_act_real = &old_act_buf;
+
+        __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
+                              : "=a" (ret) : "0" (67 /* SYS_sigaction */), "r" (signum), "c" (act_real), "d" (old_act_real)
+                              : "memory" );
+
+        if (old_act && ret >= 0)
+        {
+            old_act->wld_sa_sigaction = old_act_buf.wld_sa_sigaction;
+            old_act->wld_sa_flags = old_act_buf.wld_sa_flags;
+            old_act->wld_sa_restorer = old_act_buf.wld_sa_restorer;
+            copy_old_sigset(&old_act->wld_sa_mask, &old_act_buf.wld_sa_mask);
+        }
+    }
+    return SYSCALL_RET(ret);
+}
+
+static inline int wld_kill( pid_t pid, int sig )
+{
+    int ret;
+    __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
+                          : "=a" (ret) : "0" (37 /* SYS_kill */), "r" (pid), "c" (sig)
+                          : "memory" /* clobber: signal handler side effects on raise() */ );
+    return SYSCALL_RET(ret);
+}
+
+static inline pid_t wld_getpid( void )
+{
+    int ret;
+    __asm__ __volatile__( "int $0x80"
+                          : "=a" (ret) : "0" (20 /* SYS_getpid */) );
+    return ret;
 }
 
 #elif defined(__x86_64__)
@@ -468,8 +676,14 @@ SYSCALL_FUNC( wld_mprotect, 10 /* SYS_mprotect */ );
 int wld_munmap( void *addr, size_t len );
 SYSCALL_FUNC( wld_munmap, 11 /* SYS_munmap */ );
 
+void *wld_mremap( void *old_addr, size_t old_len, size_t new_size, int flags, void *new_addr );
+SYSCALL_FUNC( wld_mremap, 25 /* SYS_mremap */ );
+
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 157 /* SYS_prctl */ );
+
+pid_t wld_getpid(void);
+SYSCALL_NOERR( wld_getpid, 39 /* SYS_getpid */ );
 
 uid_t wld_getuid(void);
 SYSCALL_NOERR( wld_getuid, 102 /* SYS_getuid */ );
@@ -578,8 +792,25 @@ SYSCALL_FUNC( wld_mprotect, 226 /* SYS_mprotect */ );
 int wld_munmap( void *addr, size_t len );
 SYSCALL_FUNC( wld_munmap, 215 /* SYS_munmap */ );
 
+void *wld_mremap( void *old_addr, size_t old_len, size_t new_size, int flags, void *new_addr );
+SYSCALL_FUNC( wld_mremap, 216 /* SYS_mremap */ );
+
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 167 /* SYS_prctl */ );
+
+int wld_rt_sigaction( int signum, const struct wld_sigaction *act, struct wld_sigaction *old_act, size_t sigsetsize );
+SYSCALL_FUNC( wld_rt_sigaction, 134 /* SYS_rt_sigaction */ );
+
+static inline int wld_sigaction( int signum, const struct wld_sigaction *act, struct wld_sigaction *old_act )
+{
+    return wld_rt_sigaction( signum, act, old_act, sizeof(act->wld_sa_mask) );
+}
+
+int wld_kill( pid_t pid, int sig );
+SYSCALL_FUNC( wld_kill, 129 /* SYS_kill */ );
+
+pid_t wld_getpid(void);
+SYSCALL_NOERR( wld_getpid, 172 /* SYS_getpid */ );
 
 uid_t wld_getuid(void);
 SYSCALL_NOERR( wld_getuid, 174 /* SYS_getuid */ );
@@ -680,8 +911,25 @@ SYSCALL_FUNC( wld_mprotect, 125 /* SYS_mprotect */ );
 int wld_munmap( void *addr, size_t len );
 SYSCALL_FUNC( wld_munmap, 91 /* SYS_munmap */ );
 
+void *wld_mremap( void *old_addr, size_t old_len, size_t new_size, int flags, void *new_addr );
+SYSCALL_FUNC( wld_mremap, 163 /* SYS_mremap */ );
+
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 172 /* SYS_prctl */ );
+
+int wld_rt_sigaction( int signum, const struct wld_sigaction *act, struct wld_sigaction *old_act, size_t sigsetsize );
+SYSCALL_FUNC( wld_rt_sigaction, 174 /* SYS_rt_sigaction */ );
+
+static inline int wld_sigaction( int signum, const struct wld_sigaction *act, struct wld_sigaction *old_act )
+{
+    return wld_rt_sigaction( signum, act, old_act, sizeof(act->wld_sa_mask) );
+}
+
+int wld_kill( pid_t pid, int sig );
+SYSCALL_FUNC( wld_kill, 37 /* SYS_kill */ );
+
+pid_t wld_getpid(void);
+SYSCALL_NOERR( wld_getpid, 20 /* SYS_getpid */ );
 
 uid_t wld_getuid(void);
 SYSCALL_NOERR( wld_getuid, 24 /* SYS_getuid */ );
@@ -1657,6 +1905,7 @@ static char *linebuffer_getline( struct linebuffer *lbuf )
 static int parse_maps_line( struct vma_area *entry, const char *line )
 {
     struct vma_area item = { 0 };
+    unsigned long dev_maj, dev_min;
     char *ptr = (char *)line;
     int overflow;
 
@@ -1687,17 +1936,28 @@ static int parse_maps_line( struct vma_area *entry, const char *line )
     if (*ptr != ' ') fatal_error( "parse error in /proc/self/maps\n" );
     ptr++;
 
-    parse_ul( ptr, &ptr, 16, NULL );
+    dev_maj = parse_ul( ptr, &ptr, 16, NULL );
     if (*ptr != ':') fatal_error( "parse error in /proc/self/maps\n" );
     ptr++;
 
-    parse_ul( ptr, &ptr, 16, NULL );
+    dev_min = parse_ul( ptr, &ptr, 16, NULL );
     if (*ptr != ' ') fatal_error( "parse error in /proc/self/maps\n" );
     ptr++;
 
     parse_ul( ptr, &ptr, 10, NULL );
     if (*ptr != ' ') fatal_error( "parse error in /proc/self/maps\n" );
     ptr++;
+
+    while (*ptr == ' ')
+        ptr++;
+
+    if (dev_maj == 0 && dev_min == 0)
+    {
+        if (wld_strcmp(ptr, "[vdso]") == 0)
+            item.type_flags |= VMA_VDSO;
+        else if (wld_strcmp(ptr, "[vvar]") == 0)
+            item.type_flags |= VMA_VVAR;
+    }
 
     *entry = item;
     return 0;
@@ -1797,6 +2057,76 @@ static void insert_vma_entry( struct vma_area_list *list, const struct vma_area 
     wld_memmove(left, item, sizeof(*item));
     list->list_end++;
     return;
+}
+
+/*
+ * find_vma_envelope_range
+ *
+ * Compute the smallest range that contains all VMAs with any of the given
+ * type flags.
+ */
+static int find_vma_envelope_range( const struct vma_area_list *list, int type_mask, unsigned long *startp, unsigned long *sizep )
+{
+    const struct vma_area *item;
+    unsigned long start = ULONG_MAX;
+    unsigned long end = 0;
+
+    FOREACH_VMA(list, item)
+    {
+        if (item->type_flags & type_mask)
+        {
+            if (start > item->start) start = item->start;
+            if (end < item->end) end = item->end;
+        }
+    }
+
+    if (start >= end) return -1;
+
+    *startp = start;
+    *sizep = end - start;
+    return 0;
+}
+
+/*
+ * remap_multiple_vmas
+ *
+ * Relocate all VMAs with the given type flags.
+ * This function can also be used to reverse the effects of previous
+ * remap_multiple_vmas().
+ */
+static int remap_multiple_vmas( struct vma_area_list *list, unsigned long delta, int type_mask, unsigned char revert )
+{
+    struct vma_area *item;
+    void *old_addr, *desired_addr, *mapped_addr;
+    size_t size;
+
+    FOREACH_VMA(list, item)
+    {
+        if ((item->type_flags & type_mask) && item->moved == revert)
+        {
+            if (revert)
+            {
+                old_addr = (void *)(item->start + delta);
+                desired_addr = (void *)item->start;
+            }
+            else
+            {
+                old_addr = (void *)item->start;
+                desired_addr = (void *)(item->start + delta);
+            }
+            size = item->end - item->start;
+            mapped_addr = wld_mremap( old_addr, size, size, MREMAP_FIXED | MREMAP_MAYMOVE, desired_addr );
+            if (mapped_addr == (void *)-1) return -1;
+            if (mapped_addr != desired_addr)
+            {
+                if (mapped_addr == old_addr) return -1;  /* kernel deoesn't support MREMAP_FIXED */
+                fatal_error( "mremap() returned different address\n" );
+            }
+            item->moved = !revert;
+        }
+    }
+
+    return 0;
 }
 
 /*
@@ -1966,6 +2296,285 @@ static void map_reserve_preload_ranges( const struct vma_area_list *vma_list,
     }
 }
 
+/*
+ * refresh_vma_and_reserve_preload_ranges
+ *
+ * Refresh the process VMA list, and try to reserve memory ranges in preload_info.
+ */
+static void refresh_vma_and_reserve_preload_ranges( struct vma_area_list *vma_list,
+                                                    const struct stackarg_info *stackinfo )
+{
+    free_vma_list( vma_list );
+    alloc_scan_vma( vma_list );
+    map_reserve_preload_ranges( vma_list, stackinfo );
+}
+
+/*
+ * stackargs_get_remap_policy
+ *
+ * Parse the remap policy value from the given environment variable.
+ */
+static enum remap_policy stackargs_get_remap_policy( const struct stackarg_info *info, const char *name,
+                                                     enum remap_policy default_policy )
+{
+    char *valstr = stackargs_getenv( info, name ), *endptr;
+    unsigned long valnum;
+
+    if (valstr)
+    {
+        if (wld_strcmp(valstr, "auto") == 0 || wld_strcmp(valstr, "on-conflict") == 0)
+            return REMAP_POLICY_ON_CONFLICT;
+        if (wld_strcmp(valstr, "always") == 0 || wld_strcmp(valstr, "force") == 0)
+            return REMAP_POLICY_FORCE;
+        if (wld_strcmp(valstr, "never") == 0 || wld_strcmp(valstr, "skip") == 0)
+            return REMAP_POLICY_SKIP;
+        valnum = parse_ul( valstr, &endptr, 10, NULL );
+        if (!*endptr && valnum < LAST_REMAP_POLICY) return valnum;
+    }
+
+    return default_policy;
+}
+
+/*
+ * check_remap_policy
+ *
+ * Check remap policy against the given range and determine the action to take.
+ *
+ *  -1: fail
+ *   0: do nothing
+ *   1: proceed with remapping
+ */
+static int check_remap_policy( struct preloader_state *state,
+                               const char *policy_envname, enum remap_policy default_policy,
+                               unsigned long start, unsigned long size )
+{
+    switch (stackargs_get_remap_policy( &state->s, policy_envname, default_policy ))
+    {
+    case REMAP_POLICY_SKIP:
+        return -1;
+    case REMAP_POLICY_ON_CONFLICT:
+        if (find_preload_reserved_area( (void *)start, size ) < 0)
+            return 0;
+        /* fallthrough */
+    case REMAP_POLICY_FORCE:
+    default:
+        return 1;
+    }
+}
+
+#ifndef __x86_64__
+/*
+ * remap_test_in_old_address_range
+ *
+ * Determine whether the address falls in the old mapping address range
+ * (i.e. before mremap).
+ */
+static int remap_test_in_old_address_range( unsigned long address )
+{
+    return address - remap_test.old_mapping_start < remap_test.old_mapping_size;
+}
+
+/*
+ * remap_test_signal_handler
+ *
+ * A signal handler that detects whether the kernel has acknowledged the new
+ * addresss for the remapped vDSO.
+ */
+static void remap_test_signal_handler( int signum, siginfo_t *sinfo, void *context )
+{
+    (void)signum;
+    (void)sinfo;
+    (void)context;
+
+    if (remap_test_in_old_address_range((unsigned long)__builtin_return_address(0))) goto fail;
+
+#ifdef __i386__
+    /* test for SYSENTER/SYSEXIT return address (int80_landing_pad) */
+    if (remap_test_in_old_address_range(((ucontext_t *)context)->uc_mcontext.gregs[REG_EIP])) goto fail;
+#endif
+
+    remap_test.is_successful = 1;
+    return;
+
+fail:
+    /* Kernel too old to support remapping. Restore vDSO/sigpage to return safely. */
+    if (remap_test.delta) {
+        if (remap_multiple_vmas( remap_test.vma_list, remap_test.delta, -1, 1 ) < 0)
+            fatal_error( "Cannot restore remapped VMAs\n" );
+        remap_test.delta = 0;
+    }
+
+    /* The signal handler might be called several times due to externally
+     * originated spurious signals, so overwrite with the latest status just to
+     * be safe.
+     */
+    remap_test.is_failed = 1;
+}
+#endif
+
+/*
+ * test_remap_successful
+ *
+ * Test if the kernel has acknowledged the remapped vDSO.
+ *
+ * Remapping vDSO requires explicit kernel support for most architectures, but
+ * the support is missing in old Linux kernels (pre-4.8).  Among other things,
+ * vDSO contains the default signal restorer (sigreturn trampoline) and the
+ * fast syscall gate (SYSENTER) on Intel IA-32.  The kernel keeps track of
+ * their addresses per process, and they need to be updated accordingly if the
+ * vDSO address changes.  Without proper support, mremap() on vDSO does not
+ * indicate failure, but the kernel still uses old addresses for the vDSO
+ * components, resulting in crashes or other unpredictable behaviour if any of
+ * those addresses are used.
+ *
+ * We attempt to detect this condition by installing a signal handler and
+ * sending a signal to ourselves.  The signal handler will test if the restorer
+ * address (plus the syscall gate on i386) falls in the old address range; if
+ * this is the case, we remap the vDSO to its old address and report failure
+ * (i.e. no support from kernel).  If the addresses do not overlap with the old
+ * address range, the kernel is new enough to support vDSO remapping and we can
+ * proceed as normal.
+ */
+static int test_remap_successful( struct vma_area_list *vma_list, struct preloader_state *state,
+                                  unsigned long old_mapping_start, unsigned long old_mapping_size,
+                                  unsigned long delta )
+{
+#ifdef __x86_64__
+    (void)vma_list;
+    (void)state;
+    (void)old_mapping_start;
+    (void)old_mapping_size;
+    (void)delta;
+
+    /* x86-64 doesn't use SYSENTER for syscalls, and requires sa_restorer for
+     * signal handlers.  We can safely relocate vDSO without kernel support
+     * (vdso_mremap).
+     */
+    return 0;
+#else
+    struct wld_sigaction sigact;
+    pid_t pid;
+    int result = -1;
+    unsigned long syscall_addr = 0;
+
+    pid = wld_getpid();
+    if (pid < 0) fatal_error( "failed to get PID\n" );
+
+#ifdef __i386__
+    syscall_addr = get_auxiliary( state->s.auxv, AT_SYSINFO, 0 );
+    if (syscall_addr - old_mapping_start < old_mapping_size) syscall_addr += delta;
+#endif
+
+    remap_test.old_mapping_start = old_mapping_start;
+    remap_test.old_mapping_size = old_mapping_size;
+    remap_test.vma_list = vma_list;
+    remap_test.delta = delta;
+    remap_test.is_successful = 0;
+    remap_test.is_failed = 0;
+
+    wld_memset( &sigact, 0, sizeof(sigact) );
+    sigact.wld_sa_sigaction = remap_test_signal_handler;
+    sigact.wld_sa_flags = WLD_SA_SIGINFO;
+    /* We deliberately skip sa_restorer, since we're trying to get the address
+     * of the kernel's built-in restorer function. */
+
+    if (wld_sigaction( REMAP_TEST_SIG, &sigact, &sigact ) < 0) fatal_error( "cannot register test signal handler\n" );
+
+    /* Unsafe region below - may race with signal handler */
+#ifdef __i386__
+    if (syscall_addr) {
+        /* Also test __kernel_vsyscall return as well */
+        __asm__ __volatile__( "call *%1"
+                              : "=a" (result) : "r" (syscall_addr), "0" (37 /* SYS_kill */), "b" (pid), "c" (REMAP_TEST_SIG) );
+        result = SYSCALL_RET(result);
+    }
+#else
+    syscall_addr = 0;
+#endif
+    if (!syscall_addr) result = wld_kill( pid, REMAP_TEST_SIG );
+    /* Unsafe region above - may race with signal handler */
+
+    if (wld_sigaction( REMAP_TEST_SIG, &sigact, &sigact ) < 0) fatal_error( "cannot unregister test signal handler\n" );
+    if (result == -1) fatal_error( "cannot raise test signal\n" );
+
+    /* Now that the signal handler invocation is no longer possible, we can
+     * safely access the result.
+     *
+     * If neither is_successful nor is_failed is set, it signifies that the
+     * signal handler was not called or did not return properly.  In this case,
+     * failure is assumed.
+     *
+     * If both is_successful and is_failed are set, it signifies that the
+     * signal handler was called successively multiple times.  This may be due
+     * to externally originated spurious signals.  In this case, is_failed
+     * takes precedence.
+     */
+    if (remap_test.is_failed || !remap_test.is_successful) {
+        if (remap_test.delta && remap_multiple_vmas( remap_test.vma_list, remap_test.delta, -1, 1 ) < 0)
+            fatal_error( "Cannot restore remapped VMAs\n" );
+        return -1;
+    }
+
+    return 0;
+#endif
+}
+
+/*
+ * remap_vdso
+ *
+ * Perform vDSO remapping if it conflicts with one of the reserved address ranges.
+ */
+static int remap_vdso( struct vma_area_list *vma_list, struct preloader_state *state )
+{
+    int result;
+    unsigned long vdso_start, vdso_size, delta;
+    void *new_vdso;
+    struct wld_auxv *auxv;
+
+    if (find_vma_envelope_range( vma_list, VMA_VDSO | VMA_VVAR, &vdso_start, &vdso_size ) < 0) return 0;
+
+    result = check_remap_policy( state, "WINEPRELOADREMAPVDSO",
+                                 REMAP_POLICY_DEFAULT_VDSO,
+                                 vdso_start, vdso_size );
+    if (result <= 0) return result;
+
+    new_vdso = wld_mmap( NULL, vdso_size, PROT_NONE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0 );
+    if (new_vdso == (void *)-1) return -1;
+
+    delta = (unsigned long)new_vdso - vdso_start;
+    /* It's easier to undo vvar remapping, so we remap it first. */
+    if (remap_multiple_vmas( vma_list, delta, VMA_VVAR, 0 ) < 0 ||
+        remap_multiple_vmas( vma_list, delta, VMA_VDSO, 0 ) < 0) goto remap_restore;
+
+    /* NOTE: AArch32 may have restorer in vDSO if we're running on an old ARM64 kernel. */
+    if (test_remap_successful( vma_list, state, vdso_start, vdso_size, delta ) < 0)
+    {
+        /* mapping restore done by test_remap_successful */
+        return -1;
+    }
+
+    for (auxv = state->s.auxv; auxv->a_type != AT_NULL; auxv++)
+    {
+        switch (auxv->a_type)
+        {
+        case AT_SYSINFO:
+        case AT_SYSINFO_EHDR:
+            if ((unsigned long)auxv->a_un.a_val - vdso_start < vdso_size)
+                auxv->a_un.a_val += delta;
+            break;
+        }
+    }
+
+    refresh_vma_and_reserve_preload_ranges( vma_list, &state->s );
+    return 1;
+
+remap_restore:
+    if (remap_multiple_vmas( vma_list, delta, -1, 1 ) < 0)
+        fatal_error( "Cannot restore remapped VMAs\n" );
+
+    return -1;
+}
 
 /*
  *  wld_start
@@ -2015,6 +2624,8 @@ void* wld_start( void **stack )
     alloc_scan_vma( &vma_list );
     map_reserve_preload_ranges( &vma_list, &state.s );
 
+    remap_vdso( &vma_list, &state );
+
     /* add an executable page at the top of the address space to defeat
      * broken no-exec protections that play with the code selector limit */
     if (find_preload_reserved_area( (char *)0x80000000 - page_size, page_size ) >= 0)
@@ -2044,7 +2655,7 @@ void* wld_start( void **stack )
 #undef SET_NEW_AV
 
     i = 0;
-    /* delete sysinfo values if addresses conflict */
+    /* delete sysinfo values if addresses conflict and remap failed */
     if (is_in_preload_range( state.s.auxv, AT_SYSINFO ) || is_in_preload_range( state.s.auxv, AT_SYSINFO_EHDR ))
     {
         delete_av[i++].a_type = AT_SYSINFO;
