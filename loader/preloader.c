@@ -227,6 +227,7 @@ struct
  *  then jumps to the address wld_start returns.
  */
 void _start(void);
+extern char __executable_start[];
 extern char _end[];
 __ASM_GLOBAL_FUNC(_start,
                   __ASM_CFI("\t.cfi_undefined %eip\n")
@@ -346,6 +347,15 @@ __ASM_GLOBAL_FUNC(wld_mmap,
                   __ASM_CFI(".cfi_adjust_cfa_offset -4\n\t")
                   "\tret\n" )
 
+static inline int wld_munmap( void *addr, size_t len )
+{
+    int ret;
+    __asm__ __volatile__( "pushl %%ebx; movl %2,%%ebx; int $0x80; popl %%ebx"
+                          : "=a" (ret) : "0" (91 /* SYS_munmap */), "r" (addr), "c" (len)
+                          : "memory" );
+    return SYSCALL_RET(ret);
+}
+
 static inline int wld_prctl( int code, long arg )
 {
     int ret;
@@ -365,6 +375,7 @@ void *thread_data[256];
  *  then jumps to the address wld_start returns.
  */
 void _start(void);
+extern char __executable_start[];
 extern char _end[];
 __ASM_GLOBAL_FUNC(_start,
                   __ASM_CFI(".cfi_undefined %rip\n\t")
@@ -428,6 +439,9 @@ SYSCALL_FUNC( wld_mmap, 9 /* SYS_mmap */ );
 int wld_mprotect( const void *addr, size_t len, int prot );
 SYSCALL_FUNC( wld_mprotect, 10 /* SYS_mprotect */ );
 
+int wld_munmap( void *addr, size_t len );
+SYSCALL_FUNC( wld_munmap, 11 /* SYS_munmap */ );
+
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 157 /* SYS_prctl */ );
 
@@ -454,6 +468,7 @@ void *thread_data[256];
  *  then jumps to the address wld_start returns.
  */
 void _start(void);
+extern char __executable_start[];
 extern char _end[];
 __ASM_GLOBAL_FUNC(_start,
                   "mov x0, SP\n\t"
@@ -534,6 +549,9 @@ SYSCALL_FUNC( wld_mmap, 222 /* SYS_mmap */ );
 int wld_mprotect( const void *addr, size_t len, int prot );
 SYSCALL_FUNC( wld_mprotect, 226 /* SYS_mprotect */ );
 
+int wld_munmap( void *addr, size_t len );
+SYSCALL_FUNC( wld_munmap, 215 /* SYS_munmap */ );
+
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 167 /* SYS_prctl */ );
 
@@ -560,6 +578,7 @@ void *thread_data[256];
  *  then jumps to the address wld_start returns.
  */
 void _start(void);
+extern char __executable_start[];
 extern char _end[];
 __ASM_GLOBAL_FUNC(_start,
                   "mov r0, sp\n\t"
@@ -631,6 +650,9 @@ void *wld_mmap( void *start, size_t len, int prot, int flags, int fd, off_t offs
 
 int wld_mprotect( const void *addr, size_t len, int prot );
 SYSCALL_FUNC( wld_mprotect, 125 /* SYS_mprotect */ );
+
+int wld_munmap( void *addr, size_t len );
+SYSCALL_FUNC( wld_munmap, 91 /* SYS_munmap */ );
 
 int wld_prctl( int code, long arg );
 SYSCALL_FUNC( wld_prctl, 172 /* SYS_prctl */ );
@@ -1520,6 +1542,14 @@ void* wld_start( void **stack )
 
     preloader_start = (char *)_start - ((unsigned long)_start & page_mask);
     preloader_end = (char *)((unsigned long)(_end + page_mask) & ~page_mask);
+
+    if ((unsigned long)preloader_start >= (unsigned long)__executable_start + page_size)
+    {
+        /* Unmap preloader's ELF EHDR */
+        wld_munmap( __executable_start,
+                    ((unsigned long)preloader_start -
+                     (unsigned long)__executable_start) & ~page_mask );
+    }
 
 #ifdef DUMP_AUX_INFO
     wld_printf( "stack = %p\n", state.s.stack );
