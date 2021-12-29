@@ -164,6 +164,25 @@ struct wld_auxv
     } a_un;
 };
 
+/* Aggregates information about initial program stack and variables
+ * (e.g. argv and envp) that reside in it.
+ */
+struct stackarg_info
+{
+    void *stack;
+    int argc;
+    char **argv;
+    char **envp;
+    struct wld_auxv *auxv;
+    struct wld_auxv *auxv_end;
+};
+
+/* Currently only contains the main stackarg_info. */
+struct preloader_state
+{
+    struct stackarg_info s;
+};
+
 /*
  * The __bb_init_func is an empty function only called when file is
  * compiled with gcc flags "-fprofile-arcs -ftest-coverage".  This
@@ -674,6 +693,13 @@ static inline void *wld_memset( void *dest, int val, size_t len )
     return dest;
 }
 
+static size_t wld_strlen( const char *str )
+{
+    const char *ptr = str;
+    while (*ptr) ptr++;
+    return ptr - str;
+}
+
 /*
  * wld_printf - just the basics
  *
@@ -793,6 +819,74 @@ static void dump_auxiliary( struct wld_auxv *av )
     }
 }
 #endif
+
+/*
+ * parse_stackargs
+ *
+ * parse out the initial stack for argv, envp, and etc., and store the
+ * information into the given stackarg_info structure.
+ */
+static void parse_stackargs( struct stackarg_info *outinfo, void *stack )
+{
+    int argc;
+    char **argv, **envp, **env_end;
+    struct wld_auxv *auxv, *auxv_end;
+
+    argc = *(int *)stack;
+    argv = (char **)stack + 1;
+    envp = argv + (unsigned int)argc + 1;
+
+    env_end = envp;
+    while (*env_end++)
+        ;
+    auxv = (struct wld_auxv *)env_end;
+
+    auxv_end = auxv;
+    while ((auxv_end++)->a_type != AT_NULL)
+        ;
+
+    outinfo->stack = stack;
+    outinfo->argc = argc;
+    outinfo->argv = argv;
+    outinfo->envp = envp;
+    outinfo->auxv = auxv;
+    outinfo->auxv_end = auxv_end;
+}
+
+/*
+ * stackargs_getenv
+ *
+ * Retrieve the value of an environment variable from stackarg_info.
+ */
+static char *stackargs_getenv( const struct stackarg_info *info, const char *name )
+{
+    size_t namelen = wld_strlen( name );
+    char **envp;
+
+    for (envp = info->envp; *envp; envp++)
+    {
+        if (wld_strncmp( *envp, name, namelen ) == 0 &&
+            (*envp)[namelen] == '=') return *envp + namelen + 1;
+    }
+
+    return NULL;
+}
+
+/*
+ * stackargs_shift_args
+ *
+ * Remove the specific number of arguments from the start of argv.
+ */
+static void stackargs_shift_args( struct stackarg_info *info, int num_args )
+{
+    info->stack = (char **)info->stack + num_args;
+    info->argc -= num_args;
+    info->argv = (char **)info->stack + 1;
+
+    wld_memset( info->stack, 0, sizeof(char *) );
+    /* Don't coalesce zeroing and setting argc -- we *might* support big endian in the future */
+    *(int *)info->stack = info->argc;
+}
 
 /*
  * set_auxiliary_values
@@ -1369,47 +1463,36 @@ static void set_process_name( int argc, char *argv[] )
  */
 void* wld_start( void **stack )
 {
-    long i, *pargc;
-    char **argv, **p;
-    char *interp, *reserve = NULL;
-    struct wld_auxv new_av[8], delete_av[3], *av;
+    long i;
+    char *interp, *reserve;
+    struct wld_auxv new_av[8], delete_av[3];
     struct wld_link_map main_binary_map, ld_so_map;
     struct wine_preload_info **wine_main_preload_info;
+    struct preloader_state state = { 0 };
 
-    pargc = *stack;
-    argv = (char **)pargc + 1;
-    if (*pargc < 2) fatal_error( "Usage: %s wine_binary [args]\n", argv[0] );
+    parse_stackargs( &state.s, *stack );
 
-    /* skip over the parameters */
-    p = argv + *pargc + 1;
+    if (state.s.argc < 2) fatal_error( "Usage: %s wine_binary [args]\n", state.s.argv[0] );
 
-    /* skip over the environment */
-    while (*p)
-    {
-        static const char res[] = "WINEPRELOADRESERVE=";
-        if (!wld_strncmp( *p, res, sizeof(res)-1 )) reserve = *p + sizeof(res) - 1;
-        p++;
-    }
-
-    av = (struct wld_auxv *)(p+1);
-    page_size = get_auxiliary( av, AT_PAGESZ, 4096 );
+    page_size = get_auxiliary( state.s.auxv, AT_PAGESZ, 4096 );
     page_mask = page_size - 1;
 
     preloader_start = (char *)_start - ((unsigned long)_start & page_mask);
     preloader_end = (char *)((unsigned long)(_end + page_mask) & ~page_mask);
 
 #ifdef DUMP_AUX_INFO
-    wld_printf( "stack = %p\n", *stack );
-    for( i = 0; i < *pargc; i++ ) wld_printf("argv[%lx] = %s\n", i, argv[i]);
-    dump_auxiliary( av );
+    wld_printf( "stack = %p\n", state.s.stack );
+    for( i = 0; i < state.s.argc; i++ ) wld_printf("argv[%lx] = %s\n", i, state.s.argv[i]);
+    dump_auxiliary( state.s.auxv );
 #endif
 
     /* reserve memory that Wine needs */
+    reserve = stackargs_getenv( &state.s, "WINEPRELOADRESERVE" );
     if (reserve) preload_reserve( reserve );
     for (i = 0; preload_info[i].size; i++)
     {
-        if ((char *)av >= (char *)preload_info[i].addr &&
-            (char *)pargc <= (char *)preload_info[i].addr + preload_info[i].size)
+        if ((char *)state.s.auxv  >= (char *)preload_info[i].addr &&
+            (char *)state.s.stack <= (char *)preload_info[i].addr + preload_info[i].size)
         {
             remove_preload_range( i );
             i--;
@@ -1436,7 +1519,7 @@ void* wld_start( void **stack )
         wld_mprotect( (char *)0x80000000 - page_size, page_size, PROT_EXEC | PROT_READ );
 
     /* load the main binary */
-    map_so_lib( argv[1], &main_binary_map );
+    map_so_lib( state.s.argv[1], &main_binary_map );
 
     /* load the ELF interpreter */
     interp = (char *)main_binary_map.l_addr + main_binary_map.l_interp;
@@ -1453,14 +1536,14 @@ void* wld_start( void **stack )
     SET_NEW_AV( 2, AT_PHNUM, main_binary_map.l_phnum );
     SET_NEW_AV( 3, AT_PAGESZ, page_size );
     SET_NEW_AV( 4, AT_BASE, ld_so_map.l_addr );
-    SET_NEW_AV( 5, AT_FLAGS, get_auxiliary( av, AT_FLAGS, 0 ) );
+    SET_NEW_AV( 5, AT_FLAGS, get_auxiliary( state.s.auxv, AT_FLAGS, 0 ) );
     SET_NEW_AV( 6, AT_ENTRY, main_binary_map.l_entry );
     SET_NEW_AV( 7, AT_NULL, 0 );
 #undef SET_NEW_AV
 
     i = 0;
     /* delete sysinfo values if addresses conflict */
-    if (is_in_preload_range( av, AT_SYSINFO ) || is_in_preload_range( av, AT_SYSINFO_EHDR ))
+    if (is_in_preload_range( state.s.auxv, AT_SYSINFO ) || is_in_preload_range( state.s.auxv, AT_SYSINFO_EHDR ))
     {
         delete_av[i++].a_type = AT_SYSINFO;
         delete_av[i++].a_type = AT_SYSINFO_EHDR;
@@ -1468,11 +1551,12 @@ void* wld_start( void **stack )
     delete_av[i].a_type = AT_NULL;
 
     /* get rid of first argument */
-    set_process_name( *pargc, argv );
-    pargc[1] = pargc[0] - 1;
-    *stack = pargc + 1;
+    set_process_name( state.s.argc, state.s.argv );
+    stackargs_shift_args( &state.s, 1 );
 
-    set_auxiliary_values( av, new_av, delete_av, stack );
+    *stack = state.s.stack;
+    set_auxiliary_values( state.s.auxv, new_av, delete_av, stack );
+    /* state is invalid from this point onward */
 
 #ifdef DUMP_AUX_INFO
     wld_printf("new stack = %p\n", *stack);
