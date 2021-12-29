@@ -68,6 +68,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -698,6 +699,42 @@ static size_t wld_strlen( const char *str )
     const char *ptr = str;
     while (*ptr) ptr++;
     return ptr - str;
+}
+
+/*
+ * parse_ul - parse an unsigned long number with given radix
+ *
+ * Differences from strtoul():
+ * - Does not support radix prefixes ("0x", etc)
+ * - Does not saturate to ULONG_MAX on overflow, wrap around instead
+ * - Indicates overflow via output argument, not errno
+ */
+static inline unsigned long parse_ul( const char *nptr, char **endptr, unsigned int radix, int *overflow )
+{
+    const char *p = nptr;
+    unsigned long value, max_radix_mul;
+    int ovfl = 0;
+
+    value = 0;
+    max_radix_mul = ULONG_MAX / radix;
+    for (;;)
+    {
+        unsigned int digit;
+        if (*p >= '0' && *p <= '9') digit = *p - '0';
+        else if (*p >= 'a' && *p <= 'z') digit = *p - 'a' + 10;
+        else if (*p >= 'A' && *p <= 'Z') digit = *p - 'A' + 10;
+        else break;
+        if (digit >= radix) break;
+        if (value > max_radix_mul) ovfl = 1;
+        value *= radix;
+        if (value > value + digit) ovfl = 1;
+        value += digit;
+        p++;
+    }
+
+    if (endptr) *endptr = (char *)p;
+    if (overflow) *overflow = ovfl;
+    return value;
 }
 
 /*
@@ -1339,27 +1376,20 @@ found:
  */
 static void preload_reserve( const char *str )
 {
-    const char *p;
+    char *p = (char *)str;
     unsigned long result = 0;
     void *start = NULL, *end = NULL;
-    int i, first = 1;
+    int i;
 
-    for (p = str; *p; p++)
+    result = parse_ul( p, &p, 16, NULL );
+    if (*p == '-')
     {
-        if (*p >= '0' && *p <= '9') result = result * 16 + *p - '0';
-        else if (*p >= 'a' && *p <= 'f') result = result * 16 + *p - 'a' + 10;
-        else if (*p >= 'A' && *p <= 'F') result = result * 16 + *p - 'A' + 10;
-        else if (*p == '-')
-        {
-            if (!first) goto error;
-            start = (void *)(result & ~page_mask);
-            result = 0;
-            first = 0;
-        }
-        else goto error;
+        start = (void *)(result & ~page_mask);
+        result = parse_ul( p + 1, &p, 16, NULL );
+        if (*p) goto error;
+        end = (void *)((result + page_mask) & ~page_mask);
     }
-    if (!first) end = (void *)((result + page_mask) & ~page_mask);
-    else if (result) goto error;  /* single value '0' is allowed */
+    else if (*p || result) goto error;  /* single value '0' is allowed */
 
     /* sanity checks */
     if (end <= start) start = end = NULL;
