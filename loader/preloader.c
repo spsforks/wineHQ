@@ -1423,18 +1423,29 @@ error:
     fatal_error( "invalid WINEPRELOADRESERVE value '%s'\n", str );
 }
 
-/* check if address is in one of the reserved ranges */
-static int is_addr_reserved( const void *addr )
+/*
+ * find_preload_reserved_area
+ *
+ * Check if the given address range overlaps with one of the reserved ranges.
+ */
+static int find_preload_reserved_area( const void *addr, size_t size )
 {
+    /* Make the interval inclusive to avoid integer overflow. */
+    unsigned long start = (unsigned long)addr;
+    unsigned long end = (unsigned long)addr + size - 1;
     int i;
+
+    /* Handle size == 0 specifically since "end" may overflow otherwise. */
+    if (!size)
+        return -1;
 
     for (i = 0; preload_info[i].size; i++)
     {
-        if ((const char *)addr >= (const char *)preload_info[i].addr &&
-            (const char *)addr <  (const char *)preload_info[i].addr + preload_info[i].size)
-            return 1;
+        if (end   >= (unsigned long)preload_info[i].addr &&
+            start <  (unsigned long)preload_info[i].addr + preload_info[i].size)
+            return i;
     }
-    return 0;
+    return -1;
 }
 
 /* remove a range from the preload list */
@@ -1457,7 +1468,7 @@ static int is_in_preload_range( const struct wld_auxv *av, int type )
 {
     while (av->a_type != AT_NULL)
     {
-        if (av->a_type == type) return is_addr_reserved( (const void *)av->a_un.a_val );
+        if (av->a_type == type) return find_preload_reserved_area( (const void *)av->a_un.a_val, 1 ) >= 0;
         av++;
     }
     return 0;
@@ -1545,7 +1556,7 @@ void* wld_start( void **stack )
 
     /* add an executable page at the top of the address space to defeat
      * broken no-exec protections that play with the code selector limit */
-    if (is_addr_reserved( (char *)0x80000000 - page_size ))
+    if (find_preload_reserved_area( (char *)0x80000000 - page_size, page_size ) >= 0)
         wld_mprotect( (char *)0x80000000 - page_size, page_size, PROT_EXEC | PROT_READ );
 
     /* load the main binary */
