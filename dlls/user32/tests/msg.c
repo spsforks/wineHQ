@@ -11558,11 +11558,36 @@ static void CALLBACK callback_count(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
     count++;
 }
 
+enum timer_exception_phase {
+    TIMER_EXCEPTION_INITIAL,
+    TIMER_EXCEPTION_RAISED,
+    TIMER_EXCEPTION_CONTINUE,
+    TIMER_EXCEPTION_CONTINUE_OK,
+};
+
 static DWORD exception;
+static enum timer_exception_phase timer_exc_phase;
+static BOOL tproc_exc_no_suppress;
 static void CALLBACK callback_exception(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
+    if (tproc_exc_no_suppress)
+    {
+        BOOL ret, value;
+
+        value = FALSE;
+        ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
+                                        &value, sizeof(value));
+        todo_wine
+        ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
+        tproc_exc_no_suppress = FALSE;
+    }
+
     count++;
+    timer_exc_phase = TIMER_EXCEPTION_RAISED;
     RaiseException(exception, 0, 0, NULL);
+    ok(timer_exc_phase == TIMER_EXCEPTION_CONTINUE,
+       "expected phase %d, got %d\n", TIMER_EXCEPTION_CONTINUE, timer_exc_phase);
+    timer_exc_phase = TIMER_EXCEPTION_CONTINUE_OK;
 }
 
 static DWORD WINAPI timer_thread_proc(LPVOID x)
@@ -11723,10 +11748,41 @@ static void test_timers_no_wnd(void)
     while (i > 0) KillTimer(NULL, ids[--i]);
 }
 
+static LONG CALLBACK timer_exception_handler(EXCEPTION_POINTERS *eptr)
+{
+    if (timer_exc_phase == TIMER_EXCEPTION_RAISED &&
+        eptr->ExceptionRecord->ExceptionCode == exception &&
+        eptr->ExceptionRecord->NumberParameters == 0)
+    {
+        if (eptr->ExceptionRecord->ExceptionCode == EXCEPTION_BREAKPOINT)
+        {
+#if defined(__i386__)
+            if ((ULONG_PTR)eptr->ExceptionRecord->ExceptionAddress == eptr->ContextRecord->Eip + 1)
+                eptr->ContextRecord->Eip++;  /* cancel EIP rewinding */
+#elif defined(__x86_64__)
+            if ((ULONG_PTR)eptr->ExceptionRecord->ExceptionAddress == eptr->ContextRecord->Rip + 1)
+                eptr->ContextRecord->Rip++;  /* cancel RIP rewinding */
+#endif
+        }
+        timer_exc_phase = TIMER_EXCEPTION_CONTINUE;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static void dispatch_message_ansi_handle_exception(const MSG *msg, PVECTORED_EXCEPTION_HANDLER handler)
+{
+    void *cookie = AddVectoredExceptionHandler(TRUE, handler);
+    DispatchMessageA(msg);
+    RemoveVectoredExceptionHandler(cookie);
+}
+
 static void test_timers_exception(DWORD code)
 {
     UINT_PTR id;
     MSG msg;
+    BOOL ret, value;
 
     exception = code;
     id = SetTimer(NULL, 0, 1000, callback_exception);
@@ -11738,8 +11794,55 @@ static void test_timers_exception(DWORD code)
     msg.lParam = (LPARAM)callback_exception;
 
     count = 0;
+    timer_exc_phase = TIMER_EXCEPTION_INITIAL;
     DispatchMessageA(&msg);
     ok(count == 1, "did not get one count as expected (%i).\n", count);
+    ok(timer_exc_phase == TIMER_EXCEPTION_RAISED,
+       "expected phase %d, got %d\n", TIMER_EXCEPTION_RAISED, timer_exc_phase);
+
+    value = FALSE;
+    ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
+                                    &value, sizeof(value));
+    if (!ret && GetLastError() == ERROR_INVALID_FUNCTION)
+    {
+        win_skip("UOI_TIMERPROC_EXCEPTION_SUPPRESSION not supported on this platform\n");
+    }
+    else
+    {
+        todo_wine
+        ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
+
+        count = 0;
+        timer_exc_phase = TIMER_EXCEPTION_INITIAL;
+        dispatch_message_ansi_handle_exception(&msg, timer_exception_handler);
+        ok(count == 1, "expected count to be 1, got %d\n", count);
+        todo_wine
+        ok(timer_exc_phase == TIMER_EXCEPTION_CONTINUE_OK ||
+           broken(timer_exc_phase == TIMER_EXCEPTION_RAISED) /* < win10 1507 */,
+           "expected phase %d, got %d\n", TIMER_EXCEPTION_CONTINUE_OK, timer_exc_phase);
+
+        value = TRUE;
+        ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
+                                        &value, sizeof(value));
+        todo_wine
+        ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
+
+        tproc_exc_no_suppress = TRUE;
+        count = 0;
+        timer_exc_phase = TIMER_EXCEPTION_INITIAL;
+        dispatch_message_ansi_handle_exception(&msg, timer_exception_handler);
+        ok(count == 1, "expected count to be 1, got %d\n", count);
+        todo_wine
+        ok(timer_exc_phase == TIMER_EXCEPTION_CONTINUE_OK ||
+           broken(timer_exc_phase == TIMER_EXCEPTION_RAISED) /* < win10 1507 */,
+           "expected phase %d, got %d\n", TIMER_EXCEPTION_CONTINUE_OK, timer_exc_phase);
+
+        value = TRUE;
+        ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
+                                        &value, sizeof(value));
+        todo_wine
+        ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
+    }
 
     KillTimer(NULL, id);
 }
