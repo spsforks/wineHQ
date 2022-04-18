@@ -2023,6 +2023,39 @@ static void test_wndproc_hook(void)
     UnregisterClassW( L"TestLParamClass", NULL );
 }
 
+static void test_NtUserSetObjectInformation(void)
+{
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( GetProcessWindowStation(), UOI_FLAGS, (void *)NULL, sizeof(USEROBJECTFLAGS) );
+    todo_wine
+    ok( GetLastError() == ERROR_NOACCESS, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( GetThreadDesktop(GetCurrentThreadId()), UOI_FLAGS, (void *)NULL, sizeof(USEROBJECTFLAGS) );
+    todo_wine
+    ok( GetLastError() == ERROR_NOACCESS, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)TRUE, 0 );
+    todo_wine
+    ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)0xdeadbeef, 0xdeadbeef );
+    todo_wine
+    ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)-1, -1 );
+    todo_wine
+    ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+
+    SetLastError( 0xdeadbeef );
+    NtUserSetObjectInformation( NULL, UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)-1, -1 );
+    todo_wine
+    ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
+}
+
 START_TEST(win32u)
 {
     char **argv;
@@ -2066,4 +2099,6 @@ START_TEST(win32u)
 
     test_NtUserEnableMouseInPointer( argv, FALSE );
     test_NtUserEnableMouseInPointer( argv, TRUE );
+
+    test_NtUserSetObjectInformation();
 }
