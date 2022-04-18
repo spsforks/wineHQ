@@ -11577,7 +11577,6 @@ static void CALLBACK callback_exception(HWND hwnd, UINT uMsg, UINT_PTR idEvent, 
         value = FALSE;
         ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
                                         &value, sizeof(value));
-        todo_wine
         ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
         tproc_exc_no_suppress = FALSE;
     }
@@ -11809,14 +11808,12 @@ static void test_timers_exception(DWORD code)
     }
     else
     {
-        todo_wine
         ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
 
         count = 0;
         timer_exc_phase = TIMER_EXCEPTION_INITIAL;
         dispatch_message_ansi_handle_exception(&msg, timer_exception_handler);
         ok(count == 1, "expected count to be 1, got %d\n", count);
-        todo_wine
         ok(timer_exc_phase == TIMER_EXCEPTION_CONTINUE_OK ||
            broken(timer_exc_phase == TIMER_EXCEPTION_RAISED) /* < win10 1507 */,
            "expected phase %d, got %d\n", TIMER_EXCEPTION_CONTINUE_OK, timer_exc_phase);
@@ -11824,7 +11821,6 @@ static void test_timers_exception(DWORD code)
         value = TRUE;
         ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
                                         &value, sizeof(value));
-        todo_wine
         ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
 
         tproc_exc_no_suppress = TRUE;
@@ -11832,7 +11828,6 @@ static void test_timers_exception(DWORD code)
         timer_exc_phase = TIMER_EXCEPTION_INITIAL;
         dispatch_message_ansi_handle_exception(&msg, timer_exception_handler);
         ok(count == 1, "expected count to be 1, got %d\n", count);
-        todo_wine
         ok(timer_exc_phase == TIMER_EXCEPTION_CONTINUE_OK ||
            broken(timer_exc_phase == TIMER_EXCEPTION_RAISED) /* < win10 1507 */,
            "expected phase %d, got %d\n", TIMER_EXCEPTION_CONTINUE_OK, timer_exc_phase);
@@ -11840,7 +11835,6 @@ static void test_timers_exception(DWORD code)
         value = TRUE;
         ret = SetUserObjectInformationW(GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION,
                                         &value, sizeof(value));
-        todo_wine
         ok(ret, "SetUserObjectInformationW error %lu\n", GetLastError());
     }
 

@@ -721,7 +721,7 @@
 @ stdcall SetThreadDpiAwarenessContext(ptr)
 @ stdcall SetTimer(long long long ptr)
 @ stdcall SetUserObjectInformationA(long long ptr long)
-@ stdcall SetUserObjectInformationW(long long ptr long) NtUserSetObjectInformation
+@ stdcall SetUserObjectInformationW(long long ptr long)
 @ stdcall SetUserObjectSecurity(long ptr ptr)
 @ stdcall SetWinEventHook(long long long ptr long long long)
 @ stdcall SetWindowCompositionAttribute(ptr ptr)

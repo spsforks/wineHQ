@@ -29,6 +29,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(graphics);
 WINE_DECLARE_DEBUG_CHANNEL(message);
 
 HMODULE user32_module = 0;
+BOOL suppress_timerproc_exception = TRUE;
 
 extern void WDML_NotifyThreadDetach(void);
 
