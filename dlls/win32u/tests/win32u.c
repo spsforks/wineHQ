@@ -2037,22 +2037,18 @@ static void test_NtUserSetObjectInformation(void)
 
     SetLastError( 0xdeadbeef );
     NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)TRUE, 0 );
-    todo_wine
     ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
 
     SetLastError( 0xdeadbeef );
     NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)0xdeadbeef, 0xdeadbeef );
-    todo_wine
     ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
 
     SetLastError( 0xdeadbeef );
     NtUserSetObjectInformation( GetCurrentProcess(), UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)-1, -1 );
-    todo_wine
     ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
 
     SetLastError( 0xdeadbeef );
     NtUserSetObjectInformation( NULL, UOI_TIMERPROC_EXCEPTION_SUPPRESSION, (void *)-1, -1 );
-    todo_wine
     ok( GetLastError() == 0xdeadbeef, "NtUserSetObjectInformation error %lu\n", GetLastError() );
 }
 
