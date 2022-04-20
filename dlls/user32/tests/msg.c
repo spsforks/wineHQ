@@ -16339,6 +16339,16 @@ static void test_dbcs_wm_char(void)
     DestroyWindow(hwnd2);
 }
 
+static BOOL get_next_msg( BOOL (*WINAPI getmessage)(MSG *, HWND, UINT, UINT),
+                          MSG *msg, HWND hwnd )
+{
+    while ((*getmessage)( msg, hwnd, 0, 0 ))
+    {
+        if (!ignore_message( msg->message )) return TRUE;
+    }
+    return FALSE;
+}
+
 static void test_unicode_wm_char(void)
 {
     HWND hwnd;
@@ -16369,11 +16379,7 @@ static void test_unicode_wm_char(void)
 
     PostMessageW( hwnd, WM_CHAR, 0x3b1, 0 );
 
-    while (GetMessageW( &msg, hwnd, 0, 0 ))
-    {
-        if (!ignore_message( msg.message )) break;
-    }
-
+    ok( get_next_msg( GetMessageW, &msg, hwnd ), "expected a recongized message\n" );
     ok( msg.hwnd == hwnd, "unexpected hwnd %p\n", msg.hwnd );
     ok( msg.message == WM_CHAR, "unexpected message %x\n", msg.message );
     ok( msg.wParam == 0x3b1, "bad wparam %Ix\n", msg.wParam );
@@ -16393,7 +16399,7 @@ static void test_unicode_wm_char(void)
     /* greek alpha -> 'a' in cp1252 */
     PostMessageW( hwnd, WM_CHAR, 0x3b1, 0 );
 
-    ok( GetMessageA( &msg, hwnd, 0, 0 ), "no message\n" );
+    ok( get_next_msg( GetMessageA, &msg, hwnd ), "expected a recognized message\n" );
     ok( msg.hwnd == hwnd, "unexpected hwnd %p\n", msg.hwnd );
     ok( msg.message == WM_CHAR, "unexpected message %x\n", msg.message );
     ok( msg.wParam == 0x61, "bad wparam %Ix\n", msg.wParam );
@@ -16414,7 +16420,7 @@ static void test_unicode_wm_char(void)
     /* greek alpha -> 0xe1 in cp1253 */
     PostMessageW( hwnd, WM_CHAR, 0x3b1, 0 );
 
-    ok( GetMessageA( &msg, hwnd, 0, 0 ), "no message\n" );
+    ok( get_next_msg( GetMessageA, &msg, hwnd ), "expected a recognized message\n" );
     ok( msg.hwnd == hwnd, "unexpected hwnd %p\n", msg.hwnd );
     ok( msg.message == WM_CHAR, "unexpected message %x\n", msg.message );
     ok( msg.wParam == 0xe1, "bad wparam %Ix\n", msg.wParam );
