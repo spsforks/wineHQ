@@ -3843,38 +3843,13 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CheckFormatSupport(ID3D11Device2 *
         UINT *format_support)
 {
     struct d3d_device *device = impl_from_ID3D11Device2(iface);
-    struct wined3d_device_creation_parameters params;
-    struct wined3d_adapter *wined3d_adapter;
     enum wined3d_format_id wined3d_format;
-    D3D_FEATURE_LEVEL feature_level;
-    struct wined3d *wined3d;
-    unsigned int i;
-
-    static const struct
-    {
-        enum wined3d_resource_type rtype;
-        unsigned int bind_flags;
-        unsigned int usage;
-        D3D11_FORMAT_SUPPORT flag;
-    }
-    flag_mapping[] =
-    {
-        {WINED3D_RTYPE_BUFFER,     WINED3D_BIND_SHADER_RESOURCE, 0, D3D11_FORMAT_SUPPORT_BUFFER},
-        {WINED3D_RTYPE_BUFFER,     WINED3D_BIND_VERTEX_BUFFER,   0, D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER},
-        {WINED3D_RTYPE_BUFFER,     WINED3D_BIND_INDEX_BUFFER,    0, D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER},
-        {WINED3D_RTYPE_TEXTURE_1D, WINED3D_BIND_SHADER_RESOURCE, 0, D3D11_FORMAT_SUPPORT_TEXTURE1D},
-        {WINED3D_RTYPE_TEXTURE_2D, WINED3D_BIND_SHADER_RESOURCE, 0, D3D11_FORMAT_SUPPORT_TEXTURE2D},
-        {WINED3D_RTYPE_TEXTURE_3D, WINED3D_BIND_SHADER_RESOURCE, 0, D3D11_FORMAT_SUPPORT_TEXTURE3D},
-        {WINED3D_RTYPE_NONE,       WINED3D_BIND_RENDER_TARGET,   0, D3D11_FORMAT_SUPPORT_RENDER_TARGET},
-        {WINED3D_RTYPE_NONE,       WINED3D_BIND_DEPTH_STENCIL,   0, D3D11_FORMAT_SUPPORT_DEPTH_STENCIL},
-        {WINED3D_RTYPE_NONE,       WINED3D_BIND_UNORDERED_ACCESS, 0, D3D11_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW},
-        {WINED3D_RTYPE_TEXTURE_2D, WINED3D_BIND_SHADER_RESOURCE, WINED3DUSAGE_QUERY_WRAPANDMIP, D3D11_FORMAT_SUPPORT_MIP},
-        {WINED3D_RTYPE_TEXTURE_2D, WINED3D_BIND_SHADER_RESOURCE, WINED3DUSAGE_QUERY_GENMIPMAP, D3D11_FORMAT_SUPPORT_MIP_AUTOGEN},
-        {WINED3D_RTYPE_NONE,       WINED3D_BIND_RENDER_TARGET, WINED3DUSAGE_QUERY_POSTPIXELSHADER_BLENDING, D3D11_FORMAT_SUPPORT_BLENDABLE},
-    };
     HRESULT hr;
 
-    FIXME("iface %p, format %u, format_support %p partial-stub!\n", iface, format, format_support);
+    TRACE("iface %p, format %u, format_support %p.\n", iface, format, format_support);
+
+    if (!format_support)
+        return E_INVALIDARG;
 
     wined3d_format = wined3dformat_from_dxgi_format(format);
     if (format && !wined3d_format)
@@ -3884,66 +3859,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CheckFormatSupport(ID3D11Device2 *
         return E_FAIL;
     }
 
-    *format_support = 0;
-
     wined3d_mutex_lock();
-    feature_level = device->state->feature_level;
-    wined3d = wined3d_device_get_wined3d(device->wined3d_device);
-    wined3d_device_get_creation_parameters(device->wined3d_device, &params);
-    wined3d_adapter = wined3d_get_adapter(wined3d, params.adapter_idx);
-    for (i = 0; i < ARRAY_SIZE(flag_mapping); ++i)
-    {
-        hr = wined3d_check_device_format(wined3d, wined3d_adapter, params.device_type,
-                WINED3DFMT_UNKNOWN, flag_mapping[i].usage, flag_mapping[i].bind_flags, flag_mapping[i].rtype, wined3d_format);
-        if (hr == WINED3DERR_NOTAVAILABLE || hr == WINED3DOK_NOMIPGEN)
-            continue;
-        if (hr != WINED3D_OK)
-        {
-            WARN("Failed to check device format support, hr %#lx.\n", hr);
-            wined3d_mutex_unlock();
-            return E_FAIL;
-        }
-
-        *format_support |= flag_mapping[i].flag;
-    }
+    hr = wined3d_device_check_format_support(device->wined3d_device, wined3d_format,
+            format_support, NULL);
     wined3d_mutex_unlock();
 
-    if (feature_level < D3D_FEATURE_LEVEL_10_0)
-        *format_support &= ~D3D11_FORMAT_SUPPORT_BUFFER;
-
-    if (*format_support & (D3D11_FORMAT_SUPPORT_TEXTURE1D
-            | D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_TEXTURE3D))
-    {
-        *format_support |= D3D11_FORMAT_SUPPORT_SHADER_LOAD;
-        *format_support |= D3D11_FORMAT_SUPPORT_SHADER_SAMPLE;
-        *format_support |= D3D11_FORMAT_SUPPORT_TEXTURECUBE;
-
-        if (feature_level >= D3D_FEATURE_LEVEL_10_1)
-            *format_support |= D3D11_FORMAT_SUPPORT_SHADER_GATHER;
-
-        if (*format_support & D3D11_FORMAT_SUPPORT_DEPTH_STENCIL)
-        {
-            if (feature_level >= D3D_FEATURE_LEVEL_10_0)
-                *format_support |= D3D11_FORMAT_SUPPORT_SHADER_SAMPLE_COMPARISON;
-
-            if (feature_level >= D3D_FEATURE_LEVEL_10_1)
-                *format_support |= D3D11_FORMAT_SUPPORT_SHADER_GATHER_COMPARISON;
-        }
-    }
-
-    /* d3d11 requires 4 and 8 sample counts support for formats reported to
-     * support multisample. */
-    if (wined3d_check_device_multisample_type(wined3d_adapter, params.device_type, wined3d_format,
-            TRUE, WINED3D_MULTISAMPLE_4_SAMPLES, NULL) == WINED3D_OK &&
-            wined3d_check_device_multisample_type(wined3d_adapter, params.device_type, wined3d_format,
-            TRUE, WINED3D_MULTISAMPLE_8_SAMPLES, NULL) == WINED3D_OK)
-    {
-        *format_support |= D3D11_FORMAT_SUPPORT_MULTISAMPLE_RESOLVE
-                | D3D11_FORMAT_SUPPORT_MULTISAMPLE_RENDERTARGET
-                | D3D11_FORMAT_SUPPORT_MULTISAMPLE_LOAD;
-    }
-
-    return S_OK;
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_device_CheckMultisampleQualityLevels(ID3D11Device2 *iface,

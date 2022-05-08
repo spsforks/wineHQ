@@ -20648,7 +20648,8 @@ static void check_format_support(const unsigned int *format_support, D3D_FEATURE
 
         if (formats[i].fl_required <= feature_level)
         {
-            todo_wine_if (feature_flag == D3D11_FORMAT_SUPPORT_DISPLAY)
+            todo_wine_if (feature_flag == D3D11_FORMAT_SUPPORT_DISPLAY
+                    && format == DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM)
                 ok(supported, "Format %#x - %s not supported, feature_level %#x, format support %#x.\n",
                         format, feature_name, feature_level, format_support[format]);
             continue;
@@ -20662,7 +20663,8 @@ static void check_format_support(const unsigned int *format_support, D3D_FEATURE
             continue;
         }
 
-        todo_wine_if (feature_flag != D3D11_FORMAT_SUPPORT_DISPLAY)
+        todo_wine_if (feature_flag != D3D11_FORMAT_SUPPORT_DISPLAY
+                && feature_flag != D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER)
             ok(!supported, "Format %#x - %s supported, feature level %#x, format support %#x.\n",
                     format, feature_name, feature_level, format_support[format]);
     }
@@ -20743,7 +20745,6 @@ static void test_format_support(const D3D_FEATURE_LEVEL feature_level)
 
     ok(format_support[DXGI_FORMAT_R8G8B8A8_UNORM] & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE,
             "SHADER_SAMPLE is not supported for R8G8B8A8_UNORM.\n");
-    todo_wine
     ok(!(format_support[DXGI_FORMAT_R32G32B32A32_UINT] & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE),
             "SHADER_SAMPLE is supported for R32G32B32A32_UINT.\n");
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
