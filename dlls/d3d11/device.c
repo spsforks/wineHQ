@@ -4004,6 +4004,33 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CheckFeatureSupport(ID3D11Device2 
             return hr;
         }
 
+        case D3D11_FEATURE_FORMAT_SUPPORT2:
+        {
+            D3D11_FEATURE_DATA_FORMAT_SUPPORT2 *support = feature_support_data;
+            enum wined3d_format_id wined3d_format;
+
+            if (feature_support_data_size != sizeof(*support))
+            {
+                WARN("Invalid data size.\n");
+                return E_INVALIDARG;
+            }
+
+            wined3d_format = wined3dformat_from_dxgi_format(support->InFormat);
+            if (support->InFormat && !wined3d_format)
+            {
+                WARN("Invalid format %#x.\n", support->InFormat);
+                support->OutFormatSupport2 = 0;
+                return E_FAIL;
+            }
+
+            wined3d_mutex_lock();
+            hr = wined3d_device_check_format_support(device->wined3d_device, wined3d_format, NULL,
+                    &support->OutFormatSupport2);
+            wined3d_mutex_unlock();
+
+            return hr;
+        }
+
         case D3D11_FEATURE_D3D9_OPTIONS:
         {
             D3D11_FEATURE_DATA_D3D9_OPTIONS *options = feature_support_data;
