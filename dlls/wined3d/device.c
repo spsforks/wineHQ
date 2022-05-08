@@ -4412,6 +4412,24 @@ HRESULT CDECL wined3d_device_check_format_support(const struct wined3d_device *d
                 {
                     flags |= WINED3D_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW;
                     flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_TYPED_STORE;
+                    if (format->caps[gl_type] & WINED3D_FORMAT_CAP_UAV_LOAD)
+                        flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_TYPED_LOAD;
+                    if (format->caps[gl_type] & WINED3D_FORMAT_CAP_UAV_ATOMICS)
+                    {
+                        /* The caps here depend on the format's data type. Floating-point
+                         * formats only support a limited subset of atomic operations.
+                         */
+                        flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_EXCHANGE;
+                        if (format->attrs & WINED3D_FORMAT_ATTR_INTEGER)
+                            /* Yes, both signed and unsigned integer types support both
+                             * signed and unsigned min/max.
+                             */
+                            flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_ADD
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_BITWISE_OPS
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_COMPARE_STORE_XCHG
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_SIGNED_MIN_MAX
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_UNSIGNED_MIN_MAX;
+                    }
                 }
             }
             /* 10level9 doesn't allow mapping depth/stencil surfaces, but level 10+ do. */
