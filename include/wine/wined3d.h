@@ -1335,6 +1335,52 @@ enum wined3d_memory_segment_group
 #define WINED3DDEVCAPS_RTPATCHHANDLEZERO                        0x00800000
 #define WINED3DDEVCAPS_NPATCHES                                 0x01000000
 
+#define WINED3D_FORMAT_SUPPORT_SHADER_BUFFER                    0x00000001
+#define WINED3D_FORMAT_SUPPORT_IA_VERTEX_BUFFER                 0x00000002
+#define WINED3D_FORMAT_SUPPORT_IA_INDEX_BUFFER                  0x00000004
+#define WINED3D_FORMAT_SUPPORT_SO_BUFFER                        0x00000008
+#define WINED3D_FORMAT_SUPPORT_TEXTURE_1D                       0x00000010
+#define WINED3D_FORMAT_SUPPORT_TEXTURE_2D                       0x00000020
+#define WINED3D_FORMAT_SUPPORT_TEXTURE_3D                       0x00000040
+#define WINED3D_FORMAT_SUPPORT_TEXTURE_CUBE                     0x00000080
+#define WINED3D_FORMAT_SUPPORT_SHADER_LOAD                      0x00000100
+#define WINED3D_FORMAT_SUPPORT_SHADER_SAMPLE                    0x00000200
+#define WINED3D_FORMAT_SUPPORT_SHADER_SAMPLE_COMPARISON         0x00000400
+#define WINED3D_FORMAT_SUPPORT_SHADER_SAMPLE_MONO_TEXT          0x00000800
+#define WINED3D_FORMAT_SUPPORT_MIP                              0x00001000
+#define WINED3D_FORMAT_SUPPORT_MIP_AUTOGEN                      0x00002000
+#define WINED3D_FORMAT_SUPPORT_RENDER_TARGET                    0x00004000
+#define WINED3D_FORMAT_SUPPORT_BLENDABLE                        0x00008000
+#define WINED3D_FORMAT_SUPPORT_DEPTH_STENCIL                    0x00010000
+#define WINED3D_FORMAT_SUPPORT_CPU_LOCKABLE                     0x00020000
+#define WINED3D_FORMAT_SUPPORT_MULTISAMPLE_RESOLVE              0x00040000
+#define WINED3D_FORMAT_SUPPORT_DISPLAY                          0x00080000
+#define WINED3D_FORMAT_SUPPORT_CAST_WITHIN_BIT_LAYOUT           0x00100000
+#define WINED3D_FORMAT_SUPPORT_MULTISAMPLE_RENDER_TARGET        0x00200000
+#define WINED3D_FORMAT_SUPPORT_MULTISAMPLE_LOAD                 0x00400000
+#define WINED3D_FORMAT_SUPPORT_SHADER_GATHER                    0x00800000
+#define WINED3D_FORMAT_SUPPORT_BACK_BUFFER_CAST                 0x01000000
+#define WINED3D_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW      0x02000000
+#define WINED3D_FORMAT_SUPPORT_SHADER_GATHER_COMPARISON         0x04000000
+#define WINED3D_FORMAT_SUPPORT_DECODER_OUTPUT                   0x08000000
+#define WINED3D_FORMAT_SUPPORT_VIDEO_PROCESSOR_OUTPUT           0x10000000
+#define WINED3D_FORMAT_SUPPORT_VIDEO_PROCESSOR_INPUT            0x20000000
+#define WINED3D_FORMAT_SUPPORT_VIDEO_ENCODER                    0x40000000
+
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_ADD                  0x00000001
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_BITWISE_OPS          0x00000002
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_COMPARE_STORE_XCHG   0x00000004
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_EXCHANGE             0x00000008
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_SIGNED_MIN_MAX       0x00000010
+#define WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_UNSIGNED_MIN_MAX     0x00000020
+#define WINED3D_FORMAT_SUPPORT2_UAV_TYPED_LOAD                  0x00000040
+#define WINED3D_FORMAT_SUPPORT2_UAV_TYPED_STORE                 0x00000080
+#define WINED3D_FORMAT_SUPPORT2_OM_LOGIC_OP                     0x00000100
+#define WINED3D_FORMAT_SUPPORT2_TILED                           0x00000200
+#define WINED3D_FORMAT_SUPPORT2_SHAREABLE                       0x00000400
+
+#define WINED3D_FORMAT_SUPPORT2_MULTIPLANE_OVERLAY              0x00004000
+
 #define WINED3D_LEGACY_DEPTH_BIAS                               0x00000001
 #define WINED3D_NO3D                                            0x00000002
 #define WINED3D_VIDMEM_ACCOUNTING                               0x00000004
@@ -2394,6 +2440,9 @@ ULONG __cdecl wined3d_depth_stencil_state_incref(struct wined3d_depth_stencil_st
 HRESULT __cdecl wined3d_device_acquire_focus_window(struct wined3d_device *device, HWND window);
 void __cdecl wined3d_device_apply_stateblock(struct wined3d_device *device, struct wined3d_stateblock *stateblock);
 HRESULT __cdecl wined3d_device_begin_scene(struct wined3d_device *device);
+HRESULT __cdecl wined3d_device_check_format_support(const struct wined3d_device *device,
+        enum wined3d_format_id format_id, unsigned int *format_support,
+        unsigned int *format_support_2);
 HRESULT __cdecl wined3d_device_clear(struct wined3d_device *device, DWORD rect_count, const RECT *rects, DWORD flags,
         const struct wined3d_color *color, float z, DWORD stencil);
 HRESULT __cdecl wined3d_device_create(struct wined3d *wined3d, struct wined3d_adapter *adapter,

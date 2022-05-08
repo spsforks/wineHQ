@@ -51,6 +51,7 @@
 @ cdecl wined3d_device_acquire_focus_window(ptr ptr)
 @ cdecl wined3d_device_apply_stateblock(ptr ptr)
 @ cdecl wined3d_device_begin_scene(ptr)
+@ cdecl wined3d_device_check_format_support(ptr long ptr ptr)
 @ cdecl wined3d_device_clear(ptr long ptr long ptr float long)
 @ cdecl wined3d_device_create(ptr ptr long ptr long long ptr long ptr ptr)
 @ cdecl wined3d_device_decref(ptr)
