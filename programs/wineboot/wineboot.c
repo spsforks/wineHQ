@@ -1307,7 +1307,16 @@ static INT_PTR CALLBACK wait_dlgproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp 
             DWORD len;
             WCHAR *buffer, text[1024];
             const WCHAR *name = (WCHAR *)lp;
-            HICON icon = LoadImageW( 0, (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, 48, 48, LR_SHARED );
+            HICON icon = 0;
+            const WCHAR *overrideModule = _wgetenv(L"WINEBOOTRESOURCEMODULE");
+            if (overrideModule)
+            {
+                icon = LoadImageW( LoadLibraryW(overrideModule), (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, 48, 48, LR_SHARED );
+            }
+            if (!icon)
+            {
+                icon = LoadImageW( 0, (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, 48, 48, LR_SHARED );
+            }
             SendDlgItemMessageW( hwnd, IDC_WAITICON, STM_SETICON, (WPARAM)icon, 0 );
             SendDlgItemMessageW( hwnd, IDC_WAITTEXT, WM_GETTEXT, 1024, (LPARAM)text );
             len = lstrlenW(text) + lstrlenW(name) + 1;
@@ -1323,8 +1332,18 @@ static INT_PTR CALLBACK wait_dlgproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp 
 
 static HWND show_wait_window(void)
 {
-    HWND hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
-                                    wait_dlgproc, (LPARAM)prettyprint_configdir() );
+    HWND hwnd = 0;
+    const WCHAR *overrideModule = _wgetenv(L"WINEBOOTRESOURCEMODULE");
+    if (overrideModule)
+    {
+        hwnd = CreateDialogParamW( LoadLibraryW(overrideModule), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
+                                   wait_dlgproc, (LPARAM)prettyprint_configdir() );
+    }
+    if (!hwnd)
+    {
+        hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
+                                   wait_dlgproc, (LPARAM)prettyprint_configdir() );
+    }
     ShowWindow( hwnd, SW_SHOWNORMAL );
     return hwnd;
 }
