@@ -1003,6 +1003,8 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
     BOOL self = (handle == GetCurrentThread());
     NTSTATUS ret;
 
+    if (!validate_context_xstate( context )) return STATUS_INVALID_PARAMETER;
+
     /* debug registers require a server call */
     if (needed_flags & CONTEXT_DEBUG_REGISTERS) self = FALSE;
 
@@ -1097,8 +1099,6 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
             CONTEXT_EX *context_ex = (CONTEXT_EX *)(context + 1);
             XSTATE *xstate = (XSTATE *)((char *)context_ex + context_ex->XState.Offset);
             unsigned int mask;
-
-            if (!validate_context_xstate( context )) return STATUS_INVALID_PARAMETER;
 
             mask = (xstate_compaction_enabled ? xstate->CompactionMask : xstate->Mask) & XSTATE_MASK_GSSE;
             xstate->Mask = frame->xstate.Mask & mask;
