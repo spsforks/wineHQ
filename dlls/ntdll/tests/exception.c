@@ -11394,7 +11394,6 @@ static void test_eflags_sanitization(void)
         ok(status == STATUS_SUCCESS, "NtSetContextThread failed with %lx\n", status);
         status = pNtGetContextThread(thread, &context);
         ok(status == STATUS_SUCCESS, "NtGetContextThread failed with %lx\n", status);
-        todo_wine
         ok(context.EFlags == min_eflags, "Expected EFlags to be %#lx, got %#lx\n", min_eflags, context.EFlags);
 
         context.EFlags = -1;
@@ -11402,7 +11401,6 @@ static void test_eflags_sanitization(void)
         ok(status == STATUS_SUCCESS, "NtSetContextThread failed with %lx\n", status);
         status = pNtGetContextThread(thread, &context);
         ok(status == STATUS_SUCCESS, "NtGetContextThread failed with %lx\n", status);
-        todo_wine
         ok(context.EFlags == max_eflags || broken(context.EFlags == max_eflags_broken),
            "Expected EFlags to be %#lx, got %#lx\n", max_eflags, context.EFlags);
 
