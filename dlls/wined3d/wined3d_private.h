@@ -6155,6 +6155,8 @@ extern enum wined3d_format_id pixelformat_for_depth(DWORD depth) DECLSPEC_HIDDEN
 #define WINED3D_FORMAT_CAP_VERTEX_ATTRIBUTE             0x00004000
 #define WINED3D_FORMAT_CAP_BLIT                         0x00008000
 #define WINED3D_FORMAT_CAP_INDEX_BUFFER                 0x00010000
+#define WINED3D_FORMAT_CAP_UAV_LOAD                     0x00020000
+#define WINED3D_FORMAT_CAP_UAV_ATOMICS                  0x00040000
 
 struct wined3d_rational
 {

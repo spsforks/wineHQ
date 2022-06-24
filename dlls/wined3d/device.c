@@ -4279,6 +4279,226 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
     TRACE("Applied stateblock %p.\n", stateblock);
 }
 
+HRESULT CDECL wined3d_device_check_format_support(const struct wined3d_device *device,
+        enum wined3d_format_id format_id, unsigned int *format_support,
+        unsigned int *format_support_2)
+{
+    enum wined3d_feature_level feature_level = device->cs->c.state->feature_level;
+    const struct wined3d_adapter *adapter = device->adapter;
+    unsigned int flags = 0, flags2 = 0, rb_caps;
+    enum wined3d_gl_resource_type gl_type;
+    const struct wined3d_format *format;
+
+    TRACE("device %p, format %s, format_support %p, format_support_2 %p.\n",
+            device, debug_d3dformat(format_id), format_support, format_support_2);
+
+
+    /* 10level9 exposes no support for DXGI_FORMAT_UNKNOWN. Level 10+ report BUFFER|CPU_LOCKABLE. */
+    if (format_id == WINED3DFMT_UNKNOWN)
+    {
+        if (format_support_2)
+            *format_support_2 = 0;
+        if (feature_level < WINED3D_FEATURE_LEVEL_10)
+        {
+            if (format_support)
+                *format_support = 0;
+            return E_FAIL;
+        }
+        else
+        {
+            if (format_support)
+                *format_support = WINED3D_FORMAT_SUPPORT_SHADER_BUFFER
+                        | WINED3D_FORMAT_SUPPORT_CPU_LOCKABLE;
+            return S_OK;
+        }
+    }
+
+    format = wined3d_get_format(adapter, format_id, 0);
+
+    /* 10level9 has no support for typeless. */
+    if (feature_level < WINED3D_FEATURE_LEVEL_10 && wined3d_format_is_typeless(format))
+    {
+        if (format_support)
+            *format_support = 0;
+        if (format_support_2)
+            *format_support_2 = 0;
+        return E_FAIL;
+    }
+
+    /* Native only allows these formats for an index buffer. */
+    if (format_id == WINED3DFMT_R16_UINT
+            || (feature_level >= WINED3D_FEATURE_LEVEL_9_2 && format_id == WINED3DFMT_R32_UINT))
+        flags |= WINED3D_FORMAT_SUPPORT_IA_INDEX_BUFFER;
+    if (format->caps[WINED3D_GL_RES_TYPE_BUFFER] & WINED3D_FORMAT_CAP_VERTEX_ATTRIBUTE)
+    {
+        flags |= WINED3D_FORMAT_SUPPORT_IA_VERTEX_BUFFER;
+        if (feature_level >= WINED3D_FEATURE_LEVEL_10)
+        {
+            /* Only types that can be expressed in a stream output buffer go here. */
+            switch (format_id)
+            {
+                case WINED3DFMT_R32_FLOAT:
+                case WINED3DFMT_R32_UINT:
+                case WINED3DFMT_R32_SINT:
+                case WINED3DFMT_R32G32_FLOAT:
+                case WINED3DFMT_R32G32_UINT:
+                case WINED3DFMT_R32G32_SINT:
+                case WINED3DFMT_R32G32B32_FLOAT:
+                case WINED3DFMT_R32G32B32_UINT:
+                case WINED3DFMT_R32G32B32_SINT:
+                case WINED3DFMT_R32G32B32A32_FLOAT:
+                case WINED3DFMT_R32G32B32A32_UINT:
+                case WINED3DFMT_R32G32B32A32_SINT:
+                    flags |= WINED3D_FORMAT_SUPPORT_SO_BUFFER;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    for (gl_type = WINED3D_GL_RES_TYPE_TEX_1D; gl_type < WINED3D_GL_RES_TYPE_COUNT; ++gl_type)
+    {
+        if (format->caps[gl_type] & WINED3D_FORMAT_CAP_TEXTURE)
+        {
+            switch (gl_type)
+            {
+                case WINED3D_GL_RES_TYPE_TEX_1D:
+                    flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_1D | WINED3D_FORMAT_SUPPORT_MIP;
+                    break;
+                case WINED3D_GL_RES_TYPE_TEX_2D:
+                    flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_2D | WINED3D_FORMAT_SUPPORT_MIP;
+                    break;
+                case WINED3D_GL_RES_TYPE_TEX_RECT:
+                    flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_2D;
+                    break;
+                case WINED3D_GL_RES_TYPE_TEX_3D:
+                    flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_3D | WINED3D_FORMAT_SUPPORT_MIP;
+                    break;
+                case WINED3D_GL_RES_TYPE_TEX_CUBE:
+                    flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_CUBE | WINED3D_FORMAT_SUPPORT_MIP;
+                    break;
+                case WINED3D_GL_RES_TYPE_BUFFER:
+                    if (feature_level >= WINED3D_FEATURE_LEVEL_10)
+                        flags |= WINED3D_FORMAT_SUPPORT_SHADER_BUFFER;
+                    break;
+                default:
+                    break;
+            }
+            if (format->caps[gl_type] & WINED3D_FORMAT_CAP_GEN_MIPMAP)
+                flags |= WINED3D_FORMAT_SUPPORT_MIP_AUTOGEN;
+            /* Only typed RGBA formats can be read from a shader. */
+            if (!wined3d_format_is_typeless(format)
+                    && !(format->caps[gl_type] & WINED3D_FORMAT_CAP_DEPTH_STENCIL))
+            {
+                flags |= WINED3D_FORMAT_SUPPORT_SHADER_LOAD;
+                /* d3d11 requires 4 and 8 sample counts support for formats reported to support multisample. */
+                if (format->multisample_types & 0x88 == 0x88)
+                    flags |= WINED3D_FORMAT_SUPPORT_MULTISAMPLE_LOAD;
+                if (format->caps[gl_type] & WINED3D_FORMAT_CAP_FILTERING)
+                {
+                    flags |= WINED3D_FORMAT_SUPPORT_SHADER_SAMPLE;
+                    if (feature_level >= WINED3D_FEATURE_LEVEL_10_1)
+                        flags |= WINED3D_FORMAT_SUPPORT_SHADER_GATHER;
+                    if (wined3d_format_is_depth_view(format->typeless_id, format_id))
+                    {
+                        if (feature_level >= WINED3D_FEATURE_LEVEL_10)
+                            flags |= WINED3D_FORMAT_SUPPORT_SHADER_SAMPLE_COMPARISON;
+                        if (feature_level >= WINED3D_FEATURE_LEVEL_10_1)
+                            flags |= WINED3D_FORMAT_SUPPORT_SHADER_GATHER_COMPARISON;
+                    }
+                }
+                if (format->caps[gl_type] & WINED3D_FORMAT_CAP_UNORDERED_ACCESS)
+                {
+                    flags |= WINED3D_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW;
+                    flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_TYPED_STORE;
+                    if (format->caps[gl_type] & WINED3D_FORMAT_CAP_UAV_LOAD)
+                        flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_TYPED_LOAD;
+                    if (format->caps[gl_type] & WINED3D_FORMAT_CAP_UAV_ATOMICS)
+                    {
+                        /* The caps here depend on the format's data type. Floating-point
+                         * formats only support a limited subset of atomic operations.
+                         */
+                        flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_EXCHANGE;
+                        if (format->attrs & WINED3D_FORMAT_ATTR_INTEGER)
+                            /* Yes, both signed and unsigned integer types support both
+                             * signed and unsigned min/max.
+                             */
+                            flags2 |= WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_ADD
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_BITWISE_OPS
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_COMPARE_STORE_XCHG
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_SIGNED_MIN_MAX
+                                    | WINED3D_FORMAT_SUPPORT2_UAV_ATOMIC_UNSIGNED_MIN_MAX;
+                    }
+                }
+            }
+            /* 10level9 doesn't allow mapping depth/stencil surfaces, but level 10+ do. */
+            if (feature_level >= WINED3D_FEATURE_LEVEL_10
+                    || !(format->caps[gl_type] & WINED3D_FORMAT_CAP_DEPTH_STENCIL))
+                flags |= WINED3D_FORMAT_SUPPORT_CPU_LOCKABLE;
+        }
+
+        if ((format->caps[gl_type] & WINED3D_FORMAT_CAP_RENDERTARGET)
+                && adapter->adapter_ops->adapter_check_format(adapter, NULL, format, NULL))
+        {
+            flags |= WINED3D_FORMAT_SUPPORT_RENDER_TARGET;
+            if (format->caps[gl_type] & WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING)
+                flags |= WINED3D_FORMAT_SUPPORT_BLENDABLE;
+            /* d3d11 requires 4 and 8 sample counts support for formats reported to support multisample. */
+            if (format->multisample_types & 0x88 == 0x88)
+                flags |= WINED3D_FORMAT_SUPPORT_MULTISAMPLE_RENDER_TARGET
+                        | WINED3D_FORMAT_SUPPORT_MULTISAMPLE_RESOLVE;
+            /* Only these formats are supported for display. */
+            /* FIXME: This needs an adapter op using the swapchain, or a swapchain op. */
+            switch (format_id)
+            {
+                case WINED3DFMT_R16G16B16A16_FLOAT:
+                case WINED3DFMT_R10G10B10A2_UNORM:
+                case WINED3DFMT_R10G10B10_XR_BIAS_A2_UNORM:
+                    if (feature_level < WINED3D_FEATURE_LEVEL_10)
+                        break;
+                    /* fallthrough */
+                case WINED3DFMT_R8G8B8A8_UNORM:
+                case WINED3DFMT_R8G8B8A8_UNORM_SRGB:
+                case WINED3DFMT_B8G8R8A8_UNORM:
+                case WINED3DFMT_B8G8R8A8_UNORM_SRGB:
+                    flags |= WINED3D_FORMAT_SUPPORT_DISPLAY;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if ((format->caps[gl_type] & WINED3D_FORMAT_CAP_DEPTH_STENCIL)
+                && adapter->adapter_ops->adapter_check_format(adapter, NULL, NULL, format))
+        {
+            flags |= WINED3D_FORMAT_SUPPORT_DEPTH_STENCIL;
+            /* No depth/stencil formats support multisample resolve. */
+            if (format->multisample_types)
+                flags |= WINED3D_FORMAT_SUPPORT_MULTISAMPLE_RENDER_TARGET;
+        }
+    }
+
+    rb_caps = format->caps[WINED3D_GL_RES_TYPE_TEX_2D] | format->caps[WINED3D_GL_RES_TYPE_RB];
+    if (rb_caps & WINED3D_FORMAT_CAP_BLIT)
+    {
+        flags |= WINED3D_FORMAT_SUPPORT_TEXTURE_2D;
+        if (feature_level >= WINED3D_FEATURE_LEVEL_10 || !(rb_caps & WINED3D_FORMAT_CAP_DEPTH_STENCIL))
+            flags |= WINED3D_FORMAT_SUPPORT_CPU_LOCKABLE;
+    }
+
+    if (feature_level >= WINED3D_FEATURE_LEVEL_10
+            && format->typeless_id != WINED3DFMT_UNKNOWN)
+        flags |= WINED3D_FORMAT_SUPPORT_CAST_WITHIN_BIT_LAYOUT;
+
+    if (format_support)
+        *format_support = flags;
+    if (format_support_2)
+        *format_support_2 = flags2;
+
+    return !(flags || flags2) ? E_FAIL : S_OK;
+}
+
 HRESULT CDECL wined3d_device_get_device_caps(const struct wined3d_device *device, struct wined3d_caps *caps)
 {
     TRACE("device %p, caps %p.\n", device, caps);

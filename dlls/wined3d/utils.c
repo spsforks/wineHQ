@@ -1491,7 +1491,8 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_TEXTURE_FLOAT,          NULL},
     {WINED3DFMT_R32_FLOAT,              GL_R32F,                          GL_R32F,                                0,
             GL_RED,                     GL_FLOAT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R32G32_FLOAT,           GL_RGB32F_ARB,                    GL_RGB32F_ARB,                          0,
             GL_RGB,                     GL_FLOAT,                         12,
@@ -1499,7 +1500,8 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_TEXTURE_FLOAT,          convert_r32g32_float},
     {WINED3DFMT_R32G32_FLOAT,           GL_RG32F,                         GL_RG32F,                               0,
             GL_RG,                      GL_FLOAT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R32G32B32_FLOAT,        GL_RGB32F,                        GL_RGB32F,                              0,
             GL_RGB,                     GL_FLOAT,                         0,
@@ -1507,7 +1509,8 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_TEXTURE_FLOAT,          NULL},
     {WINED3DFMT_R32G32B32A32_FLOAT,     GL_RGBA32F_ARB,                   GL_RGBA32F_ARB,                         0,
             GL_RGBA,                    GL_FLOAT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_FLOAT,          NULL},
     /* Float */
     {WINED3DFMT_R16_FLOAT,              GL_RGB16F_ARB,                    GL_RGB16F_ARB,                          0,
@@ -1516,7 +1519,8 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_TEXTURE_FLOAT,          NULL},
     {WINED3DFMT_R16_FLOAT,              GL_R16F,                          GL_R16F,                                0,
             GL_RED,                     GL_HALF_FLOAT_ARB,                0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16G16_FLOAT,           GL_RGB16F_ARB,                    GL_RGB16F_ARB,                          0,
             GL_RGB,                     GL_HALF_FLOAT_ARB,                6,
@@ -1524,16 +1528,18 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_TEXTURE_FLOAT,          convert_r16g16},
     {WINED3DFMT_R16G16_FLOAT,           GL_RG16F,                         GL_RG16F,                               0,
             GL_RG,                      GL_HALF_FLOAT_ARB,                0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16G16B16A16_FLOAT,     GL_RGBA16F_ARB,                   GL_RGBA16F_ARB,                         0,
             GL_RGBA,                    GL_HALF_FLOAT_ARB,                0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_RENDERTARGET
-            | WINED3D_FORMAT_CAP_VTF,
+            | WINED3D_FORMAT_CAP_VTF | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_FLOAT,          NULL},
     {WINED3DFMT_R11G11B10_FLOAT,        GL_R11F_G11F_B10F,                GL_R11F_G11F_B10F,                      0,
             GL_RGB,                     GL_UNSIGNED_INT_10F_11F_11F_REV,  0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_RENDERTARGET
+            | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_PACKED_FLOAT},
     /* Palettized formats */
     {WINED3DFMT_P8_UINT,                GL_R8,                            GL_R8,                                  0,
@@ -1553,7 +1559,7 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             GL_BGRA,                    GL_UNSIGNED_INT_8_8_8_8_REV,      0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
             | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_SRGB_READ | WINED3D_FORMAT_CAP_SRGB_WRITE
-            | WINED3D_FORMAT_CAP_VTF,
+            | WINED3D_FORMAT_CAP_VTF | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             WINED3D_GL_EXT_NONE,        NULL},
     {WINED3DFMT_B8G8R8X8_UNORM,         GL_RGB8,                          GL_SRGB8_EXT,                           0,
             GL_BGRA,                    GL_UNSIGNED_INT_8_8_8_8_REV,      0,
@@ -1591,12 +1597,13 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R8_UNORM,               GL_R8,                            GL_R8,                                  0,
             GL_RED,                     GL_UNSIGNED_BYTE,                 0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_VTF | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_A8_UNORM,               GL_R8,                            GL_R8,                                  0,
             GL_RED,                     GL_UNSIGNED_BYTE,                 0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_A8_UNORM,               GL_ALPHA8,                        GL_ALPHA8,                              0,
             GL_ALPHA,                   GL_UNSIGNED_BYTE,                 0,
@@ -1609,26 +1616,29 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             WINED3D_GL_EXT_NONE,        NULL},
     {WINED3DFMT_R10G10B10A2_UINT,       GL_RGB10_A2UI,                    GL_RGB10_A2UI,                          0,
             GL_RGBA_INTEGER,            GL_UNSIGNED_INT_2_10_10_10_REV,   0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RGB10_A2UI,     NULL},
     {WINED3DFMT_R10G10B10A2_UNORM,      GL_RGB10_A2,                      GL_RGB10_A2,                            0,
             GL_RGBA,                    GL_UNSIGNED_INT_2_10_10_10_REV,   0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             WINED3D_GL_EXT_NONE,        NULL},
     {WINED3DFMT_R8G8B8A8_UNORM,         GL_RGBA8,                         GL_SRGB8_ALPHA8_EXT,                    0,
             GL_RGBA,                    GL_UNSIGNED_INT_8_8_8_8_REV,      0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
             | WINED3D_FORMAT_CAP_RENDERTARGET |  WINED3D_FORMAT_CAP_SRGB_READ | WINED3D_FORMAT_CAP_SRGB_WRITE
-            | WINED3D_FORMAT_CAP_VTF,
+            | WINED3D_FORMAT_CAP_VTF | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             WINED3D_GL_EXT_NONE,        NULL},
     {WINED3DFMT_R8G8B8A8_UINT,          GL_RGBA8UI,                       GL_RGBA8UI,                             0,
             GL_RGBA_INTEGER,            GL_UNSIGNED_INT_8_8_8_8_REV,      0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RGB10_A2UI,     NULL},
     {WINED3DFMT_R8G8B8A8_SINT,          GL_RGBA8I,                        GL_RGBA8I,                              0,
             GL_RGBA_INTEGER,            GL_BYTE,                          0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_INTEGER,        NULL},
     {WINED3DFMT_R8G8B8X8_UNORM,         GL_RGB8,                          GL_RGB8,                                0,
             GL_RGBA,                    GL_UNSIGNED_INT_8_8_8_8_REV,      0,
@@ -1641,7 +1651,7 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R16G16_UNORM,           GL_RG16,                          GL_RG16,                                0,
             GL_RG,                      GL_UNSIGNED_SHORT,                0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_B10G10R10A2_UNORM,      GL_RGB10_A2,                      GL_RGB10_A2,                            0,
             GL_BGRA,                    GL_UNSIGNED_INT_2_10_10_10_REV,   0,
@@ -1651,73 +1661,87 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R16G16B16A16_UNORM,     GL_RGBA16,                        GL_RGBA16,                              0,
             GL_RGBA,                    GL_UNSIGNED_SHORT,                0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             WINED3D_GL_EXT_NONE,        NULL},
     {WINED3DFMT_R8G8_UNORM,             GL_RG8,                           GL_RG8,                                 0,
             GL_RG,                      GL_UNSIGNED_BYTE,                 0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R8G8_UINT,              GL_RG8UI,                         GL_RG8UI,                               0,
             GL_RG_INTEGER,              GL_UNSIGNED_BYTE,                 0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R8G8_SINT,              GL_RG8I,                          GL_RG8I,                                0,
             GL_RG_INTEGER,              GL_BYTE,                          0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16G16B16A16_UINT,      GL_RGBA16UI,                      GL_RGBA16UI,                            0,
             GL_RGBA_INTEGER,            GL_UNSIGNED_SHORT,                0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_INTEGER,        NULL},
     {WINED3DFMT_R16G16B16A16_SINT,      GL_RGBA16I,                       GL_RGBA16I,                             0,
             GL_RGBA_INTEGER,            GL_SHORT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_INTEGER,        NULL},
     {WINED3DFMT_R32G32_UINT,            GL_RG32UI,                        GL_RG32UI,                              0,
             GL_RG_INTEGER,              GL_UNSIGNED_INT,                  0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R32G32_SINT,            GL_RG32I,                         GL_RG32I,                               0,
             GL_RG_INTEGER,              GL_INT,                           0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16G16_UINT,            GL_RG16UI,                        GL_RG16UI,                              0,
             GL_RG_INTEGER,              GL_UNSIGNED_SHORT,                0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16G16_SINT,            GL_RG16I,                         GL_RG16I,                               0,
             GL_RG_INTEGER,              GL_SHORT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R32_UINT,               GL_R32UI,                         GL_R32UI,                               0,
             GL_RED_INTEGER,             GL_UNSIGNED_INT,                  0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS | WINED3D_FORMAT_CAP_UAV_ATOMICS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R32_SINT,               GL_R32I,                          GL_R32I,                                0,
             GL_RED_INTEGER,             GL_INT,                           0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS | WINED3D_FORMAT_CAP_UAV_ATOMICS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16_UNORM,              GL_R16,                           GL_R16,                                 0,
             GL_RED,                     GL_UNSIGNED_SHORT,                0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16_UINT,               GL_R16UI,                         GL_R16UI,                               0,
             GL_RED_INTEGER,             GL_UNSIGNED_SHORT,                0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R16_SINT,               GL_R16I,                          GL_R16I,                                0,
             GL_RED_INTEGER,             GL_SHORT,                         0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R8_UINT,                GL_R8UI,                          GL_R8UI,                                0,
             GL_RED_INTEGER,             GL_UNSIGNED_BYTE,                 0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     {WINED3DFMT_R8_SINT,                GL_R8I,                           GL_R8I,                                 0,
             GL_RED_INTEGER,             GL_BYTE,                          0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             ARB_TEXTURE_RG,             NULL},
     /* Luminance */
     {WINED3DFMT_L8_UNORM,               GL_LUMINANCE8,                    GL_SLUMINANCE8_EXT,                     0,
@@ -1767,7 +1791,7 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R8G8_SNORM,             GL_RG8_SNORM,                     GL_RG8_SNORM,                           0,
             GL_RG,                      GL_BYTE,                          0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     {WINED3DFMT_R5G5_SNORM_L6_UNORM,    GL_RGB5,                          GL_RGB5,                                0,
             GL_RGB,                     GL_UNSIGNED_SHORT_5_6_5,          2,
@@ -1800,7 +1824,7 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R8G8B8A8_SNORM,         GL_RGBA8_SNORM,                   GL_RGBA8_SNORM,                         0,
             GL_RGBA,                    GL_BYTE,                          0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     {WINED3DFMT_R16G16_SNORM,           GL_RGB16,                         GL_RGB16,                               0,
             GL_BGR,                     GL_UNSIGNED_SHORT,                6,
@@ -1813,22 +1837,22 @@ static const struct wined3d_format_texture_info format_texture_info[] =
     {WINED3DFMT_R16G16_SNORM,           GL_RG16_SNORM,                    GL_RG16_SNORM,                          0,
             GL_RG,                      GL_SHORT,                         0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     {WINED3DFMT_R16G16B16A16_SNORM,     GL_RGBA16_SNORM,                  GL_RGBA16_SNORM,                        0,
             GL_RGBA,                    GL_SHORT,                         0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     {WINED3DFMT_R16_SNORM,              GL_R16_SNORM,                     GL_R16_SNORM,                           0,
             GL_RED,                     GL_SHORT,                         0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     {WINED3DFMT_R8_SNORM,               GL_R8_SNORM,                      GL_R8_SNORM,                           0,
             GL_RED,                     GL_BYTE,                          0,
             WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_POSTPIXELSHADER_BLENDING | WINED3D_FORMAT_CAP_FILTERING
-            | WINED3D_FORMAT_CAP_RENDERTARGET,
+            | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_SNORM,          NULL},
     /* Depth stencil formats */
     {WINED3DFMT_D16_LOCKABLE,           GL_DEPTH_COMPONENT,               GL_DEPTH_COMPONENT,                     0,
@@ -1881,11 +1905,13 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             ARB_DEPTH_BUFFER_FLOAT,     convert_s8_uint_d24_float},
     {WINED3DFMT_R32G32B32A32_UINT,      GL_RGBA32UI,                      GL_RGBA32UI,                            0,
             GL_RGBA_INTEGER,            GL_UNSIGNED_INT,                  0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_INTEGER,        NULL},
     {WINED3DFMT_R32G32B32A32_SINT,      GL_RGBA32I,                       GL_RGBA32I,                             0,
             GL_RGBA_INTEGER,            GL_INT,                           0,
-            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET,
+            WINED3D_FORMAT_CAP_TEXTURE | WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_UAV_LOAD
+            | WINED3D_FORMAT_CAP_UNORDERED_ACCESS,
             EXT_TEXTURE_INTEGER,        NULL},
     /* Vendor-specific formats */
     {WINED3DFMT_ATI1N,                  GL_COMPRESSED_RED_RGTC1,          GL_COMPRESSED_RED_RGTC1,                0,
@@ -3084,8 +3110,6 @@ static void query_internal_format(struct wined3d_adapter *adapter,
                 WINED3D_FORMAT_CAP_VTF, "vertex texture usage");
         query_format_cap(gl_info, format, format->internal, GL_FILTER,
                 WINED3D_FORMAT_CAP_FILTERING, "filtering");
-        query_format_cap(gl_info, format, format->internal, GL_SHADER_IMAGE_STORE,
-                WINED3D_FORMAT_CAP_UNORDERED_ACCESS, "unordered access");
 
         if (srgb_format || format->srgb_internal != format->internal)
         {
@@ -3103,6 +3127,21 @@ static void query_internal_format(struct wined3d_adapter *adapter,
                 format->srgb_internal = format->internal;
             else if (gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
                 format->internal = format->srgb_internal;
+        }
+
+        if (gl_info->supported[ARB_SHADER_IMAGE_LOAD_STORE])
+        {
+            query_format_cap(gl_info, format, format->internal, GL_SHADER_IMAGE_LOAD,
+                    WINED3D_FORMAT_CAP_UAV_LOAD, "typed UAV load");
+            query_format_cap(gl_info, format, format->internal, GL_SHADER_IMAGE_STORE,
+                    WINED3D_FORMAT_CAP_UNORDERED_ACCESS, "typed UAV store");
+            query_format_cap(gl_info, format, format->internal, GL_SHADER_IMAGE_ATOMIC,
+                    WINED3D_FORMAT_CAP_UAV_ATOMICS, "typed UAV atomic RMW");
+        }
+        else
+        {
+            format_clear_caps(&format->f, WINED3D_FORMAT_CAP_UAV_LOAD | WINED3D_FORMAT_CAP_UNORDERED_ACCESS
+                    | WINED3D_FORMAT_CAP_UAV_ATOMICS);
         }
     }
     else
@@ -3143,6 +3182,10 @@ static void query_internal_format(struct wined3d_adapter *adapter,
         format->f.caps[WINED3D_GL_RES_TYPE_TEX_CUBE] &= ~WINED3D_FORMAT_CAP_TEXTURE;
         format->f.caps[WINED3D_GL_RES_TYPE_TEX_RECT] &= ~WINED3D_FORMAT_CAP_TEXTURE;
     }
+
+    if (!gl_info->supported[ARB_SHADER_IMAGE_LOAD_STORE])
+        format_clear_caps(&format->f, WINED3D_FORMAT_CAP_UNORDERED_ACCESS | WINED3D_FORMAT_CAP_UAV_LOAD
+                | WINED3D_FORMAT_CAP_UAV_ATOMICS);
 
     query_view_class(format);
 
@@ -4369,6 +4412,11 @@ static void init_vulkan_format_info(struct wined3d_format_vk *format,
         format->f.caps[WINED3D_GL_RES_TYPE_BUFFER] |= WINED3D_FORMAT_CAP_VERTEX_ATTRIBUTE;
     if (properties.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT)
         format->f.caps[WINED3D_GL_RES_TYPE_BUFFER] |= WINED3D_FORMAT_CAP_TEXTURE;
+    if (properties.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT)
+        format->f.caps[WINED3D_GL_RES_TYPE_BUFFER] |= WINED3D_FORMAT_CAP_UAV_LOAD
+                | WINED3D_FORMAT_CAP_UNORDERED_ACCESS;
+    if (properties.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)
+        format->f.caps[WINED3D_GL_RES_TYPE_BUFFER] |= WINED3D_FORMAT_CAP_UAV_ATOMICS;
 
     caps = 0;
     texture_flags = properties.linearTilingFeatures | properties.optimalTilingFeatures;
@@ -4394,7 +4442,11 @@ static void init_vulkan_format_info(struct wined3d_format_vk *format,
     }
     if (texture_flags & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
     {
-        caps |= WINED3D_FORMAT_CAP_UNORDERED_ACCESS;
+        caps |= WINED3D_FORMAT_CAP_UNORDERED_ACCESS | WINED3D_FORMAT_CAP_UAV_LOAD;
+    }
+    if (texture_flags & VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT)
+    {
+        caps |= WINED3D_FORMAT_CAP_UAV_ATOMICS;
     }
 
     if (!(~caps & (WINED3D_FORMAT_CAP_RENDERTARGET | WINED3D_FORMAT_CAP_FILTERING)))
