@@ -93,6 +93,7 @@ typedef struct _PhysDevice {
     UINT index;
     REFERENCE_TIME min_period, def_period;
     WAVEFORMATEXTENSIBLE fmt;
+    char *sysfs_path;
     char pulse_name[0];
 } PhysDevice;
 
@@ -154,6 +155,8 @@ static void free_phys_device_lists(void)
     do {
         LIST_FOR_EACH_ENTRY_SAFE(dev, dev_next, *list, PhysDevice, entry) {
             free(dev->name);
+            if (dev->sysfs_path)
+                free(dev->sysfs_path);
             free(dev);
         }
     } while (*(++list));
@@ -508,6 +511,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
     dev->bus_type = phys_device_bus_invalid;
     dev->vendor_id = 0;
     dev->product_id = 0;
+    dev->sysfs_path = NULL;
 
     if (!p)
         return;
@@ -524,6 +528,9 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
 
     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
         dev->product_id = strtol(buffer, NULL, 16);
+
+    if ((buffer = pa_proplist_gets(p, "sysfs.path")))
+        dev->sysfs_path = strdup(buffer);
 }
 
 static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,
