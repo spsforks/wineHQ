@@ -3366,6 +3366,17 @@ BOOL set_window_pos( WINDOWPOS *winpos, int parent_x, int parent_y )
     BOOL ret = FALSE;
     DPI_AWARENESS_CONTEXT context;
 
+    if (!(winpos->flags & SWP_NOZORDER)
+            && (winpos->hwndInsertAfter == HWND_TOPMOST || winpos->hwndInsertAfter == HWND_NOTOPMOST))
+    {
+        HWND root;
+
+        root = NtUserGetAncestor(winpos->hwnd, GA_ROOT);
+        root = NtUserGetAncestor(root, GA_PARENT);
+        if (root == get_hwnd_message_parent())
+            return TRUE;
+    }
+
     orig_flags = winpos->flags;
 
     /* First, check z-order arguments.  */
