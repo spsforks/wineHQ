@@ -5728,12 +5728,12 @@ static void test_MFCreate2DMediaBuffer(void)
 {
     static const char two_aas[] = { 0xaa, 0xaa };
     static const char eight_bbs[] = { 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb };
+    IMF2DBuffer2 *_2dbuffer2, *_2dtarget2;
     DWORD max_length, length, length2;
     BYTE *buffer_start, *data, *data2;
+    IMFMediaBuffer *buffer, *target;
     LONG pitch, pitch2, stride;
-    IMF2DBuffer2 *_2dbuffer2;
     IMF2DBuffer *_2dbuffer;
-    IMFMediaBuffer *buffer;
     int i, j, k;
     HRESULT hr;
     BOOL ret;
@@ -5935,10 +5935,10 @@ static void test_MFCreate2DMediaBuffer(void)
         ok(length == ptr->max_length, "%u: unexpected maximum length %lu for %u x %u, format %s.\n",
                 i, length, ptr->width, ptr->height, wine_dbgstr_guid(ptr->subtype));
 
-        hr = IMFMediaBuffer_QueryInterface(buffer, &IID_IMF2DBuffer, (void **)&_2dbuffer);
+        hr = IMFMediaBuffer_QueryInterface(buffer, &IID_IMF2DBuffer2, (void **)&_2dbuffer2);
         ok(hr == S_OK, "Failed to get interface, hr %#lx.\n", hr);
 
-        hr = IMF2DBuffer_GetContiguousLength(_2dbuffer, &length);
+        hr = IMF2DBuffer2_GetContiguousLength(_2dbuffer2, &length);
         ok(hr == S_OK, "Failed to get length, hr %#lx.\n", hr);
         ok(length == ptr->contiguous_length, "%d: unexpected contiguous length %lu for %u x %u, format %s.\n",
                 i, length, ptr->width, ptr->height, wine_dbgstr_guid(ptr->subtype));
@@ -5994,10 +5994,22 @@ static void test_MFCreate2DMediaBuffer(void)
         hr = IMFMediaBuffer_Unlock(buffer);
         ok(hr == S_OK, "Failed to unlock buffer, hr %#lx.\n", hr);
 
-        hr = IMF2DBuffer_Lock2D(_2dbuffer, &data, &pitch);
+        hr = pMFCreate2DMediaBuffer(ptr->width, ptr->height, ptr->subtype->Data1, FALSE, &target);
+        ok(hr == S_OK, "Failed to create a buffer, hr %#lx.\n", hr);
+
+        hr = IMFMediaBuffer_QueryInterface(target, &IID_IMF2DBuffer2, (void **)&_2dtarget2);
+        ok(hr == S_OK, "Failed to get interface, hr %#lx.\n", hr);
+
+        hr = IMF2DBuffer2_Copy2DTo(_2dbuffer2, _2dtarget2);
+        ok(hr == S_OK, "Failed to copy buffer, hr %#lx.\n", hr);
+
+        IMF2DBuffer2_Release(_2dbuffer2);
+        IMFMediaBuffer_Release(buffer);
+
+        hr = IMF2DBuffer2_Lock2D(_2dtarget2, &data, &pitch);
         ok(hr == S_OK, "Failed to lock buffer, hr %#lx.\n", hr);
 
-        hr = IMF2DBuffer_GetScanline0AndPitch(_2dbuffer, &data2, &pitch2);
+        hr = IMF2DBuffer2_GetScanline0AndPitch(_2dtarget2, &data2, &pitch2);
         ok(hr == S_OK, "Failed to get scanline, hr %#lx.\n", hr);
         ok(data2 == data, "Unexpected data pointer.\n");
         ok(pitch == pitch2, "Unexpected pitch.\n");
@@ -6044,20 +6056,19 @@ static void test_MFCreate2DMediaBuffer(void)
                 ;
         }
 
-        hr = IMF2DBuffer_Unlock2D(_2dbuffer);
+        hr = IMF2DBuffer2_Unlock2D(_2dtarget2);
         ok(hr == S_OK, "Failed to unlock buffer, hr %#lx.\n", hr);
 
         ok(pitch == ptr->pitch, "%d: unexpected pitch %ld, expected %d, %u x %u, format %s.\n", i, pitch, ptr->pitch,
                 ptr->width, ptr->height, wine_dbgstr_guid(ptr->subtype));
 
         ret = TRUE;
-        hr = IMF2DBuffer_IsContiguousFormat(_2dbuffer, &ret);
+        hr = IMF2DBuffer2_IsContiguousFormat(_2dtarget2, &ret);
         ok(hr == S_OK, "Failed to get format flag, hr %#lx.\n", hr);
         ok(!ret, "%d: unexpected format flag %d.\n", i, ret);
 
-        IMF2DBuffer_Release(_2dbuffer);
-
-        IMFMediaBuffer_Release(buffer);
+        IMF2DBuffer2_Release(_2dtarget2);
+        IMFMediaBuffer_Release(target);
     }
 
     /* Alignment tests */
