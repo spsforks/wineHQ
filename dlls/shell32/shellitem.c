@@ -31,8 +31,12 @@
 #include "pidl.h"
 #include "shell32_main.h"
 #include "debughlp.h"
+#include "wincodec.h"
+#include "commoncontrols.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
+
+HRESULT WINAPI WICCreateImagingFactory_Proxy(UINT, IWICImagingFactory**);
 
 typedef struct _ShellItem {
     IShellItem2             IShellItem2_iface;
@@ -565,17 +569,184 @@ static ULONG WINAPI ShellItem_IShellItemImageFactory_Release(IShellItemImageFact
     return IShellItem2_Release(&This->IShellItem2_iface);
 }
 
+static IImageList *get_system_imagelist_by_size(SIZE size)
+{
+    int i;
+
+    for (i = 0; i <= SHIL_LAST; i++)
+    {
+        IImageList *cur_list;
+
+        if (SUCCEEDED(SHGetImageList(i, &IID_IImageList, (void **)&cur_list)))
+        {
+            int cx, cy;
+
+            if (SUCCEEDED(IImageList_GetIconSize(cur_list, &cx, &cy)) &&
+                cx == size.cx && cy == size.cy)
+            {
+                return cur_list;
+            }
+
+            IImageList_Release(cur_list);
+        }
+    }
+
+    return NULL;
+}
+
+static HICON get_icon_via_cache(LPCWSTR icon_file, INT source_index, DWORD flags, SIZE size)
+{
+    IImageList *icon_list;
+    int ic_index;
+    HICON icon;
+
+    if (!(icon_list = get_system_imagelist_by_size(size))) return NULL;
+
+    if ((ic_index = SIC_GetIconIndex(icon_file, source_index, flags)) != INVALID_INDEX)
+    {
+        if (FAILED(IImageList_GetIcon(icon_list, ic_index, ILD_NORMAL, &icon)))
+        {
+            icon = NULL;
+        }
+    }
+    IImageList_Release(icon_list);
+
+    return icon;
+}
+
+static HRESULT ShellItem_get_icon(ShellItem *This, SIZE size, HICON *icon)
+{
+    IExtractIconW *extracticon;
+    WCHAR icon_file[MAX_PATH];
+    INT icon_source_index;
+    UINT gil_out_flags;
+    HICON cached_icon;
+    HRESULT hr;
+
+    if (FAILED(hr = IShellItem2_BindToHandler(&This->IShellItem2_iface, NULL, &BHID_SFUIObject,
+                                              &IID_IExtractIconW, (void **)&extracticon)))
+    {
+        goto done;
+    }
+
+    if (FAILED(hr = IExtractIconW_GetIconLocation(extracticon, 0, icon_file, ARRAY_SIZE(icon_file),
+                                                  &icon_source_index, &gil_out_flags)))
+    {
+        goto free_extracticon;
+    }
+
+    if (!(gil_out_flags & (GIL_NOTFILENAME | GIL_DONTCACHE)) &&
+        (cached_icon = get_icon_via_cache(icon_file, icon_source_index, 0, size)))
+    {
+        *icon = cached_icon;
+        hr = S_OK;
+    }
+    else
+    {
+        LONG iconsize = min(size.cx, size.cy);
+        if (iconsize <= 0 || iconsize > 0x7fff)
+            iconsize = 0x7fff;
+        hr = IExtractIconW_Extract(extracticon, icon_file, icon_source_index,
+                                   icon, NULL, MAKELONG(0, iconsize));
+    }
+
+free_extracticon:
+    IExtractIconW_Release(extracticon);
+done:
+    return hr;
+}
+
+static HRESULT convert_wicbitmapsource_to_gdi(IWICImagingFactory *imgfactory,
+                                              IWICBitmapSource *bitmapsource, HBITMAP *gdibitmap)
+{
+    IWICBitmapSource *newsrc;
+    UINT width, height;
+    BITMAPINFO bmi;
+    HBITMAP bm;
+    void *bits;
+    HRESULT hr;
+
+    *gdibitmap = NULL;
+
+    if (FAILED(hr = WICConvertBitmapSource(&GUID_WICPixelFormat32bppBGRA, bitmapsource, &newsrc)))
+    {
+        goto done;
+    }
+
+    if (FAILED(hr = IWICBitmapSource_GetSize(newsrc, &width, &height)))
+    {
+        goto free_newsrc;
+    }
+
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = sizeof(bmi);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    if (!(bm = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0)))
+    {
+        WARN("Cannot create bitmap.\n");
+        hr = E_FAIL;
+        goto free_newsrc;
+    }
+
+    if (FAILED(hr = IWICBitmapSource_CopyPixels(newsrc, NULL, width * 4, width * height * 4, bits)))
+    {
+        DeleteObject(bm);
+        goto free_newsrc;
+    }
+
+    hr = S_OK;
+    *gdibitmap = bm;
+
+free_newsrc:
+    IWICBitmapSource_Release(newsrc);
+done:
+    return hr;
+}
+
 static HRESULT WINAPI ShellItem_IShellItemImageFactory_GetImage(IShellItemImageFactory *iface,
-    SIZE size, SIIGBF flags, HBITMAP *phbm)
+                                                                SIZE size, SIIGBF flags, HBITMAP *phbm)
 {
     ShellItem *This = impl_from_IShellItemImageFactory(iface);
+    IWICImagingFactory *imgfactory;
+    IWICBitmap *bitmap = NULL;
     static int once;
+    HICON hicon;
+    HRESULT hr;
 
     if (!once++)
-        FIXME("%p ({%lu, %lu} %d %p): stub\n", This, size.cx, size.cy, flags, phbm);
+        FIXME("%p ({%lu, %lu} %d %p): partial stub\n", This, size.cx, size.cy, flags, phbm);
 
     *phbm = NULL;
-    return E_NOTIMPL;
+
+    if (flags != SIIGBF_BIGGERSIZEOK) return E_NOTIMPL;
+
+    if (FAILED(hr = WICCreateImagingFactory_Proxy(WINCODEC_SDK_VERSION, &imgfactory)))
+    {
+        return hr;
+    }
+
+    if (SUCCEEDED(hr = ShellItem_get_icon(This, size, &hicon)))
+    {
+        if (FAILED(hr = IWICImagingFactory_CreateBitmapFromHICON(imgfactory, hicon, &bitmap)))
+        {
+            bitmap = NULL;
+        }
+        DeleteObject(hicon);
+    }
+
+    if (bitmap)
+    {
+        hr = convert_wicbitmapsource_to_gdi(imgfactory, (IWICBitmapSource *)bitmap, phbm);
+        IWICBitmap_Release(bitmap);
+    }
+    IWICImagingFactory_Release(imgfactory);
+
+    return hr;
 }
 
 static const IShellItemImageFactoryVtbl ShellItem_IShellItemImageFactory_Vtbl = {
