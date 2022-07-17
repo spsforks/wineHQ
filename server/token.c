@@ -504,6 +504,7 @@ static struct token *create_token( unsigned int primary, unsigned int session_id
             release_object( token );
             return NULL;
         }
+        token->owner = token->user;
 
         /* copy groups */
         for (i = 0; i < group_count; i++)
@@ -522,7 +523,6 @@ static struct token *create_token( unsigned int primary, unsigned int session_id
             /* Use first owner capable group as owner and primary group */
             if (!token->primary_group && (group->attrs & SE_GROUP_OWNER))
             {
-                token->owner = &group->sid;
                 token->primary_group = &group->sid;
             }
         }
@@ -621,7 +621,6 @@ struct token *token_duplicate( struct token *src_token, unsigned primary,
         list_add_tail( &token->groups, &newgroup->entry );
         if (src_token->primary_group == &group->sid)
         {
-            token->owner = &newgroup->sid;
             token->primary_group = &newgroup->sid;
         }
     }
