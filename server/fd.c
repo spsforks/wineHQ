@@ -1899,6 +1899,12 @@ void get_nt_name( struct fd *fd, struct unicode_str *name )
     name->len = fd->nt_namelen;
 }
 
+void fd_forget_unix_name( struct fd *fd )
+{
+    if (!fd->inode) free( fd->unix_name );
+    fd->unix_name = NULL;
+}
+
 /* open() wrapper that returns a struct fd with no fd user set */
 struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_name,
                     int flags, mode_t *mode, unsigned int access,

@@ -104,6 +104,7 @@ extern void allow_fd_caching( struct fd *fd );
 extern void set_fd_signaled( struct fd *fd, int signaled );
 extern char *dup_fd_name( struct fd *root, const char *name );
 extern void get_nt_name( struct fd *fd, struct unicode_str *name );
+extern void fd_forget_unix_name( struct fd *fd );
 
 extern int default_fd_signaled( struct object *obj, struct wait_queue_entry *entry );
 extern int default_fd_get_poll_events( struct fd *fd );

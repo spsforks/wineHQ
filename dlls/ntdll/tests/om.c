@@ -1911,7 +1911,7 @@ static void test_query_object(void)
 
     handle = CreateFileA( "nul", GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, 0 );
     ok( handle != INVALID_HANDLE_VALUE, "CreateFile failed (%ld)\n", GetLastError() );
-    test_object_name( handle, L"\\Device\\Null", TRUE );
+    test_object_name( handle, L"\\Device\\Null", FALSE );
     test_object_type( handle, L"File" );
     test_file_info( handle );
     pNtClose( handle );
