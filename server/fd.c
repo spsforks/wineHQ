@@ -163,7 +163,7 @@ struct closed_fd
     struct list entry;       /* entry in inode closed list */
     int         unix_fd;     /* the unix file descriptor */
     int         unlink;      /* whether to unlink on close: -1 - implicit FILE_DELETE_ON_CLOSE, 1 - explicit disposition */
-    char       *unix_name;   /* name to unlink on close, points to parent fd unix_name */
+    char       *unix_name;   /* name to unlink on close (buffer may be shared with parent fd) */
 };
 
 struct fd
@@ -178,7 +178,7 @@ struct fd
     unsigned int         access;      /* file access (FILE_READ_DATA etc.) */
     unsigned int         options;     /* file options (FILE_DELETE_ON_CLOSE, FILE_SYNCHRONOUS...) */
     unsigned int         sharing;     /* file sharing mode */
-    char                *unix_name;   /* unix file name */
+    char                *unix_name;   /* unix file name (owned by closed->unix_name if inode != NULL) */
     WCHAR               *nt_name;     /* NT file name */
     data_size_t          nt_namelen;  /* length of NT file name */
     int                  unix_fd;     /* unix file descriptor */
@@ -1755,16 +1755,22 @@ struct fd *dup_fd_object( struct fd *orig, unsigned int access, unsigned int sha
 {
     unsigned int err;
     struct fd *fd = alloc_fd_object();
+    char *orig_unix_name, *new_unix_name = NULL;
 
     if (!fd) return NULL;
 
     fd->options    = options;
     fd->cacheable  = orig->cacheable;
 
-    if (orig->unix_name)
+    orig_unix_name = orig->inode ? orig->closed->unix_name : orig->unix_name;
+    if (orig_unix_name)
     {
-        if (!(fd->unix_name = mem_alloc( strlen(orig->unix_name) + 1 ))) goto failed;
-        strcpy( fd->unix_name, orig->unix_name );
+        if (!(new_unix_name = mem_alloc( strlen(orig_unix_name) + 1 ))) goto failed;
+        strcpy( new_unix_name, orig_unix_name );
+        if (orig->unix_name == orig_unix_name)
+        {
+            fd->unix_name = new_unix_name;
+        }
     }
     if (orig->nt_namelen)
     {
@@ -1784,7 +1790,7 @@ struct fd *dup_fd_object( struct fd *orig, unsigned int access, unsigned int sha
         }
         closed->unix_fd = fd->unix_fd;
         closed->unlink = 0;
-        closed->unix_name = fd->unix_name;
+        closed->unix_name = new_unix_name;
         fd->closed = closed;
         fd->inode = (struct inode *)grab_object( orig->inode );
         list_add_head( &fd->inode->open, &fd->inode_entry );
@@ -1802,6 +1808,11 @@ struct fd *dup_fd_object( struct fd *orig, unsigned int access, unsigned int sha
     return fd;
 
 failed:
+    if (!fd->inode)
+    {
+        free( new_unix_name );
+        fd->unix_name = NULL;
+    }
     release_object( fd );
     return NULL;
 }
