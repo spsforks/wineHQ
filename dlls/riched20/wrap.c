@@ -61,15 +61,78 @@ static BOOL get_run_glyph_buffers( ME_Run *run )
     return TRUE;
 }
 
+static WCHAR hang_font[LF_FACESIZE] = L"Gulim";
+static WCHAR hani_font[LF_FACESIZE] = L"Simsun";
+static WCHAR kana_font[LF_FACESIZE] = L"MS UI Gothic";
+static BOOL fallbacks_initialized = FALSE;
+static CRITICAL_SECTION fallbacks_cs;
+static CRITICAL_SECTION_DEBUG critsect_debug =
+{
+    0, 0, &fallbacks_cs,
+    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": fallbacks_cs") }
+};
+static CRITICAL_SECTION fallbacks_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
+
 struct richedit_fallback
 {
     OPENTYPE_TAG script_tag;
     WCHAR *font_name;
-} richedit_fallbacks[] = {};
+} richedit_fallbacks[] =
+{
+    { MAKE_OPENTYPE_TAG( 'h','a','n','g' ), hang_font },
+    { MAKE_OPENTYPE_TAG( 'h','a','n','i' ), hani_font },
+    { MAKE_OPENTYPE_TAG( 'k','a','n','a' ), kana_font },
+};
+
+static void init_richedit_fallbacks( void )
+{
+    LCID lcid;
+
+    EnterCriticalSection( &fallbacks_cs );
+
+    if (fallbacks_initialized)
+    {
+        LeaveCriticalSection( &fallbacks_cs );
+        return;
+    }
+
+    /* Setting proper font for "hani". */
+    lcid = GetSystemDefaultLangID();
+    switch (PRIMARYLANGID( lcid ))
+    {
+        case LANG_CHINESE:
+        {
+            switch (SUBLANGID( lcid ))
+            {
+                case SUBLANG_CHINESE_HONGKONG:
+                case SUBLANG_CHINESE_MACAU:
+                case SUBLANG_CHINESE_TRADITIONAL:
+                    wcscpy( hani_font, L"PMingLiU" );
+                    break;
+                case SUBLANG_CHINESE_SIMPLIFIED:
+                    wcscpy( hani_font, L"Simsun" );
+                    break;
+            }
+            break;
+        }
+        case LANG_JAPANESE:
+            wcscpy( hani_font, L"MS UI Gothic" );
+            break;
+        case LANG_KOREAN:
+            wcscpy( hani_font, L"Gulim" );
+            break;
+    }
+
+    fallbacks_initialized = TRUE;
+    LeaveCriticalSection( &fallbacks_cs );
+}
 
 static const WCHAR *find_fallback_font( OPENTYPE_TAG script_tag )
 {
     int count;
+
+    init_richedit_fallbacks();
 
     count = ARRAYSIZE( richedit_fallbacks );
     while (count--)
