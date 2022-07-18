@@ -5546,6 +5546,7 @@ static void test_mutex_security(HANDLE token)
         ok(!dup, "OpenMutex should fail\n");
         todo_wine
         ok(GetLastError() == ERROR_ACCESS_DENIED, "wrong error %lu\n", GetLastError());
+        if (dup) CloseHandle(dup);
     }
 
     test_default_handle_security(token, mutex, &mapping);
@@ -5603,6 +5604,7 @@ static void test_event_security(HANDLE token)
         ok(!dup, "OpenEvent should fail\n");
         todo_wine
         ok(GetLastError() == ERROR_ACCESS_DENIED, "wrong error %lu\n", GetLastError());
+        if (dup) CloseHandle(dup);
     }
 
     test_default_handle_security(token, event, &mapping);
