@@ -36,6 +36,12 @@ extern HINSTANCE dll_instance DECLSPEC_HIDDEN;
         (fe).lindex=-1;\
         };
 
+#define MAKE_OPENTYPE_TAG( _x1, _x2, _x3, _x4 ) \
+            ( ( (ULONG)_x4 << 24 ) | \
+            ( (ULONG)_x3 << 16 ) | \
+            ( (ULONG)_x2 <<  8 ) | \
+            (ULONG)_x1 )
+
 static inline WCHAR *get_text( const ME_Run *run, int offset )
 {
     return run->para->text->szData + run->nCharOfs + offset;
@@ -44,6 +50,11 @@ static inline WCHAR *get_text( const ME_Run *run, int offset )
 static inline const char *debugstr_run( const ME_Run *run )
 {
     return debugstr_wn( get_text( run, 0 ), run->len );
+}
+
+static inline const char *debugstr_tag( OPENTYPE_TAG tag )
+{
+    return debugstr_an( (char *)&tag, 4 );
 }
 
 /* style.c */

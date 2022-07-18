@@ -176,6 +176,7 @@ typedef struct tagME_Run
   GOFFSET *offsets;
   int max_clusters;
   WORD *clusters;
+  OPENTYPE_TAG script_tag;
 } ME_Run;
 
 typedef struct tagME_Border

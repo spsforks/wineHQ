@@ -63,6 +63,8 @@ static BOOL get_run_glyph_buffers( ME_Run *run )
 
 static HRESULT shape_run( ME_Context *c, ME_Run *run )
 {
+    SCRIPT_GLYPHPROP *glyph_props = NULL;
+    SCRIPT_CHARPROP *char_props;
     HRESULT hr;
     int i;
 
@@ -72,6 +74,9 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
         run->max_glyphs = (run->max_glyphs + 7) & ~7; /* Keep alignment simple */
         get_run_glyph_buffers( run );
     }
+
+    if (!(char_props = heap_alloc( run->len * sizeof( *char_props ) )))
+        return E_OUTOFMEMORY;
 
     if (run->max_clusters < run->len)
     {
@@ -83,8 +88,15 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     select_style( c, run->style );
     while (1)
     {
-        hr = ScriptShape( c->hDC, &run->style->script_cache, get_text( run, 0 ), run->len, run->max_glyphs,
-                          &run->script_analysis, run->glyphs, run->clusters, run->vis_attrs, &run->num_glyphs );
+        heap_free( glyph_props );
+        if (!(glyph_props = heap_alloc( run->max_glyphs * sizeof( *glyph_props ))))
+        {
+            hr = E_OUTOFMEMORY;
+            break;
+        }
+        hr = ScriptShapeOpenType( c->hDC, &run->style->script_cache, &run->script_analysis, run->script_tag, 0,
+                                  NULL, NULL, 0, get_text( run, 0 ), run->len, run->max_glyphs, run->clusters,
+                                  char_props, run->glyphs, glyph_props, &run->num_glyphs );
         if (hr != E_OUTOFMEMORY) break;
         if (run->max_glyphs > 10 * run->len) break; /* something has clearly gone wrong */
         run->max_glyphs *= 2;
@@ -92,14 +104,21 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     }
 
     if (SUCCEEDED(hr))
-        hr = ScriptPlace( c->hDC, &run->style->script_cache, run->glyphs, run->num_glyphs, run->vis_attrs,
-                          &run->script_analysis, run->advances, run->offsets, NULL );
+        hr = ScriptPlaceOpenType( c->hDC, &run->style->script_cache, &run->script_analysis, run->script_tag, 0,
+                                  NULL, NULL, 0, get_text( run, 0 ), run->clusters, char_props, run->len, run->glyphs,
+                                  glyph_props, run->num_glyphs, run->advances, run->offsets, NULL );
 
     if (SUCCEEDED(hr))
     {
         for (i = 0, run->nWidth = 0; i < run->num_glyphs; i++)
+        {
             run->nWidth += run->advances[i];
+            run->vis_attrs[i] = glyph_props[i].sva;
+        }
     }
+
+    heap_free( glyph_props );
+    heap_free( char_props );
 
     return hr;
 }
@@ -725,6 +744,7 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 {
     ME_Run *run;
     SCRIPT_ITEM buf[16], *items = buf;
+    OPENTYPE_TAG tags[16], *script_tags = tags;
     int items_passed = ARRAY_SIZE( buf ), num_items, cur_item;
     SCRIPT_CONTROL control = { LANG_USER_DEFAULT, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
                                FALSE, FALSE, 0 };
@@ -738,16 +758,22 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
     while (1)
     {
-        hr = ScriptItemize( para->text->szData, para->text->nLen, items_passed, &control,
-                            &state, items, &num_items );
+        hr = ScriptItemizeOpenType( para->text->szData, para->text->nLen, items_passed, &control,
+                                    &state, items, script_tags, &num_items );
         if (hr != E_OUTOFMEMORY) break; /* may not be enough items if hr == E_OUTOFMEMORY */
         if (items_passed > para->text->nLen + 1) break; /* something else has gone wrong */
         items_passed *= 2;
         if (items == buf)
+        {
             items = heap_alloc( items_passed * sizeof( *items ) );
+            script_tags = heap_alloc( items_passed * sizeof( *script_tags ) );
+        }
         else
+        {
             items = heap_realloc( items, items_passed * sizeof( *items ) );
-        if (!items) break;
+            script_tags = heap_realloc( script_tags, items_passed * sizeof( *script_tags ) );
+        }
+        if (!items || !script_tags) break;
     }
     if (FAILED( hr )) goto end;
 
@@ -760,9 +786,10 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
                    items[cur_item].a.fRTL, items[cur_item].a.s.uBidiLevel );
         }
 
-        TRACE( "before splitting runs into ranges\n" );
+        TRACE( "before splitting runs into ranges:\n" );
         for (run = para_first_run( para ); run; run = run_next( run ))
-            TRACE( "\t%d: %s\n", run->nCharOfs, debugstr_run( run ) );
+            TRACE( "\t%d %s: %s\n", run->nCharOfs, run->script_tag ? debugstr_tag( run->script_tag ) : " ",
+                   debugstr_run( run ) );
     }
 
     /* split runs into ranges at item boundaries */
@@ -772,6 +799,7 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
         items[cur_item].a.fLogicalOrder = TRUE;
         run->script_analysis = items[cur_item].a;
+        run->script_tag = script_tags[cur_item];
 
         if (run->nFlags & MERF_ENDPARA) break; /* don't split eop runs */
 
@@ -784,15 +812,17 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
     if (TRACE_ON( richedit ))
     {
-        TRACE( "after splitting into ranges\n" );
+        TRACE( "after splitting runs into ranges:\n" );
         for (run = para_first_run( para ); run; run = run_next( run ))
-            TRACE( "\t%d: %s\n", run->nCharOfs, debugstr_run( run ) );
+            TRACE( "\t%d %s: %s\n", run->nCharOfs, run->script_tag ? debugstr_tag( run->script_tag ) : " ",
+                   debugstr_run( run ) );
     }
 
     para->nFlags |= MEPF_COMPLEX;
 
 end:
     if (items != buf) heap_free( items );
+    if (script_tags != tags) heap_free( script_tags );
     return hr;
 }
 
