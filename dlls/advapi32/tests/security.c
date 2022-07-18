@@ -6232,6 +6232,7 @@ static void test_kernel_objects_security(void)
 {
     HANDLE token, process_token;
     DWORD ret, token_type;
+    int i;
 
     ret = OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY, &process_token);
     ok(ret, "OpenProcessToken error %ld\n", GetLastError());
@@ -6247,11 +6248,17 @@ static void test_kernel_objects_security(void)
     ok(ret, "access token should be a valid impersonation token\n");
     ok(token_type == TokenImpersonation, "expected TokenImpersonation, got %ld\n", token_type);
 
-    test_mutex_security(token);
-    test_event_security(token);
-    test_named_pipe_security(token);
-    test_semaphore_security(token);
-    test_file_security(token);
+    for (i = 0; i < 2; i++)
+    {
+        HANDLE cur_token = i ? process_token : token;
+        winetest_push_context("with %s token", i ? "process" : "impersonation");
+        test_mutex_security(cur_token);
+        test_event_security(cur_token);
+        test_named_pipe_security(cur_token);
+        test_semaphore_security(cur_token);
+        test_file_security(cur_token);
+        winetest_pop_context();
+    }
     test_filemap_security();
     test_thread_security();
     test_process_access();
