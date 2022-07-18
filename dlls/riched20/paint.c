@@ -363,9 +363,26 @@ static void draw_text( ME_Context *c, ME_Run *run, int x, int y, BOOL selected, 
     if (paint_bg) old_back = SetBkColor( c->hDC, back_color );
 
     if (run->para->nFlags & MEPF_COMPLEX)
+    {
+        HFONT old_font = NULL, fallback = NULL;
+
+        if (run->style->fallback_font.lfFaceName[0])
+        {
+            fallback = CreateFontIndirectW( &run->style->fallback_font );
+            if (fallback)
+                old_font = SelectObject( c->hDC, fallback );
+        }
+
         ScriptTextOut( c->hDC, &run->style->script_cache, x, y, paint_bg ? ETO_OPAQUE : 0, sel_rect,
                        &run->script_analysis, NULL, 0, run->glyphs, run->num_glyphs, run->advances,
                        NULL, run->offsets );
+
+        if (old_font)
+        {
+            SelectObject( c->hDC, old_font );
+            DeleteObject( fallback );
+        }
+    }
     else
         ExtTextOutW( c->hDC, x, y, paint_bg ? ETO_OPAQUE : 0, sel_rect, text, run->len, NULL );
 

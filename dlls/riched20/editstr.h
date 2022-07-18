@@ -76,6 +76,7 @@ typedef struct tagME_Style
   int nRefs; /* reference count */
   SCRIPT_CACHE script_cache;
   struct list entry;
+  LOGFONTW fallback_font;
 } ME_Style;
 
 typedef enum {

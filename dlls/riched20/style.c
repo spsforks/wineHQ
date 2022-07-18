@@ -129,10 +129,22 @@ ME_Style *ME_MakeStyle(CHARFORMAT2W *style)
   memset(&s->tm, 0, sizeof(s->tm));
   s->tm.tmAscent = -1;
   s->script_cache = NULL;
+  memset( &s->fallback_font, 0, sizeof( s->fallback_font ) );
   list_init(&s->entry);
   all_refs++;
   TRACE_(richedit_style)("ME_MakeStyle %p, total refs=%d\n", s, all_refs);
   return s;
+}
+
+ME_Style *duplicate_style( ME_Style *style )
+{
+    ME_Style *new_style;
+
+    new_style = ME_MakeStyle( &style->fmt );
+    new_style->tm = style->tm;
+    new_style->fallback_font = style->fallback_font;
+
+    return new_style;
 }
 
 #define COPY_STYLE_ITEM(mask, member) \

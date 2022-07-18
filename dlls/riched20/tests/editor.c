@@ -9026,6 +9026,57 @@ static void test_window_classes(void)
     }
 }
 
+static void test_font_fallback(void)
+{
+    static const WCHAR text[] = L"English\x65e5\x672c\x8a9e\x306b\x307b\x3093\x3054\x30cb\x30db\x30f3\x30b4"
+            "\xd55c\xad6d\xc5b4\x7b80\x4f53\x5b57\x7e41\x9ad4\x5b57";
+    CHARFORMAT2W format;
+    WCHAR buffer[1024];
+    LRESULT result;
+    HWND hwnd;
+    int i;
+    struct font_fallback_test
+    {
+        int start, end;
+        const WCHAR *expected_string;
+    } font_fallback_tests[] =
+    {
+        {  0,  7, L"English" },
+        {  7, 10, L"\x65e5\x672c\x8a9e" }, /* Kanji */
+        { 10, 14, L"\x306b\x307b\x3093\x3054" }, /* Hiragana */
+        { 14, 18, L"\x30cb\x30db\x30f3\x30b4" }, /* Katakana */
+        { 18, 21, L"\xd55c\xad6d\xc5b4" }, /* Hangeul */
+        { 21, 24, L"\x7b80\x4f53\x5b57" }, /* Simplified Chinese */
+        { 24, 27, L"\x7e41\x9ad4\x5b57" }, /* Traditional Chinese */
+        {  5,  9, L"sh\x65e5\x672c" }, /* Latin and Kanji */
+    };
+
+    hwnd = new_richeditW(NULL);
+
+    SendMessageW(hwnd, WM_SETTEXT, 0, (LPARAM)text);
+    memset(&format, 0, sizeof(format));
+    format.cbSize = sizeof(format);
+    format.dwMask = CFM_FACE;
+    lstrcpyW(format.szFaceName, L"Tahoma");
+    result = SendMessageW(hwnd, EM_SETCHARFORMAT, (WPARAM)SCF_ALL, (LPARAM)&format);
+    ok(result, "Failed to set default format.\n");
+
+    for (i = 0; i < ARRAYSIZE(font_fallback_tests); i++)
+    {
+        SendMessageW(hwnd, EM_SETSEL, font_fallback_tests[i].start, font_fallback_tests[i].end);
+        memset(buffer, 0, sizeof(buffer));
+        result = SendMessageW(hwnd, EM_GETSELTEXT, sizeof(buffer), (LPARAM)buffer);
+        ok(!lstrcmpW(buffer, font_fallback_tests[i].expected_string), "Got wrong string %s.\n", debugstr_w(buffer));
+        memset(&format, 0, sizeof(format));
+        format.cbSize = sizeof(format);
+        result = SendMessageW(hwnd, EM_GETCHARFORMAT, SCF_SELECTION, (LPARAM)&format);
+        ok(result, "Failed to get format.\n");
+        ok(!lstrcmpW(format.szFaceName, L"Tahoma"), "Got wrong font name %s.\n", debugstr_w(format.szFaceName));
+    }
+
+    DestroyWindow(hwnd);
+}
+
 START_TEST( editor )
 {
   BOOL ret;
@@ -9102,6 +9153,7 @@ START_TEST( editor )
   test_eop_char_fmt();
   test_para_numbering();
   test_EM_SELECTIONTYPE();
+  test_font_fallback();
 
   /* Set the environment variable WINETEST_RICHED20 to keep windows
    * responsive and open for 30 seconds. This is useful for debugging.

@@ -61,8 +61,53 @@ static BOOL get_run_glyph_buffers( ME_Run *run )
     return TRUE;
 }
 
+struct richedit_fallback
+{
+    OPENTYPE_TAG script_tag;
+    WCHAR *font_name;
+} richedit_fallbacks[] = {};
+
+static const WCHAR *find_fallback_font( OPENTYPE_TAG script_tag )
+{
+    int count;
+
+    count = ARRAYSIZE( richedit_fallbacks );
+    while (count--)
+        if (richedit_fallbacks[count].script_tag == script_tag)
+            return richedit_fallbacks[count].font_name;
+
+    WARN( "Failed to find a fallback font for %s.\n", debugstr_tag( script_tag ) );
+    return NULL;
+}
+
+static BOOL requires_fallback( HDC dc, ME_Run *run )
+{
+    SCRIPT_CACHE script_cache = NULL;
+    static const WCHAR *text;
+    WORD *glyphs;
+    int len;
+
+    if (!run->script_tag)
+        return FALSE;
+
+    len = run->len;
+    if (!(glyphs = heap_calloc( len, sizeof( *glyphs ) )))
+        return FALSE;
+
+    text = get_text( run, 0 );
+    if (ScriptGetCMap( dc, &script_cache, text, len, 0, glyphs ) != S_OK)
+    {
+        heap_free( glyphs );
+        return TRUE;
+    }
+    heap_free( glyphs );
+
+    return FALSE;
+}
+
 static HRESULT shape_run( ME_Context *c, ME_Run *run )
 {
+    HFONT old_font = NULL, fallback = NULL;
     SCRIPT_GLYPHPROP *glyph_props = NULL;
     SCRIPT_CHARPROP *char_props;
     HRESULT hr;
@@ -86,6 +131,33 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     }
 
     select_style( c, run->style );
+    if (requires_fallback( c->hDC, run ))
+    {
+        static const WCHAR *font_name;
+
+        font_name = find_fallback_font( run->script_tag );
+        if (font_name)
+        {
+            if (wcscmp( run->style->fallback_font.lfFaceName, font_name ))
+            {
+                ME_Style *style;
+
+                GetObjectW( GetCurrentObject( c->hDC, OBJ_FONT ), sizeof( run->style->fallback_font ),
+                            &run->style->fallback_font );
+                style = duplicate_style( run->style );
+                ME_ReleaseStyle( run->style );
+                run->style = style;
+                wcscpy( run->style->fallback_font.lfFaceName, font_name );
+            }
+            TRACE( "Falling back to %s font for %s.\n", debugstr_w( font_name ), debugstr_tag( run->script_tag ) );
+            fallback = CreateFontIndirectW( &run->style->fallback_font );
+            if (fallback)
+                old_font = SelectObject( c->hDC, fallback );
+        }
+    }
+    else
+        run->style->fallback_font.lfFaceName[0] = 0;
+
     while (1)
     {
         heap_free( glyph_props );
@@ -107,6 +179,12 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
         hr = ScriptPlaceOpenType( c->hDC, &run->style->script_cache, &run->script_analysis, run->script_tag, 0,
                                   NULL, NULL, 0, get_text( run, 0 ), run->clusters, char_props, run->len, run->glyphs,
                                   glyph_props, run->num_glyphs, run->advances, run->offsets, NULL );
+
+    if (old_font)
+    {
+        SelectObject( c->hDC, old_font );
+        DeleteObject( fallback );
+    }
 
     if (SUCCEEDED(hr))
     {

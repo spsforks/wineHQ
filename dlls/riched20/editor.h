@@ -74,6 +74,7 @@ BOOL cfany_to_cf2w(CHARFORMAT2W *to, const CHARFORMAT2W *from) DECLSPEC_HIDDEN;
 BOOL cf2w_to_cfany(CHARFORMAT2W *to, const CHARFORMAT2W *from) DECLSPEC_HIDDEN;
 void ME_CopyCharFormat(CHARFORMAT2W *pDest, const CHARFORMAT2W *pSrc) DECLSPEC_HIDDEN; /* only works with 2W structs */
 void ME_CharFormatFromLogFont(HDC hDC, const LOGFONTW *lf, CHARFORMAT2W *fmt) DECLSPEC_HIDDEN; /* ditto */
+ME_Style *duplicate_style( ME_Style *style );
 
 /* list.c */
 void ME_InsertBefore(ME_DisplayItem *diWhere, ME_DisplayItem *diWhat) DECLSPEC_HIDDEN;
