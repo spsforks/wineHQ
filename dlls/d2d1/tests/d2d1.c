@@ -12038,6 +12038,7 @@ static void test_registered_effects(BOOL d3d11)
 
 static void test_transform_graph(BOOL d3d11)
 {
+    UINT i, effect_input_count, transform_input_count;
     ID2D1OffsetTransform *offset_transform = NULL;
     ID2D1BlendTransform *blend_transform = NULL;
     D2D1_BLEND_DESCRIPTION blend_desc = {0};
@@ -12047,7 +12048,6 @@ static void test_transform_graph(BOOL d3d11)
     ID2D1Factory1 *factory;
     POINT point = {0 ,0};
     ID2D1Effect *effect;
-    UINT i, count;
     HRESULT hr;
 
     const D2D1_PROPERTY_BINDING binding[] =
@@ -12104,6 +12104,15 @@ static void test_transform_graph(BOOL d3d11)
     hr = ID2D1TransformGraph_RemoveNode(graph, (ID2D1TransformNode *)blend_transform);
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
 
+    /* Clear nodes */
+    hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
+    ID2D1TransformGraph_Clear(graph);
+    hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
     /* Connect nodes which are both un-added */
     ID2D1TransformGraph_Clear(graph);
     hr = ID2D1TransformGraph_ConnectNode(graph,
@@ -12126,13 +12135,13 @@ static void test_transform_graph(BOOL d3d11)
     ok(hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND), "Got unexpected hr %#lx.\n", hr);
 
     /* Connect nodes */
+    transform_input_count = ID2D1BlendTransform_GetInputCount(blend_transform);
     ID2D1TransformGraph_Clear(graph);
     hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)offset_transform);
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
     hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)blend_transform);
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
-    count = ID2D1BlendTransform_GetInputCount(blend_transform);
-    for (i = 0; i < count; ++i)
+    for (i = 0; i < transform_input_count; ++i)
     {
         hr = ID2D1TransformGraph_ConnectNode(graph,
                 (ID2D1TransformNode *)offset_transform, (ID2D1TransformNode *)blend_transform, i);
@@ -12141,7 +12150,45 @@ static void test_transform_graph(BOOL d3d11)
 
     /* Connect node to out-of-bounds index */
     hr = ID2D1TransformGraph_ConnectNode(graph,
-            (ID2D1TransformNode *)offset_transform, (ID2D1TransformNode *)blend_transform, count);
+            (ID2D1TransformNode *)offset_transform, (ID2D1TransformNode *)blend_transform, transform_input_count);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
+
+    /* Set output */
+    hr = ID2D1TransformGraph_SetOutputNode(graph, (ID2D1TransformNode *)blend_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_SetOutputNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    /* Single node transform graph */
+    effect_input_count = ID2D1TransformGraph_GetInputCount(graph);
+
+    transform_input_count = ID2D1BlendTransform_GetInputCount(blend_transform);
+    ok(transform_input_count != effect_input_count, "Input count should not be equal.\n");
+    hr = ID2D1TransformGraph_SetSingleTransformNode(graph, (ID2D1TransformNode *)blend_transform);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_RemoveNode(graph, (ID2D1TransformNode *)blend_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_RemoveNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND), "Got unexpected hr %#lx.\n", hr);
+
+    transform_input_count = ID2D1OffsetTransform_GetInputCount(offset_transform);
+    ok(transform_input_count == effect_input_count, "Input count should be equal.\n");
+    hr = ID2D1TransformGraph_SetSingleTransformNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_RemoveNode(graph, (ID2D1TransformNode *)offset_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_RemoveNode(graph, (ID2D1TransformNode *)blend_transform);
+    ok(hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND), "Got unexpected hr %#lx.\n", hr);
+
+    /* Connect effect inputs to node inputs */
+    transform_input_count = ID2D1BlendTransform_GetInputCount(blend_transform);
+    hr = ID2D1TransformGraph_AddNode(graph, (ID2D1TransformNode *)blend_transform);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_ConnectToEffectInput(graph, 0, (ID2D1TransformNode *)blend_transform, 0);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_ConnectToEffectInput(graph, 0, (ID2D1TransformNode *)blend_transform, transform_input_count);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
+    hr = ID2D1TransformGraph_ConnectToEffectInput(graph, effect_input_count, (ID2D1TransformNode *)blend_transform, 0);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
 
 done:
