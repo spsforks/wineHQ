@@ -674,10 +674,17 @@ struct d2d_effect_registration * d2d_factory_get_registered_effect(ID2D1Factory 
 void d2d_factory_register_effect(struct d2d_factory *factory,
         struct d2d_effect_registration *effect) DECLSPEC_HIDDEN;
 
+struct d2d_transform_node
+{
+    ID2D1TransformNode *node;
+    struct list entry;
+};
+
 struct d2d_transform_graph
 {
     ID2D1TransformGraph ID2D1TransformGraph_iface;
     LONG refcount;
+    struct list nodes;
 };
 
 struct d2d_effect
