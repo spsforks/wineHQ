@@ -3,4 +3,5 @@ IMPORTS   = cabinet
 
 C_SRCS = \
 	extract.c \
-	fdi.c
+	fdi.c \
+	version.c

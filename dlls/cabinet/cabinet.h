@@ -160,6 +160,15 @@ struct QTMstate {
     struct QTMmodelsym m80sym[0x40 + 1], mC0sym[0x40 + 1];
 };
 
+/*version information used in cabinet.dll*/
+typedef struct _CABINETDLLVERSIONINFO {
+  DWORD cbStruct;
+  DWORD dwReserved1;
+  DWORD dwReserved2;
+  DWORD dwFileVersionMS;
+  DWORD dwFileVersionLS;
+} CABINETDLLVERSIONINFO, *PCABINETDLLVERSIONINFO;
+
 /* LZX stuff */
 
 /* some constants defined by the LZX specification */

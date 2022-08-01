@@ -1,5 +1,5 @@
 1 stub GetDllVersion
-2 stdcall -private DllGetVersion (ptr)
+2 stdcall -private DllGetVersion (ptr) cabinet_dll_get_version
 3 stdcall Extract(ptr str)
 4 stub DeleteExtractedFiles
 10 cdecl FCICreate(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
