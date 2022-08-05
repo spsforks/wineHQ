@@ -52,10 +52,7 @@ static void test_dllget(HMODULE libHandle)
     revisV = (int)( FileVersionLS >>  0 ) & 0xffff;
 
     snprintf(version, sizeVerInfo, "%d.%d.%d.%d\n",majorV,minorV,buildV,revisV);;
-    todo_wine {
-        /* FIXME - Currently DllGetVersion isn't implemented correctly */
-        ok(strcmp(version,"0.0.0.0\n") != 0, "Cabinet struct doesn't contain correct version: Error = %ld.\n", GetLastError());
-    }
+    ok(strcmp(version,"0.0.0.0\n") != 0, "Cabinet struct doesn't contain correct version: Error = %ld.\n", GetLastError());
 }
 
 START_TEST(version)

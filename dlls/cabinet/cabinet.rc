@@ -26,3 +26,25 @@
 #define WINE_PRODUCTVERSION_STR "5.0"
 
 #include "wine/wine_common_ver.rc"
+
+100 VERSIONINFO
+FILEVERSION WINE_FILEVERSION
+PRODUCTVERSION WINE_PRODUCTVERSION
+FILEOS VOS_NT
+FILETYPE VFT_DLL
+{
+    BLOCK "StringFileInfo"
+    {
+        BLOCK "1200"
+        {
+            VALUE "FileDescription", WINE_FILEDESCRIPTION_STR
+            VALUE "FileVersion", WINE_FILEVERSION
+            VALUE "FileVersionStr", WINE_FILEVERSION_STR
+            VALUE "InternalName", WINE_FILENAME
+            VALUE "LegalCopyright", WINE_LEGALCOPYRIGHT
+            VALUE "OriginalFilename", WINE_FILENAME_STR
+            VALUE "ProductName", WINE_PRODUCTNAME_STR
+            VALUE "ProductVersion", WINE_PRODUCTVERSION_STR
+        }
+    }
+}
