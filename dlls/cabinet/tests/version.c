@@ -14,7 +14,7 @@
 
 
 typedef VOID (__stdcall *f_dllget)(PCABINETDLLVERSIONINFO);
-
+typedef LPCSTR (__stdcall *f_getdll)(void);
 
 static void test_dllget(HMODULE libHandle)
 {
@@ -55,10 +55,21 @@ static void test_dllget(HMODULE libHandle)
     ok(strcmp(version,"0.0.0.0\n") != 0, "Cabinet struct doesn't contain correct version: Error = %ld.\n", GetLastError());
 }
 
+static void test_getdll(HMODULE libHandle)
+{
+    f_getdll GetDllVersion = (f_getdll)GetProcAddress(libHandle, "GetDllVersion");
+    ok(GetDllVersion != NULL, "Function GetDllVersion in DLL not found: Error = %ld.\n", GetLastError());
+    if (GetDllVersion){
+        ok(strcmp(GetDllVersion(),"") != 0, "GetDllVersion returns empty version: Error = %ld.\n", GetLastError());
+        ok(strcmp(GetDllVersion(),"0.0.0.0\n") != 0, "GetDllVersion doesn't return correct version: Error = %ld.\n", GetLastError());
+    }
+}
+
 START_TEST(version)
 {
     HMODULE libHandle;
     libHandle = LoadLibraryA("Cabinet.dll");
     ok(libHandle != NULL, "Cabinet.dll not found: Error = %ld.\n", GetLastError());
     test_dllget(libHandle);
+    test_getdll(libHandle);
 }
