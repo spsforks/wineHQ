@@ -1,4 +1,4 @@
-1 stub GetDllVersion
+1 stdcall GetDllVersion()
 2 stdcall -private DllGetVersion (ptr) cabinet_dll_get_version
 3 stdcall Extract(ptr str)
 4 stub DeleteExtractedFiles

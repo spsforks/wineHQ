@@ -133,6 +133,69 @@ VOID WINAPI cabinet_dll_get_version (PCABINETDLLVERSIONINFO cabVerInfo)
     }
 }
 
+/***********************************************************************
+ * GetDllVersion (CABINET.2)
+ *
+ * Returns the version of the Cabinet.dll
+ *
+ * PARAMS
+ *     This function has to parameters
+ *
+ * RETURNS
+ *     Success: cabDllVer: string of Cabinet.dll version
+ *     Failure: empty string.
+ *     Use GetLastError() to find out more about why the function failed
+ *
+ */
+
+LPCSTR WINAPI GetDllVersion(void)
+{
+    PCABINETDLLVERSIONINFO  cabVerInfo;
+    LPSTR                   cabDllVer;
+    int                     sizeVerInfo;
+    DWORD                   FileVersionMS;
+    DWORD                   FileVersionLS;
+    int                     majorV;
+    int                     minorV;
+    int                     buildV;
+    int                     revisV;
+
+    cabVerInfo = malloc(sizeof(CABINETDLLVERSIONINFO));
+    if(cabVerInfo == NULL) {
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create cabVerInfo: Out of memory: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    cabinet_dll_get_version(cabVerInfo);
+    if (cabVerInfo->cbStruct==0) {
+        TRACE("Cannot access struct: The length of the version information structure is 0: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    FileVersionMS = cabVerInfo->dwFileVersionMS;
+    FileVersionLS = cabVerInfo->dwFileVersionLS;
+
+    /*length of 4 DWORDs + buffer*/
+    sizeVerInfo = 32;
+
+    cabDllVer = malloc(sizeVerInfo);
+    if (cabDllVer == NULL) {
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create cabDllVer: Out of memory: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    majorV = (int)( FileVersionMS >> 16 ) & 0xffff;
+    minorV = (int)( FileVersionMS >>  0 ) & 0xffff;
+    buildV = (int)( FileVersionLS >> 16 ) & 0xffff;
+    revisV = (int)( FileVersionLS >>  0 ) & 0xffff;
+
+    snprintf(cabDllVer, sizeVerInfo, "%d.%d.%d.%d\n",majorV,minorV,buildV,revisV);
+
+    return cabDllVer;
+}
+
 /* FDI callback functions */
 
 static void * CDECL mem_alloc(ULONG cb)
