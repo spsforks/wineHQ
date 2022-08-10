@@ -1319,5 +1319,7 @@ ME_SetZoom(ME_TextEditor *editor, int numerator, int denominator)
   editor->nZoomDenominator = denominator;
 
   ME_RewrapRepaint(editor);
+  update_caret( editor );
+
   return TRUE;
 }
