@@ -363,7 +363,7 @@ static void draw_text( ME_Context *c, ME_Run *run, int x, int y, BOOL selected, 
     if (paint_bg) old_back = SetBkColor( c->hDC, back_color );
 
     if (run->para->nFlags & MEPF_COMPLEX)
-        ScriptTextOut( c->hDC, &run->style->script_cache, x, y, paint_bg ? ETO_OPAQUE : 0, sel_rect,
+        ScriptTextOut( c->hDC, run->style->script_cache, x, y, paint_bg ? ETO_OPAQUE : 0, sel_rect,
                        &run->script_analysis, NULL, 0, run->glyphs, run->num_glyphs, run->advances,
                        NULL, run->offsets );
     else

@@ -83,7 +83,7 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     select_style( c, run->style );
     while (1)
     {
-        hr = ScriptShape( c->hDC, &run->style->script_cache, get_text( run, 0 ), run->len, run->max_glyphs,
+        hr = ScriptShape( c->hDC, run->style->script_cache, get_text( run, 0 ), run->len, run->max_glyphs,
                           &run->script_analysis, run->glyphs, run->clusters, run->vis_attrs, &run->num_glyphs );
         if (hr != E_OUTOFMEMORY) break;
         if (run->max_glyphs > 10 * run->len) break; /* something has clearly gone wrong */
@@ -92,7 +92,7 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     }
 
     if (SUCCEEDED(hr))
-        hr = ScriptPlace( c->hDC, &run->style->script_cache, run->glyphs, run->num_glyphs, run->vis_attrs,
+        hr = ScriptPlace( c->hDC, run->style->script_cache, run->glyphs, run->num_glyphs, run->vis_attrs,
                           &run->script_analysis, run->advances, run->offsets, NULL );
 
     if (SUCCEEDED(hr))

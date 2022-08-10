@@ -2994,6 +2994,7 @@ ME_TextEditor *ME_MakeEditor(ITextHost *texthost, BOOL bEmulateVersion10)
     ed->pFontCache[i].nRefs = 0;
     ed->pFontCache[i].nAge = 0;
     ed->pFontCache[i].hFont = NULL;
+    ed->pScriptCache[i] = NULL;
   }
 
   ME_CheckCharOffsets(ed);
@@ -3079,6 +3080,9 @@ void ME_DestroyEditor(ME_TextEditor *editor)
   {
     if (editor->pFontCache[i].hFont)
       DeleteObject(editor->pFontCache[i].hFont);
+
+    if (editor->pScriptCache[i])
+      ScriptFreeCache(&editor->pScriptCache[i]);
   }
   if(editor->lpOleCallback)
     IRichEditOleCallback_Release(editor->lpOleCallback);

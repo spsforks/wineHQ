@@ -74,7 +74,7 @@ typedef struct tagME_Style
   ME_FontCacheItem *font_cache; /* cached font for the style */
   TEXTMETRICW tm; /* cached font metrics for the style */
   int nRefs; /* reference count */
-  SCRIPT_CACHE script_cache;
+  SCRIPT_CACHE *script_cache;
   struct list entry;
 } ME_Style;
 
@@ -413,6 +413,7 @@ typedef struct tagME_TextEditor
   LONG nLastSelStart, nLastSelEnd;
   ME_Paragraph *last_sel_start_para, *last_sel_end_para;
   ME_FontCacheItem pFontCache[HFONT_CACHE_SIZE];
+  SCRIPT_CACHE pScriptCache[HFONT_CACHE_SIZE];
   int nZoomNumerator, nZoomDenominator;
   RECT rcFormat;
   BOOL bWordWrap;
