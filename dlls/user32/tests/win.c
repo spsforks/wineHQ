@@ -6126,11 +6126,16 @@ static void test_AdjustWindowRect(void)
 
 /* Global variables to trigger exit from loop */
 static int redrawComplete, WMPAINT_count;
+static HANDLE redraw_call_complete_event;
 
 static LRESULT WINAPI redraw_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     switch (msg)
     {
+    case WM_NCPAINT:
+        if (redraw_call_complete_event)
+            WaitForSingleObject(redraw_call_complete_event, INFINITE);
+        break;
     case WM_PAINT:
         WMPAINT_count++;
         if (WMPAINT_count > 10 && redrawComplete == 0) {
@@ -6144,11 +6149,50 @@ static LRESULT WINAPI redraw_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LP
     return DefWindowProcA(hwnd, msg, wparam, lparam);
 }
 
+struct rdw_window_thread_param
+{
+    HANDLE ready_event;
+    HANDLE done_event;
+    HWND hwnd;
+};
+
+static DWORD WINAPI rdw_window_thread(void *param)
+{
+    struct rdw_window_thread_param *p = param;
+    DWORD ret;
+    MSG msg;
+
+    p->hwnd = CreateWindowA("RedrawWindowClass", "Main Window", WS_OVERLAPPEDWINDOW,
+                            CW_USEDEFAULT, 0, 100, 100, NULL, NULL, 0, NULL);
+    ShowWindow(p->hwnd, SW_MINIMIZE);
+    redrawComplete = FALSE;
+    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+        DispatchMessageA(&msg);
+
+    redraw_call_complete_event = p->done_event;
+    SetEvent(p->ready_event);
+    while ((ret = MsgWaitForMultipleObjects(1, &p->done_event, FALSE, INFINITE, QS_SENDMESSAGE)) != WAIT_OBJECT_0)
+    {
+        while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+        {
+            ok(msg.message != WM_NCPAINT, "got WM_NCPAINT.\n");
+            DispatchMessageA(&msg);
+        }
+    }
+    redraw_call_complete_event = NULL;
+    WaitForSingleObject(redraw_call_complete_event, INFINITE);
+
+    DestroyWindow(p->hwnd);
+    return 0;
+}
+
 /* Ensure we exit from RedrawNow regardless of invalidated area */
 static void test_redrawnow(void)
 {
+   struct rdw_window_thread_param p;
    WNDCLASSA cls;
    HWND hwndMain;
+   HANDLE thread;
    BOOL ret;
 
    cls.style = CS_DBLCLKS;
@@ -6178,6 +6222,21 @@ static void test_redrawnow(void)
 
    /* clean up */
    DestroyWindow( hwndMain);
+
+   /* When on the other thread, WM_NCPAINT is delivered through window proc but RedrawWindow does
+    * not wait for that. */
+   p.ready_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+   p.done_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+   WMPAINT_count = 0;
+   thread = CreateThread(NULL, 0, rdw_window_thread, &p, 0, NULL);
+   WaitForSingleObject(p.ready_event, INFINITE);
+
+   ret = RedrawWindow(p.hwnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_ERASENOW | RDW_FRAME);
+   ok(ret, "ret %d.\n", ret);
+
+   SetEvent(p.done_event);
+   WaitForSingleObject(thread, INFINITE);
+   CloseHandle(thread);
 }
 
 struct parentdc_stat {
