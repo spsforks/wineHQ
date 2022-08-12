@@ -61,6 +61,7 @@ static BOOL (WINAPI *pSetWindowDisplayAffinity)(HWND hwnd, DWORD affinity);
 static BOOL (WINAPI *pAdjustWindowRectExForDpi)(LPRECT,DWORD,BOOL,DWORD,UINT);
 static BOOL (WINAPI *pSystemParametersInfoForDpi)(UINT,UINT,void*,UINT,UINT);
 static HICON (WINAPI *pInternalGetWindowIcon)(HWND window, UINT type);
+static DPI_AWARENESS_CONTEXT (WINAPI *pSetThreadDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
 
 static BOOL test_lbuttondown_flag;
 static DWORD num_gettext_msgs;
@@ -8881,17 +8882,63 @@ static void test_hwnd_message(void)
     DestroyWindow(hwnd);
 }
 
+static BOOL handle_wm_paint;
+
+static LRESULT WINAPI test_layered_window_proc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+{
+    switch (msg)
+    {
+    case WM_PAINT:
+    {
+        int width, height;
+        PAINTSTRUCT ps;
+        HBRUSH brush;
+        RECT rect;
+        HDC hdc;
+
+        if (!handle_wm_paint)
+            break;
+
+        hdc = wp ? (HDC)wp : BeginPaint( hwnd, &ps );
+        GetClientRect( hwnd, &rect );
+        width = rect.right - rect.left;
+        height = rect.bottom - rect.top;
+
+        SetRect( &rect, 0, 0, width, height / 2 );
+        brush = CreateSolidBrush( RGB(0xff, 0, 0) );
+        FillRect( hdc, &rect, brush );
+        DeleteObject( brush );
+
+        SetRect( &rect, 0, height / 2, width, height );
+        FillRect( hdc, &rect, GetStockObject( WHITE_BRUSH ) );
+
+        if (!wp)
+            EndPaint( hwnd, &ps );
+        return 0;
+    }
+    }
+
+    return DefWindowProcA( hwnd, msg, wp, lp );
+}
+
 static void test_layered_window(void)
 {
-    HWND hwnd, child;
+    static const int width = 4, height = 4;
+    HWND hwnd, child, bg_hwnd, layered_hwnd;
+    DPI_AWARENESS_CONTEXT context = NULL;
+    HDC hdc, mem_hdc, screen_hdc;
+    HBITMAP hbm, old_hbm;
+    BLENDFUNCTION blend;
     COLORREF key = 0;
+    BITMAPINFO bmi;
     BYTE alpha = 0;
+    WNDCLASSA cls;
     DWORD flags = 0;
     POINT pt = { 0, 0 };
     SIZE sz = { 200, 200 };
-    HDC hdc;
-    HBITMAP hbm;
+    unsigned char *bits;
     BOOL ret;
+    int x, y;
     MSG msg;
 
     if (!pGetLayeredWindowAttributes || !pSetLayeredWindowAttributes || !pUpdateLayeredWindow)
@@ -9069,6 +9116,329 @@ static void test_layered_window(void)
     DestroyWindow( hwnd );
     DeleteDC( hdc );
     DeleteObject( hbm );
+
+    /* Test hit-testing layered windows */
+    if (pSetThreadDpiAwarenessContext)
+        context = pSetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE );
+
+    memset( &cls, 0, sizeof(cls) );
+    cls.lpfnWndProc = DefWindowProcA;
+    cls.hInstance = GetModuleHandleA( 0 );
+    cls.hCursor = LoadCursorA( 0, (LPCSTR)IDC_ARROW );
+    cls.hbrBackground = GetStockObject( GRAY_BRUSH );
+    cls.lpszClassName = "background_class";
+    RegisterClassA( &cls );
+
+    cls.lpfnWndProc = test_layered_window_proc;
+    cls.lpszClassName = "test_layered_window_class";
+    RegisterClassA( &cls );
+
+    bg_hwnd = CreateWindowA( "background_class", "background", WS_POPUP | WS_VISIBLE, 50,
+                             50, width * 2, height * 2, 0, 0, GetModuleHandleA( NULL ), NULL );
+    ok( !!bg_hwnd, "CreateWindowA failed, error %lu.\n", GetLastError() );
+
+    layered_hwnd = CreateWindowExA( WS_EX_LAYERED | WS_EX_TOPMOST, "test_layered_window_class",
+                                    "test", WS_POPUP | WS_VISIBLE, 50, 50, width, height, 0, 0,
+                                    GetModuleHandleA( NULL ), NULL );
+    ok( !!layered_hwnd, "CreateWindowExA failed, error %lu.\n", GetLastError() );
+    flush_events( TRUE );
+
+    /* Hit-testing after layered window creation */
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            ok( hwnd == layered_hwnd || broken( hwnd == bg_hwnd ) /* <= Win7 */, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing after UpdateLayeredWindow() */
+    screen_hdc = GetDC( 0 );
+    hdc = GetDC( layered_hwnd );
+    mem_hdc = CreateCompatibleDC( hdc );
+
+    memset( &bmi, 0, sizeof(bmi) );
+    bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    bmi.bmiHeader.biSizeImage = width * height * 4;
+    hbm = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, (void **)&bits, 0, 0 );
+    ok( !!hbm, "CreateDIBSection failed, error %lu.\n", GetLastError() );
+    old_hbm = SelectObject( mem_hdc, hbm );
+    memset( bits, 0, bmi.bmiHeader.biSizeImage / 2 );
+    memset( bits + bmi.bmiHeader.biSizeImage / 2, 0x1, bmi.bmiHeader.biSizeImage / 2 );
+
+    /* UpdateLayeredWindow() with per-pixel alpha */
+    pt.x = 0;
+    pt.y = 0;
+    sz.cx = width;
+    sz.cy = height;
+    blend.BlendOp = AC_SRC_OVER;
+    blend.BlendFlags = 0;
+    blend.SourceConstantAlpha = 255;
+    blend.AlphaFormat = AC_SRC_ALPHA;
+    ret = pUpdateLayeredWindow( layered_hwnd, screen_hdc, NULL, &sz, mem_hdc, &pt, 0, &blend, ULW_ALPHA );
+    ok( ret, "UpdateLayeredWindow failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            if (y < height / 2)
+                todo_wine
+                ok( hwnd == bg_hwnd, "Wrong window.\n" );
+            else
+                ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing after resizing to a larger size */
+    ret = SetWindowPos( layered_hwnd, NULL, 0, 0, width * 2, height * 2, SWP_NOZORDER | SWP_NOMOVE );
+    ok( ret, "SetWindowPos failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height * 2; ++y)
+    {
+        for (x = 0; x < width * 2; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            if (y >= height / 2 && x < width && y < height)
+                ok( hwnd == layered_hwnd, "Wrong window.\n" );
+            else
+                todo_wine
+                ok( hwnd == bg_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing after resizing to the original size */
+    ret = SetWindowPos( layered_hwnd, NULL, 0, 0, width, height, SWP_NOZORDER | SWP_NOMOVE );
+    ok( ret, "SetWindowPos failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            if (y < height / 2)
+                todo_wine
+                ok( hwnd == bg_hwnd, "Wrong window.\n" );
+            else
+                ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing layered windows called with UpdateLayeredWindow() and set ULW_OPAQUE */
+    pt.x = 0;
+    pt.y = 0;
+    ret = pUpdateLayeredWindow( layered_hwnd, screen_hdc, NULL, &sz, mem_hdc, &pt, 0, NULL,
+                                ULW_OPAQUE );
+    ok( ret, "UpdateLayeredWindow failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing layered windows called with UpdateLayeredWindow() and set the color key */
+    pt.x = 0;
+    pt.y = 0;
+    ret = pUpdateLayeredWindow( layered_hwnd, screen_hdc, NULL, &sz, mem_hdc, &pt, 0x010101, NULL,
+                                ULW_COLORKEY );
+    ok( ret, "UpdateLayeredWindow failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            if (y >= height / 2)
+                todo_wine
+                ok( hwnd == bg_hwnd || broken(hwnd == layered_hwnd) /* <= Win 7*/ ,
+                    "Wrong window.\n" );
+            else
+                ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing layered windows called with UpdateLayeredWindow() and use whole window alpha */
+    pt.x = 0;
+    pt.y = 0;
+    blend.BlendOp = AC_SRC_OVER;
+    blend.BlendFlags = 0;
+    blend.SourceConstantAlpha = 0;
+    blend.AlphaFormat = 0;
+    ret = pUpdateLayeredWindow( layered_hwnd, screen_hdc, NULL, &sz, mem_hdc, &pt, 0, &blend,
+                                ULW_ALPHA );
+    ok( ret, "UpdateLayeredWindow failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            todo_wine
+            ok( hwnd == bg_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    pt.x = 0;
+    pt.y = 0;
+    blend.BlendOp = AC_SRC_OVER;
+    blend.BlendFlags = 0;
+    blend.SourceConstantAlpha = 1;
+    blend.AlphaFormat = 0;
+    ret = pUpdateLayeredWindow( layered_hwnd, screen_hdc, NULL, &sz, mem_hdc, &pt, 0, &blend,
+                                ULW_ALPHA );
+    ok( ret, "UpdateLayeredWindow failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    SelectObject( mem_hdc, old_hbm );
+    DeleteObject( hbm );
+    DeleteDC( mem_hdc );
+    ReleaseDC( layered_hwnd, hdc );
+    ReleaseDC( 0, screen_hdc );
+    DestroyWindow( layered_hwnd );
+
+    /* Hit-testing layered windows called with SetLayeredWindowAttributes() and set color key */
+    handle_wm_paint = TRUE;
+    layered_hwnd = CreateWindowExA( WS_EX_LAYERED | WS_EX_TOPMOST, "test_layered_window_class",
+                                    "test", WS_POPUP | WS_VISIBLE, 50, 50, width, height, 0, 0,
+                                    GetModuleHandleA( NULL ), NULL );
+    ok( !!layered_hwnd, "CreateWindowExA failed, error %lu.\n", GetLastError() );
+    flush_events( TRUE );
+    ret = pSetLayeredWindowAttributes( layered_hwnd, RGB(0xff, 0, 0), 0, LWA_COLORKEY );
+    ok( ret, "SetLayeredWindowAttributes failed, error %lu.\n", GetLastError() );
+    RedrawWindow( layered_hwnd, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            if (y < height / 2)
+                todo_wine
+                /* On >= Win 8, color keyed pixels can't be clicked through */
+                ok( hwnd == bg_hwnd || broken(hwnd == layered_hwnd) , "Wrong window.\n" );
+            else
+                ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    /* Hit-testing layered windows called with SetLayeredWindowAttributes() and use whole window alpha */
+    ret = pSetLayeredWindowAttributes( layered_hwnd, 0, 0, LWA_ALPHA );
+    ok( ret, "SetLayeredWindowAttributes failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            todo_wine
+            ok( hwnd == bg_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+
+    ret = pSetLayeredWindowAttributes( layered_hwnd, 0, 1, LWA_ALPHA );
+    ok( ret, "SetLayeredWindowAttributes failed, error %lu.\n", GetLastError() );
+
+    for (y = 0; y < height; ++y)
+    {
+        for (x = 0; x < width; ++x)
+        {
+            winetest_push_context( "%d,%d", x, y );
+
+            pt.x = 50 + x;
+            pt.y = 50 + y;
+            hwnd = WindowFromPoint( pt );
+            ok( hwnd == layered_hwnd, "Wrong window.\n" );
+
+            winetest_pop_context();
+        }
+    }
+    handle_wm_paint = FALSE;
+
+    DestroyWindow( layered_hwnd );
+    DestroyWindow( bg_hwnd );
+    UnregisterClassA( "background_class", GetModuleHandleA( NULL ) );
+    UnregisterClassA( "test_layered_window_class", GetModuleHandleA( NULL ) );
+    if (pSetThreadDpiAwarenessContext)
+        pSetThreadDpiAwarenessContext( context );
 }
 
 static MONITORINFO mi;
@@ -13056,6 +13426,7 @@ START_TEST(win)
     pAdjustWindowRectExForDpi = (void *)GetProcAddress( user32, "AdjustWindowRectExForDpi" );
     pSystemParametersInfoForDpi = (void *)GetProcAddress( user32, "SystemParametersInfoForDpi" );
     pInternalGetWindowIcon = (void *)GetProcAddress( user32, "InternalGetWindowIcon" );
+    pSetThreadDpiAwarenessContext = (void *)GetProcAddress( user32, "SetThreadDpiAwarenessContext" );
 
     if (argc == 4)
     {
