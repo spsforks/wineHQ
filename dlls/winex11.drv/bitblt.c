@@ -49,6 +49,9 @@
 #include "x11drv.h"
 #include "winternl.h"
 #include "wine/debug.h"
+#ifdef HAVE_LIBXSHAPE
+#include "wine/server.h"
+#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(bitblt);
 
@@ -1572,6 +1575,7 @@ DWORD get_pixmap_image( Pixmap pixmap, int width, int height, const XVisualInfo 
 struct x11drv_window_surface
 {
     struct window_surface header;
+    HWND                  hwnd;
     Window                window;
     GC                    gc;
     XImage               *image;
@@ -1579,6 +1583,8 @@ struct x11drv_window_surface
     BOOL                  byteswap;
     BOOL                  is_argb;
     DWORD                 alpha_bits;
+    BOOL                  use_constant_alpha;
+    BYTE                  constant_alpha;
     COLORREF              color_key;
     HRGN                  region;
     void                 *bits;
@@ -1623,6 +1629,50 @@ static inline void add_row( HRGN rgn, RGNDATA *data, int x, int y, int len )
     if (data->rdh.nCount * sizeof(RECT) > data->rdh.nRgnSize - sizeof(RECT))
         flush_rgn_data( rgn, data );
 }
+
+/* Set layered window region that is not fully transparent */
+static int set_layered_window_region( HWND hwnd, HRGN hrgn )
+{
+    static const RECT empty_rect;
+    BOOL ret;
+
+    if (hrgn)
+    {
+        RGNDATA *data;
+        DWORD size;
+
+        if (!(size = NtGdiGetRegionData( hrgn, 0, NULL ))) return FALSE;
+        if (!(data = malloc( size ))) return FALSE;
+        if (!NtGdiGetRegionData( hrgn, size, data ))
+        {
+            free( data );
+            return FALSE;
+        }
+        SERVER_START_REQ( set_layered_window_region )
+        {
+            req->window = wine_server_user_handle( hwnd );
+            if (data->rdh.nCount)
+                wine_server_add_data( req, data->Buffer, data->rdh.nCount * sizeof(RECT) );
+            else
+                wine_server_add_data( req, &empty_rect, sizeof(empty_rect) );
+            ret = !wine_server_call_err( req );
+        }
+        SERVER_END_REQ;
+        free( data );
+    }
+    else
+    {
+        /* clear existing region */
+        SERVER_START_REQ( set_layered_window_region )
+        {
+            req->window = wine_server_user_handle( hwnd );
+            ret = !wine_server_call_err( req );
+        }
+        SERVER_END_REQ;
+    }
+
+    return ret;
+}
 #endif
 
 /***********************************************************************
@@ -1639,6 +1689,17 @@ static void update_surface_region( struct x11drv_window_surface *surface )
     HRGN rgn;
 
     if (!shape_layered_windows) return;
+
+    if (surface->use_constant_alpha)
+    {
+        if (surface->constant_alpha == 0)
+            rgn = NtGdiCreateRectRgn( 0, 0, 0, 0 );
+        else
+            rgn = NtGdiCreateRectRgn( surface->header.rect.left, surface->header.rect.top,
+                                      surface->header.rect.right, surface->header.rect.bottom );
+
+        goto done;
+    }
 
     if (!surface->is_argb && surface->color_key == CLR_INVALID)
     {
@@ -1714,11 +1775,13 @@ static void update_surface_region( struct x11drv_window_surface *surface )
                 {
                     while (x < width &&
                            ((bits[x] & 0xffffff) == surface->color_key ||
-                            (surface->is_argb && !(bits[x] & 0xff000000)))) x++;
+                            (surface->color_key == CLR_INVALID && surface->is_argb
+                             && !(bits[x] & 0xff000000)))) x++;
                     start = x;
                     while (x < width &&
                            !((bits[x] & 0xffffff) == surface->color_key ||
-                             (surface->is_argb && !(bits[x] & 0xff000000)))) x++;
+                             (surface->color_key == CLR_INVALID && surface->is_argb
+                              && !(bits[x] & 0xff000000)))) x++;
                     add_row( rgn, data, surface->header.rect.left + start, y, x - start );
                 }
             }
@@ -1746,10 +1809,12 @@ static void update_surface_region( struct x11drv_window_surface *surface )
 
     if (data->rdh.nCount) flush_rgn_data( rgn, data );
 
+done:
     if ((data = X11DRV_GetRegionData( rgn, 0 )))
     {
         XShapeCombineRectangles( gdi_display, surface->window, ShapeBounding, 0, 0,
                                  (XRectangle *)data->Buffer, data->rdh.nCount, ShapeSet, YXBanded );
+        set_layered_window_region( surface->hwnd, rgn);
         free( data );
     }
 
@@ -2007,8 +2072,8 @@ static const struct window_surface_funcs x11drv_surface_funcs =
 /***********************************************************************
  *           create_surface
  */
-struct window_surface *create_surface( Window window, const XVisualInfo *vis, const RECT *rect,
-                                       COLORREF color_key, BOOL use_alpha )
+struct window_surface *create_surface( HWND hwnd, Window window, const XVisualInfo *vis,
+                                       const RECT *rect, COLORREF color_key, BOOL use_alpha )
 {
     const XPixmapFormatValues *format = pixmap_formats[vis->depth];
     struct x11drv_window_surface *surface;
@@ -2030,6 +2095,7 @@ struct window_surface *create_surface( Window window, const XVisualInfo *vis, co
     surface->header.funcs = &x11drv_surface_funcs;
     surface->header.rect  = *rect;
     surface->header.ref   = 1;
+    surface->hwnd = hwnd;
     surface->window = window;
     surface->is_argb = (use_alpha && vis->depth == 32 && surface->info.bmiHeader.biCompression == BI_RGB);
     set_color_key( surface, color_key );
@@ -2087,6 +2153,24 @@ void set_surface_color_key( struct window_surface *window_surface, COLORREF colo
     prev = surface->color_key;
     set_color_key( surface, color_key );
     if (surface->color_key != prev) update_surface_region( surface );
+    window_surface->funcs->unlock( window_surface );
+}
+
+void set_surface_constant_alpha( struct window_surface *window_surface, BOOL use_constant_alpha, BYTE alpha )
+{
+    struct x11drv_window_surface *surface = get_x11_surface( window_surface );
+    BOOL old_use_constant_alpha;
+    BYTE old_alpha;
+
+    if (window_surface->funcs != &x11drv_surface_funcs) return; /* we may get the null surface */
+
+    window_surface->funcs->lock( window_surface );
+    old_use_constant_alpha = surface->use_constant_alpha;
+    old_alpha = surface->constant_alpha;
+    surface->use_constant_alpha = use_constant_alpha;
+    surface->constant_alpha = alpha;
+    if (use_constant_alpha != old_use_constant_alpha || (use_constant_alpha && old_alpha != alpha))
+        update_surface_region( surface );
     window_surface->funcs->unlock( window_surface );
 }
 

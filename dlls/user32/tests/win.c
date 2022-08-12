@@ -9200,7 +9200,6 @@ static void test_layered_window(void)
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
             if (y < height / 2)
-                todo_wine
                 ok( hwnd == bg_hwnd, "Wrong window.\n" );
             else
                 ok( hwnd == layered_hwnd, "Wrong window.\n" );
@@ -9225,7 +9224,6 @@ static void test_layered_window(void)
             if (y >= height / 2 && x < width && y < height)
                 ok( hwnd == layered_hwnd, "Wrong window.\n" );
             else
-                todo_wine
                 ok( hwnd == bg_hwnd, "Wrong window.\n" );
 
             winetest_pop_context();
@@ -9246,7 +9244,6 @@ static void test_layered_window(void)
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
             if (y < height / 2)
-                todo_wine
                 ok( hwnd == bg_hwnd, "Wrong window.\n" );
             else
                 ok( hwnd == layered_hwnd, "Wrong window.\n" );
@@ -9294,7 +9291,6 @@ static void test_layered_window(void)
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
             if (y >= height / 2)
-                todo_wine
                 ok( hwnd == bg_hwnd || broken(hwnd == layered_hwnd) /* <= Win 7*/ ,
                     "Wrong window.\n" );
             else
@@ -9324,7 +9320,6 @@ static void test_layered_window(void)
             pt.x = 50 + x;
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
-            todo_wine
             ok( hwnd == bg_hwnd, "Wrong window.\n" );
 
             winetest_pop_context();
@@ -9384,7 +9379,6 @@ static void test_layered_window(void)
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
             if (y < height / 2)
-                todo_wine
                 /* On >= Win 8, color keyed pixels can't be clicked through */
                 ok( hwnd == bg_hwnd || broken(hwnd == layered_hwnd) , "Wrong window.\n" );
             else
@@ -9407,7 +9401,6 @@ static void test_layered_window(void)
             pt.x = 50 + x;
             pt.y = 50 + y;
             hwnd = WindowFromPoint( pt );
-            todo_wine
             ok( hwnd == bg_hwnd, "Wrong window.\n" );
 
             winetest_pop_context();

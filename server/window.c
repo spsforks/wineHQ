@@ -72,6 +72,7 @@ struct window
     rectangle_t      client_rect;     /* client rectangle (relative to parent client area) */
     struct region   *win_region;      /* region for shaped windows (relative to window rect) */
     struct region   *update_region;   /* update region (relative to window rect) */
+    struct region   *layered_win_region; /* layered window region that is not fully transparent */
     unsigned int     style;           /* window style */
     unsigned int     ex_style;        /* window extended style */
     lparam_t         id;              /* window id */
@@ -177,6 +178,7 @@ static void window_destroy( struct object *obj )
 
     if (win->win_region) free_region( win->win_region );
     if (win->update_region) free_region( win->update_region );
+    if (win->layered_win_region) free_region( win->layered_win_region );
     if (win->class) release_class( win->class );
     free( win->text );
 
@@ -565,6 +567,7 @@ static struct window *create_window( struct window *parent, struct window *owner
     win->last_active    = win->handle;
     win->win_region     = NULL;
     win->update_region  = NULL;
+    win->layered_win_region = NULL;
     win->style          = 0;
     win->ex_style       = 0;
     win->id             = 0;
@@ -822,6 +825,9 @@ static int is_point_in_window( struct window *win, int *x, int *y, unsigned int 
     if (win->win_region &&
         !point_in_region( win->win_region, *x - win->window_rect.left, *y - win->window_rect.top ))
         return 0;  /* not in window region */
+    if (win->layered_win_region &&
+        !point_in_region( win->layered_win_region, *x - win->window_rect.left, *y - win->window_rect.top ))
+        return 0;  /* not in layered window region that is not fully transparent */
     return 1;
 }
 
@@ -2699,6 +2705,34 @@ DECL_HANDLER(set_window_region)
         if (win->ex_style & WS_EX_LAYOUTRTL) mirror_region( &win->window_rect, region );
     }
     set_window_region( win, region, req->redraw );
+}
+
+
+/* set layered window region that is not fully transparent, update the region if necessary */
+static void set_layered_window_region( struct window *win, struct region *region )
+{
+    if (win->layered_win_region) free_region( win->layered_win_region );
+    win->layered_win_region = region;
+
+    clear_error();  /* we ignore out of memory errors since the region has been set */
+}
+
+
+/* set layered window region that is not fully transparent */
+DECL_HANDLER(set_layered_window_region)
+{
+    struct region *region = NULL;
+    struct window *win = get_window( req->window );
+
+    if (!win) return;
+
+    if (get_req_data_size())  /* no data means remove the region completely */
+    {
+        if (!(region = create_region_from_req_data( get_req_data(), get_req_data_size() )))
+            return;
+        if (win->ex_style & WS_EX_LAYOUTRTL) mirror_region( &win->window_rect, region );
+    }
+    set_layered_window_region( win, region );
 }
 
 

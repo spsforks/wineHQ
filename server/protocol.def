@@ -2547,6 +2547,11 @@ enum coords_relative
     VARARG(region,rectangles);    /* list of rectangles for the region (in window coords) */
 @END
 
+/* Set layered window region that is not fully transparent */
+@REQ(set_layered_window_region)
+    user_handle_t  window;        /* handle to the window */
+    VARARG(region,rectangles);    /* list of rectangles for the region (in window coords) */
+@END
 
 /* Get the window update region */
 @REQ(get_update_region)
