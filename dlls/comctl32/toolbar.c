@@ -2852,11 +2852,11 @@ TOOLBAR_AddBitmap (TOOLBAR_INFO *infoPtr, INT count, const TBADDBITMAP *lpAddBmp
 	        info.nID = IDB_VIEW_LARGE;
 	        break;
             case IDB_HIST_SMALL_COLOR:
-	        info.nButtons = 5;
+	        info.nButtons = 6;
 	        info.nID = IDB_HIST_SMALL;
 	        break;
             case IDB_HIST_LARGE_COLOR:
-	        info.nButtons = 5;
+	        info.nButtons = 6;
 	        info.nID = IDB_HIST_LARGE;
 	        break;
 	    default:
