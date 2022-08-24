@@ -227,6 +227,7 @@ struct get_prop_value_params
     union
     {
         WCHAR wstr[128];
+        GUID  uuid;
         ULONG ulVal;
     };
 };
