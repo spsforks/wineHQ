@@ -71,6 +71,7 @@
 #include <wine/svcctl.h>
 #include <wine/asm.h>
 #include <wine/debug.h>
+#include <bcrypt.h>
 
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -748,6 +749,152 @@ static void create_hardware_registry_keys(void)
     HeapFree( GetProcessHeap(), 0, power_info );
 }
 
+static unsigned char decode_hex( char c )
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    else if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    else if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    return 0xFF;
+}
+
+static void get_machineid( BYTE *buf )
+{
+    static const char sd_machineid_path[] = "\\??\\unix\\/etc/machine-id";
+    static const char dbus_machineid_path[] = "\\??\\unix\\/var/lib/dbus/machine-id";
+    HANDLE file;
+    char buffer[34];
+    BOOL status;
+    DWORD bytes_read;
+    int i;
+
+    memset( buf, 0, 16 );
+
+    file = CreateFileA( sd_machineid_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
+    if (file == INVALID_HANDLE_VALUE)
+        file = CreateFileA( dbus_machineid_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        WARN( "Could not open machine id file: error %lu\n", GetLastError() );
+        return;
+    }
+    status = ReadFile( file, buffer, sizeof(buffer), &bytes_read, NULL );
+    CloseHandle( file );
+    if (!status)
+    {
+        WARN( "Could not read machine id file: error %lu\n", GetLastError() );
+        return;
+    }
+    if (!(bytes_read == 32 || (bytes_read == 33 && buffer[32] == '\n')))
+    {
+        WARN( "Wrong machine id file size\n" );
+        return;
+    }
+
+    for (i = 0; i < 16; i++)
+    {
+        unsigned char high_nibble, low_nibble;
+        high_nibble = decode_hex( buffer[i * 2] );
+        low_nibble = decode_hex( buffer[i * 2 + 1] );
+        if (high_nibble == 0xFF || low_nibble == 0xFF)
+        {
+            WARN( "Failed to decode machine id byte %d\n", i );
+            memset( buf, 0, i );
+            return;
+        }
+        buf[i] = (high_nibble << 4) | low_nibble;
+    }
+}
+
+#define MACHINEID_HASH_ALG BCRYPT_SHA1_ALGORITHM
+#define MACHINEID_HASH_ALG_SIZE 20
+
+static void get_machineid_hash( BYTE *buf )
+{
+    static const char salt[8] = "WINESALT";
+    BYTE input[16 + sizeof(salt)];
+    BCRYPT_ALG_HANDLE alg;
+    NTSTATUS status;
+    BYTE hash[MACHINEID_HASH_ALG_SIZE];
+    int i;
+
+    memset( buf, 0, 8 );
+
+    get_machineid( input );
+    memcpy( &input[sizeof(input) - sizeof(salt)], salt, sizeof(salt) );
+
+    status = BCryptOpenAlgorithmProvider( &alg, MACHINEID_HASH_ALG, NULL, 0 );
+    if (!status)
+    {
+        status = BCryptHash( alg, NULL, 0, input, sizeof(input), hash, sizeof(hash) );
+        BCryptCloseAlgorithmProvider( alg, 0 );
+    }
+    if (status)
+    {
+        WARN( "Couldn't hash machine id: error %lx\n", status );
+        return;
+    }
+
+    for (i = 8; i < ARRAY_SIZE(hash); i++)
+        hash[i % 8] ^= hash[i];
+    memcpy( buf, hash, 8 );
+    return;
+}
+
+static void get_productid( WCHAR *buf )
+{
+    BYTE machineid[8];
+    DWORD mid_lodword, mid_hidword;
+    unsigned int c, e;
+    unsigned int tmp, check_digit;
+
+    get_machineid_hash( machineid );
+    /* Derived from "Inside Windows Product Activation" by Fully Licensed GmbH,
+       available at http://www.licenturion.com/xp/ */
+    mid_lodword = (machineid[3] << 24U) | (machineid[2] << 16U) | (machineid[1] << 8U) | machineid[0];
+    mid_hidword = (machineid[7] << 24U) | (machineid[6] << 16U) | (machineid[5] << 8U) | machineid[4];
+    c = (unsigned int)(mid_lodword * 999999ULL / 0xFFFFFFFF);
+    e = (unsigned int)(mid_hidword *    999ULL / 0xFFFFFFFF);
+
+    tmp = c;
+    check_digit = tmp % 10;
+    tmp = tmp / 10;
+    check_digit += tmp % 10;
+    tmp = tmp / 10;
+    check_digit += tmp % 10;
+    tmp = tmp / 10;
+    check_digit += tmp % 10;
+    tmp = tmp / 10;
+    check_digit += tmp % 10;
+    tmp = tmp / 10;
+    check_digit += tmp;
+    check_digit = 7 - check_digit % 7;
+
+    swprintf( buf, 24, L"55034-OEM-%06u%u-00%03u", c, check_digit, e );
+}
+
+/* create the volatile software registry keys */
+static void create_software_registry_keys(void)
+{
+    WCHAR productid[24];
+    HKEY key;
+
+    get_productid( productid );
+
+    if (!RegCreateKeyW( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion", &key ))
+    {
+        set_reg_value( key, L"ProductId", productid );
+        RegCloseKey( key );
+    }
+
+    if (!RegCreateKeyW( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", &key ))
+    {
+        set_reg_value( key, L"ProductId", productid );
+        RegCloseKey( key );
+    }
+}
 
 /* create the DynData registry keys */
 static void create_dynamic_registry_keys(void)
@@ -1697,6 +1844,7 @@ int __cdecl main( int argc, char *argv[] )
 
     create_user_shared_data();
     create_hardware_registry_keys();
+    create_software_registry_keys();
     create_dynamic_registry_keys();
     create_environment_registry_keys();
     create_computer_name_keys();
