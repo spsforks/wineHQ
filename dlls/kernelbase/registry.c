@@ -3080,35 +3080,82 @@ cleanup:
     return ret;
 }
 
+static void generate_string_uuid(WCHAR *out, DWORD out_size)
+{
+    UUID uuid;
+    ULONG *ptr = (ULONG*)&uuid;
+    LARGE_INTEGER ft;
+    ULONG seed;
+    int i;
+
+    NtQuerySystemTime(&ft);
+    seed = ft.LowPart;
+    for (i = 0; i < sizeof(UUID)/sizeof(ULONG); i++, ptr++)
+        *ptr = RtlUniform(&seed);
+
+    uuid.Data3 &= 0x0fff;
+    uuid.Data3 |= (4 << 12);
+    uuid.Data4[0] &= 0x3f;
+    uuid.Data4[0] |= 0x80;
+
+    swprintf(out, out_size, L"{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", uuid.Data1,
+            uuid.Data2, uuid.Data3, uuid.Data4[0], uuid.Data4[1], uuid.Data4[2], uuid.Data4[3],
+            uuid.Data4[4], uuid.Data4[5], uuid.Data4[6], uuid.Data4[7]);
+}
 
 /******************************************************************************
  * RegLoadAppKeyA (kernelbase.@)
  *
  */
-LSTATUS WINAPI RegLoadAppKeyA(const char *file, HKEY *result, REGSAM sam, DWORD options, DWORD reserved)
+LSTATUS WINAPI RegLoadAppKeyA(const char *filename, HKEY *result, REGSAM sam, DWORD options, DWORD reserved)
 {
-    FIXME("%s %p %lu %lu %lu: stub\n", wine_dbgstr_a(file), result, sam, options, reserved);
+    UNICODE_STRING filenameW;
+    LSTATUS status;
+    TRACE("%s %p %lu %lu %lu\n", wine_dbgstr_a(filename), result, sam, options, reserved);
 
-    if (!file || reserved)
-        return ERROR_INVALID_PARAMETER;
-
-    *result = (HKEY)0xdeadbeef;
-    return ERROR_SUCCESS;
+    RtlCreateUnicodeStringFromAsciiz(&filenameW, filename);
+    status = RegLoadAppKeyW(filenameW.Buffer, result, sam, options, reserved);
+    RtlFreeUnicodeString(&filenameW);
+    return status;
 }
 
 /******************************************************************************
  * RegLoadAppKeyW (kernelbase.@)
  *
  */
-LSTATUS WINAPI RegLoadAppKeyW(const WCHAR *file, HKEY *result, REGSAM sam, DWORD options, DWORD reserved)
+LSTATUS WINAPI RegLoadAppKeyW(const WCHAR *filename, HKEY *result, REGSAM sam, DWORD options, DWORD reserved)
 {
-    FIXME("%s %p %lu %lu %lu: stub\n", wine_dbgstr_w(file), result, sam, options, reserved);
+    NTSTATUS status;
+    WCHAR application_root[13] = L"\\REGISTRY\\A\\";
+    WCHAR rootguid_str[39];
+    WCHAR *destkey_path_tmp;
+    UNICODE_STRING destkey_path, filenameW;
+    OBJECT_ATTRIBUTES destkey, file;
 
-    if (!file || reserved)
+    TRACE("%s %p %lu %lu %lu\n", wine_dbgstr_w(filename), result, sam, options, reserved);
+
+    if (!filename || reserved)
         return ERROR_INVALID_PARAMETER;
 
-    *result = (HKEY)0xdeadbeef;
-    return ERROR_SUCCESS;
+    InitializeObjectAttributes(&destkey, &destkey_path, 0, 0, 0);
+    RtlDosPathNameToNtPathName_U(filename, &filenameW, NULL, NULL);
+    InitializeObjectAttributes(&file, &filenameW, 0, 0, 0);
+
+    generate_string_uuid(rootguid_str, sizeof(rootguid_str));
+
+    destkey_path_tmp = heap_alloc_zero(sizeof(application_root) + sizeof(rootguid_str));
+    wcscat(destkey_path_tmp, application_root);
+    wcscat(destkey_path_tmp, rootguid_str);
+
+    RtlCreateUnicodeString(&destkey_path, destkey_path_tmp);
+    heap_free(destkey_path_tmp);
+
+    status = NtLoadKeyEx(&destkey, &file, REG_APP_HIVE, 0, 0, sam, (HANDLE *)result, 0);
+
+    RtlFreeUnicodeString(&destkey_path);
+    RtlFreeUnicodeString(&filenameW);
+
+    return RtlNtStatusToDosError(status);
 }
 
 
