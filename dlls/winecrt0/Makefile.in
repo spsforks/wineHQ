@@ -15,6 +15,7 @@ C_SRCS = \
 	exe_main.c \
 	exe_wentry.c \
 	exe_wmain.c \
+	finalize.c \
 	register.c \
 	setjmp.c \
 	stub.c \

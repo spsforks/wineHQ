@@ -28,6 +28,7 @@
 #include "winternl.h"
 
 extern int wmain( int argc, WCHAR *argv[] );
+extern void __wine_finalize_dso(void);
 
 static WCHAR **build_argv( const WCHAR *src, int *ret_argc )
 {
@@ -97,5 +98,11 @@ DWORD WINAPI DECLSPEC_HIDDEN __wine_spec_exe_wentry( PEB *peb )
     int argc;
     WCHAR **argv = build_argv( GetCommandLineW(), &argc );
 
-    ExitProcess( wmain( argc, argv ));
+    int ret = wmain( argc, argv );
+
+#ifndef __WINE_PE_BUILD
+    __wine_finalize_dso();
+#endif
+
+    ExitProcess( ret );
 }
