@@ -3654,6 +3654,15 @@ NTSTATUS WINAPI CmUnRegisterCallback(LARGE_INTEGER cookie)
 }
 
 /***********************************************************************
+ *           KeRegisterProcessorChangeCallback  (NTOSKRNL.EXE.@)
+ */
+void * WINAPI KeRegisterProcessorChangeCallback(PROCESSOR_CALLBACK_FUNCTION *function, void *context, ULONG flags)
+{
+    FIXME("(%p %p %lu) stub\n", function, context, flags);
+    return (void *)0xdeadbeef;
+}
+
+/***********************************************************************
  *           IoAttachDevice  (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI IoAttachDevice(DEVICE_OBJECT *source, UNICODE_STRING *target, DEVICE_OBJECT *attached)

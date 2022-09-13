@@ -620,6 +620,7 @@
 @ stub KeReadStateTimer
 @ stub KeRegisterBugCheckCallback
 @ stub KeRegisterBugCheckReasonCallback
+@ stdcall KeRegisterProcessorChangeCallback(ptr ptr long)
 @ stub KeReleaseInterruptSpinLock
 @ stub KeReleaseMutant
 @ stdcall KeReleaseMutex(ptr long)
