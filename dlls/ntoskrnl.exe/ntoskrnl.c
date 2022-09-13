@@ -3663,6 +3663,14 @@ void * WINAPI KeRegisterProcessorChangeCallback(PROCESSOR_CALLBACK_FUNCTION *fun
 }
 
 /***********************************************************************
+ *           KeDeregisterProcessorChangeCallback  (NTOSKRNL.EXE.@)
+ */
+void WINAPI KeDeregisterProcessorChangeCallback(void *handle)
+{
+    FIXME("%p stub\n", handle);
+}
+
+/***********************************************************************
  *           IoAttachDevice  (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI IoAttachDevice(DEVICE_OBJECT *source, UNICODE_STRING *target, DEVICE_OBJECT *attached)

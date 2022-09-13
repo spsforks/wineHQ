@@ -621,6 +621,7 @@
 @ stub KeRegisterBugCheckCallback
 @ stub KeRegisterBugCheckReasonCallback
 @ stdcall KeRegisterProcessorChangeCallback(ptr ptr long)
+@ stdcall KeDeregisterProcessorChangeCallback(ptr)
 @ stub KeReleaseInterruptSpinLock
 @ stub KeReleaseMutant
 @ stdcall KeReleaseMutex(ptr long)
