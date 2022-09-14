@@ -1825,8 +1825,8 @@ struct process_info
 
 /* Load a registry branch from a file */
 @REQ(load_registry)
-    obj_handle_t file;         /* file to load from */
     VARARG(objattr,object_attributes); /* object attributes */
+    VARARG(filename,string); /* file to load name */
 @END
 
 

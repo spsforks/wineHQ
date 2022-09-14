@@ -700,7 +700,6 @@ NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *f
                              HANDLE event, ACCESS_MASK access, HANDLE *roothandle, IO_STATUS_BLOCK *iostatus )
 {
     NTSTATUS ret;
-    HANDLE key;
     data_size_t len;
     struct object_attributes *objattr;
     char *unix_name;
@@ -717,30 +716,29 @@ NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *f
     if (iostatus) FIXME("iostatus is not filled\n");
 
     get_redirect( &new_attr, &nt_name );
-    if (!(ret = nt_to_unix_file_name( &new_attr, &unix_name, FILE_OPEN )))
-    {
-        ret = open_unix_file( &key, unix_name, GENERIC_READ | SYNCHRONIZE,
-                              &new_attr, 0, 0, FILE_OPEN, 0, NULL, 0 );
-        free( unix_name );
-    }
+    ret = nt_to_unix_file_name( &new_attr, &unix_name, FILE_OPEN );
     free( nt_name.Buffer );
 
     if (ret) return ret;
 
-    if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
+    if ((ret = alloc_object_attributes( attr, &objattr, &len )))
+    {
+        free( unix_name );
+        return ret;
+    }
     objattr->attributes |= OBJ_OPENIF | OBJ_CASE_INSENSITIVE;
 
     SERVER_START_REQ( load_registry )
     {
-        req->file = wine_server_obj_handle( key );
         wine_server_add_data( req, objattr, len );
+        wine_server_add_data( req, unix_name, strlen( unix_name ) );
         ret = wine_server_call( req );
         if (ret == STATUS_OBJECT_NAME_EXISTS) ret = STATUS_SUCCESS;
     }
     SERVER_END_REQ;
 
-    NtClose( key );
     free( objattr );
+    free( unix_name );
     return ret;
 }
 

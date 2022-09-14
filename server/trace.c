@@ -2406,8 +2406,8 @@ static void dump_delete_key_value_request( const struct delete_key_value_request
 
 static void dump_load_registry_request( const struct load_registry_request *req )
 {
-    fprintf( stderr, " file=%04x", req->file );
-    dump_varargs_object_attributes( ", objattr=", cur_size );
+    dump_varargs_object_attributes( " objattr=", cur_size );
+    dump_varargs_string( ", filename=", cur_size );
 }
 
 static void dump_unload_registry_request( const struct unload_registry_request *req )

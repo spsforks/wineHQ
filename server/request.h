@@ -1230,7 +1230,6 @@ C_ASSERT( FIELD_OFFSET(struct enum_key_value_reply, namelen) == 16 );
 C_ASSERT( sizeof(struct enum_key_value_reply) == 24 );
 C_ASSERT( FIELD_OFFSET(struct delete_key_value_request, hkey) == 12 );
 C_ASSERT( sizeof(struct delete_key_value_request) == 16 );
-C_ASSERT( FIELD_OFFSET(struct load_registry_request, file) == 12 );
 C_ASSERT( sizeof(struct load_registry_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct unload_registry_request, parent) == 12 );
 C_ASSERT( FIELD_OFFSET(struct unload_registry_request, attributes) == 16 );

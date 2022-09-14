@@ -2360,8 +2360,9 @@ struct delete_key_value_reply
 struct load_registry_request
 {
     struct request_header __header;
-    obj_handle_t file;
     /* VARARG(objattr,object_attributes); */
+    /* VARARG(filename,string); */
+    char __pad_12[4];
 };
 struct load_registry_reply
 {
@@ -6324,7 +6325,7 @@ union generic_reply
 
 /* ### protocol_version begin ### */
 
-#define SERVER_PROTOCOL_VERSION 755
+#define SERVER_PROTOCOL_VERSION 757
 
 /* ### protocol_version end ### */
 

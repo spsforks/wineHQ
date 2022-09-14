@@ -1747,24 +1747,17 @@ static void load_keys( struct key *key, const char *filename, FILE *f, int prefi
 }
 
 /* load a part of the registry from a file */
-static void load_registry( struct key *key, obj_handle_t handle )
+static void load_registry( struct key *key, const char *filename )
 {
-    struct file *file;
-    int fd;
+    FILE *f;
 
-    if (!(file = get_file_obj( current->process, handle, FILE_READ_DATA ))) return;
-    fd = dup( get_file_unix_fd( file ) );
-    release_object( file );
-    if (fd != -1)
+    f = fopen( filename, "r" );
+    if (f)
     {
-        FILE *f = fdopen( fd, "r" );
-        if (f)
-        {
-            load_keys( key, NULL, f, -1 );
-            fclose( f );
-        }
-        else file_set_error();
+        load_keys( key, NULL, f, -1 );
+        fclose( f );
     }
+    else file_set_error();
 }
 
 /* load one of the initial registry files */
@@ -2280,10 +2273,15 @@ DECL_HANDLER(load_registry)
 {
     struct key *key, *parent = NULL;
     struct unicode_str name;
+    const char *req_data;
+    data_size_t req_data_len;
+    char *filename;
     const struct security_descriptor *sd;
     const struct object_attributes *objattr = get_req_object_attributes( &sd, &name, NULL );
 
     if (!objattr) return;
+    req_data = get_req_data_after_objattr( objattr, &req_data_len );
+    if (!req_data) return;
 
     if (!thread_single_check_privilege( current, SeRestorePrivilege ))
     {
@@ -2297,7 +2295,17 @@ DECL_HANDLER(load_registry)
 
     if ((key = create_key( parent, &name, 0, KEY_WOW64_64KEY, 0, sd )))
     {
-        load_registry( key, req->file );
+        if ((filename = malloc( req_data_len + 1 )))
+        {
+            memcpy( filename, req_data, req_data_len );
+            filename[req_data_len] = 0;
+
+            load_registry( key, filename );
+            free( filename );
+        }
+        else
+            set_error( STATUS_NO_MEMORY );
+
         release_object( key );
     }
     if (parent) release_object( parent );
