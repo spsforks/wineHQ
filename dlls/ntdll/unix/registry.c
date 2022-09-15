@@ -696,7 +696,7 @@ NTSTATUS WINAPI NtLoadKey2( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *fi
 /******************************************************************************
  *              NtLoadKeyEx  (NTDLL.@)
  */
-NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *file, ULONG flags, HANDLE trustkey,
+NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *key_attr, OBJECT_ATTRIBUTES *file_attr, ULONG flags, HANDLE trustkey,
                              HANDLE event, ACCESS_MASK access, HANDLE *roothandle, IO_STATUS_BLOCK *iostatus )
 {
     NTSTATUS ret;
@@ -704,9 +704,9 @@ NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *f
     struct object_attributes *objattr;
     char *unix_name;
     UNICODE_STRING nt_name;
-    OBJECT_ATTRIBUTES new_attr = *file;
+    OBJECT_ATTRIBUTES new_attr = *file_attr;
 
-    TRACE( "(%p,%p,0x%x,%p,%p,0x%x,%p,%p)\n", attr, file, flags, trustkey, event, access, roothandle, iostatus );
+    TRACE( "(%p,%p,0x%x,%p,%p,0x%x,%p,%p)\n", key_attr, file_attr, flags, trustkey, event, access, roothandle, iostatus );
 
     if (flags) FIXME( "flags %x not handled\n", flags );
     if (trustkey) FIXME("trustkey parameter not supported\n");
@@ -721,7 +721,7 @@ NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *f
 
     if (ret) return ret;
 
-    if ((ret = alloc_object_attributes( attr, &objattr, &len )))
+    if ((ret = alloc_object_attributes( key_attr, &objattr, &len )))
     {
         free( unix_name );
         return ret;
