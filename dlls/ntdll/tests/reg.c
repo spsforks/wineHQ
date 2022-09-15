@@ -2361,7 +2361,7 @@ static void test_NtRegLoadKeyEx(void)
     /* Test for roothandle parameter with REG_APP_HIVE */
     RtlCreateUnicodeString(&key_pathW, L"\\REGISTRY\\A\\TestKey");
     status = pNtLoadKeyEx(&key_attr, &file_attr, REG_APP_HIVE, NULL, NULL, KEY_READ, &key, NULL);
-    todo_wine ok(status == STATUS_SUCCESS, "got 0x%lx\n", status);
+    ok(status == STATUS_SUCCESS, "got 0x%lx\n", status);
     todo_wine ok(key != NULL, "key is null\n");
     if (key) pNtClose(key);
     RtlFreeUnicodeString(&key_pathW);

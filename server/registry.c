@@ -121,6 +121,9 @@ struct key_value
 /* the root of the registry tree */
 static struct key *root_key;
 
+/* the application hives key */
+static struct key *application_hives;
+
 static const timeout_t ticks_1601_to_1970 = (timeout_t)86400 * (369 * 365 + 89) * TICKS_PER_SEC;
 static const timeout_t save_period = 30 * -TICKS_PER_SEC;  /* delay between periodic saves */
 static struct timeout_user *save_timeout_user;  /* saving timer */
@@ -1846,10 +1849,13 @@ void init_registry(void)
                                     'C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
                                     'P','e','r','f','l','i','b','\\',
                                     '0','0','9'};
+    static const WCHAR application[] = {'A'};
+
     static const struct unicode_str root_name = { REGISTRY, sizeof(REGISTRY) };
     static const struct unicode_str HKLM_name = { HKLM, sizeof(HKLM) };
     static const struct unicode_str HKU_name = { HKU_default, sizeof(HKU_default) };
     static const struct unicode_str perflib_name = { perflib, sizeof(perflib) };
+    static const struct unicode_str application_name = { application, sizeof(application) };
 
     WCHAR *current_user_path;
     struct unicode_str current_user_str;
@@ -1926,6 +1932,11 @@ void init_registry(void)
         key->flags |= KEY_PREDEF;
         release_object( key );
     }
+
+    /* create application hive */
+    if (!(application_hives = create_key_recursive( root_key, &application_name, current_time )))
+        fatal_error( "could not create \\REGISTRY\\A registry key\n" );
+    release_object( application_hives );
 
     release_object( hklm );
     release_object( hkcu );
