@@ -1043,36 +1043,36 @@ static BOOL compare_figure(struct d2d1_test_context *ctx, unsigned int x, unsign
     return diff <= max_diff;
 }
 
-static ID3D10Device1 *create_d3d10_device(void)
+static ID3D10Device1 *create_d3d10_device(D3D10_CREATE_DEVICE_FLAG flag)
 {
     ID3D10Device1 *device;
 
     if (SUCCEEDED(D3D10CreateDevice1(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL,
-            D3D10_CREATE_DEVICE_BGRA_SUPPORT, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
+            flag, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
         return device;
     if (SUCCEEDED(D3D10CreateDevice1(NULL, D3D10_DRIVER_TYPE_WARP, NULL,
-            D3D10_CREATE_DEVICE_BGRA_SUPPORT, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
+            flag, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
         return device;
     if (SUCCEEDED(D3D10CreateDevice1(NULL, D3D10_DRIVER_TYPE_REFERENCE, NULL,
-            D3D10_CREATE_DEVICE_BGRA_SUPPORT, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
+            flag, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &device)))
         return device;
 
     return NULL;
 }
 
-static ID3D11Device *create_d3d11_device(void)
+static ID3D11Device *create_d3d11_device(D3D11_CREATE_DEVICE_FLAG flag)
 {
     D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
     ID3D11Device *device;
 
     if (SUCCEEDED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
+            flag, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
         return device;
     if (SUCCEEDED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL,
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
+            flag, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
         return device;
     if (SUCCEEDED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_REFERENCE, NULL,
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
+            flag, &level, 1, D3D11_SDK_VERSION, &device, NULL, NULL)))
         return device;
 
     return NULL;
@@ -1087,14 +1087,14 @@ static IDXGIDevice *create_device(BOOL d3d11)
 
     if (d3d11)
     {
-        if (!(d3d11_device = create_d3d11_device()))
+        if (!(d3d11_device = create_d3d11_device(D3D11_CREATE_DEVICE_BGRA_SUPPORT)))
             return NULL;
         hr = ID3D11Device_QueryInterface(d3d11_device, &IID_IDXGIDevice, (void **)&device);
         ID3D11Device_Release(d3d11_device);
     }
     else
     {
-        if (!(d3d10_device = create_d3d10_device()))
+        if (!(d3d10_device = create_d3d10_device(D3D10_CREATE_DEVICE_BGRA_SUPPORT)))
             return NULL;
         hr = ID3D10Device1_QueryInterface(d3d10_device, &IID_IDXGIDevice, (void **)&device);
         ID3D10Device1_Release(d3d10_device);
@@ -6530,6 +6530,255 @@ static void test_bitmap_target(BOOL d3d11)
     ID2D1BitmapRenderTarget_Release(rt);
     ID2D1DCRenderTarget_Release(dc_rt);
 
+    ID2D1Factory_Release(factory);
+}
+
+static void test_wic_bitmap_target(BOOL d3d11)
+{
+    D2D1_CREATION_PROPERTIES properties = {0};
+    D2D1_RENDER_TARGET_PROPERTIES desc;
+    IWICImagingFactory *wic_factory;
+    struct d2d1_test_context ctx;
+    ID3D10Device1 *d3d10_device;
+    ID3D11Device *d3d11_device;
+    IDXGIDevice *dxgi_device;
+    ID2D1Device *d2d_device;
+    IWICBitmap *wic_bitmap;
+    ID2D1Factory *factory;
+    ID2D1RenderTarget *rt;
+    unsigned int i, j, k;
+    HRESULT hr;
+
+    static const WICPixelFormatGUID *wic_formats[] =
+    {
+        &GUID_WICPixelFormatDontCare,
+        &GUID_WICPixelFormat1bppIndexed,
+        &GUID_WICPixelFormat2bppIndexed,
+        &GUID_WICPixelFormat4bppIndexed,
+        &GUID_WICPixelFormat8bppIndexed,
+        &GUID_WICPixelFormatBlackWhite,
+        &GUID_WICPixelFormat2bppGray,
+        &GUID_WICPixelFormat4bppGray,
+        &GUID_WICPixelFormat8bppGray,
+        &GUID_WICPixelFormat16bppGray,
+        &GUID_WICPixelFormat8bppAlpha,
+        &GUID_WICPixelFormat16bppBGR555,
+        &GUID_WICPixelFormat16bppBGR565,
+        &GUID_WICPixelFormat16bppBGRA5551,
+        &GUID_WICPixelFormat24bppBGR,
+        &GUID_WICPixelFormat24bppRGB,
+        &GUID_WICPixelFormat32bppBGR,
+        &GUID_WICPixelFormat32bppBGRA,
+        &GUID_WICPixelFormat32bppPBGRA,
+        &GUID_WICPixelFormat32bppRGB,
+        &GUID_WICPixelFormat32bppRGBA,
+        &GUID_WICPixelFormat32bppPRGBA,
+        &GUID_WICPixelFormat32bppGrayFloat,
+        &GUID_WICPixelFormat48bppRGB,
+        &GUID_WICPixelFormat48bppBGR,
+        &GUID_WICPixelFormat64bppRGB,
+        &GUID_WICPixelFormat64bppRGBA,
+        &GUID_WICPixelFormat64bppBGRA,
+        &GUID_WICPixelFormat64bppPRGBA,
+        &GUID_WICPixelFormat64bppPBGRA,
+        &GUID_WICPixelFormat16bppGrayFixedPoint,
+        &GUID_WICPixelFormat32bppBGR101010,
+        &GUID_WICPixelFormat48bppRGBFixedPoint,
+        &GUID_WICPixelFormat48bppBGRFixedPoint,
+        &GUID_WICPixelFormat96bppRGBFixedPoint,
+        &GUID_WICPixelFormat96bppRGBFloat,
+        &GUID_WICPixelFormat128bppRGBAFloat,
+        &GUID_WICPixelFormat128bppPRGBAFloat,
+        &GUID_WICPixelFormat128bppRGBFloat,
+        &GUID_WICPixelFormat32bppCMYK,
+        &GUID_WICPixelFormat64bppRGBAFixedPoint,
+        &GUID_WICPixelFormat64bppBGRAFixedPoint,
+        &GUID_WICPixelFormat64bppRGBFixedPoint,
+        &GUID_WICPixelFormat128bppRGBAFixedPoint,
+        &GUID_WICPixelFormat128bppRGBFixedPoint,
+        &GUID_WICPixelFormat64bppRGBAHalf,
+        &GUID_WICPixelFormat64bppPRGBAHalf,
+        &GUID_WICPixelFormat64bppRGBHalf,
+        &GUID_WICPixelFormat48bppRGBHalf,
+        &GUID_WICPixelFormat32bppRGBE,
+        &GUID_WICPixelFormat16bppGrayHalf,
+        &GUID_WICPixelFormat32bppGrayFixedPoint,
+        &GUID_WICPixelFormat32bppRGBA1010102,
+        &GUID_WICPixelFormat32bppRGBA1010102XR,
+        &GUID_WICPixelFormat32bppR10G10B10A2,
+        &GUID_WICPixelFormat32bppR10G10B10A2HDR10,
+        &GUID_WICPixelFormat64bppCMYK,
+        &GUID_WICPixelFormat24bpp3Channels,
+        &GUID_WICPixelFormat32bpp4Channels,
+        &GUID_WICPixelFormat40bpp5Channels,
+        &GUID_WICPixelFormat48bpp6Channels,
+        &GUID_WICPixelFormat56bpp7Channels,
+        &GUID_WICPixelFormat64bpp8Channels,
+        &GUID_WICPixelFormat48bpp3Channels,
+        &GUID_WICPixelFormat64bpp4Channels,
+        &GUID_WICPixelFormat80bpp5Channels,
+        &GUID_WICPixelFormat96bpp6Channels,
+        &GUID_WICPixelFormat112bpp7Channels,
+        &GUID_WICPixelFormat128bpp8Channels,
+        &GUID_WICPixelFormat40bppCMYKAlpha,
+        &GUID_WICPixelFormat80bppCMYKAlpha,
+        &GUID_WICPixelFormat32bpp3ChannelsAlpha,
+        &GUID_WICPixelFormat40bpp4ChannelsAlpha,
+        &GUID_WICPixelFormat48bpp5ChannelsAlpha,
+        &GUID_WICPixelFormat56bpp6ChannelsAlpha,
+        &GUID_WICPixelFormat64bpp7ChannelsAlpha,
+        &GUID_WICPixelFormat72bpp8ChannelsAlpha,
+        &GUID_WICPixelFormat64bpp3ChannelsAlpha,
+        &GUID_WICPixelFormat80bpp4ChannelsAlpha,
+        &GUID_WICPixelFormat96bpp5ChannelsAlpha,
+        &GUID_WICPixelFormat112bpp6ChannelsAlpha,
+        &GUID_WICPixelFormat128bpp7ChannelsAlpha,
+        &GUID_WICPixelFormat144bpp8ChannelsAlpha,
+        &GUID_WICPixelFormat8bppY,
+        &GUID_WICPixelFormat8bppCb,
+        &GUID_WICPixelFormat8bppCr,
+        &GUID_WICPixelFormat16bppCbCr,
+        &GUID_WICPixelFormat16bppYQuantizedDctCoefficients,
+        &GUID_WICPixelFormat16bppCbQuantizedDctCoefficients,
+        &GUID_WICPixelFormat16bppCrQuantizedDctCoefficients,
+    };
+
+    if (!init_test_context(&ctx, d3d11))
+        return;
+    release_test_context(&ctx);
+
+    /* Test that d2d devices must be created from a d3d10/11 device with BGA support */
+    if (d3d11)
+    {
+        d3d11_device = create_d3d11_device(D3D11_CREATE_DEVICE_SINGLETHREADED);
+        hr = ID3D11Device_QueryInterface(d3d11_device, &IID_IDXGIDevice, (void **)&dxgi_device);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+        ID3D11Device_Release(d3d11_device);
+    }
+    else
+    {
+        d3d10_device = create_d3d10_device(D3D10_CREATE_DEVICE_SINGLETHREADED);
+        hr = ID3D10Device1_QueryInterface(d3d10_device, &IID_IDXGIDevice, (void **)&dxgi_device);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+        ID3D10Device1_Release(d3d10_device);
+    }
+    hr = pD2D1CreateDevice(dxgi_device, &properties, &d2d_device);
+    todo_wine
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#lx.\n", hr);
+    if (SUCCEEDED(hr))
+        ID2D1Device_Release(d2d_device);
+    IDXGIDevice_Release(dxgi_device);
+
+    /* Format tests */
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL,
+            (void **)&factory);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    hr = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IWICImagingFactory, (void **)&wic_factory);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    desc.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+    desc.dpiX = 96.0f;
+    desc.dpiY = 96.0f;
+    desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
+    desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
+
+    for (i = 0; i < ARRAY_SIZE(wic_formats); ++i)
+    {
+        winetest_push_context("bitmap %u", i);
+
+        hr = IWICImagingFactory_CreateBitmap(wic_factory, 16, 16, wic_formats[i],
+                WICBitmapCacheOnDemand, &wic_bitmap);
+        if (FAILED(hr))
+        {
+            winetest_pop_context();
+            continue;
+        }
+
+        for (j = DXGI_FORMAT_UNKNOWN; j <= DXGI_FORMAT_V408; ++j)
+        {
+            if (j > DXGI_FORMAT_B4G4R4A4_UNORM && j < DXGI_FORMAT_P208)
+                continue;
+
+            for (k = D2D1_ALPHA_MODE_UNKNOWN; k <= D2D1_ALPHA_MODE_IGNORE; ++k)
+            {
+                winetest_push_context("format %#x alpha %u", j, k);
+
+                desc.pixelFormat.format = j;
+                desc.pixelFormat.alphaMode = k;
+                hr = ID2D1Factory_CreateWicBitmapRenderTarget(factory, wic_bitmap, &desc, &rt);
+                if (((wic_formats[i] == &GUID_WICPixelFormat8bppAlpha)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_A8_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED || k == D2D1_ALPHA_MODE_STRAIGHT))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat32bppBGR)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_B8G8R8A8_UNORM || j == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat32bppPBGRA)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_B8G8R8A8_UNORM || j == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat32bppRGB)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R8G8B8A8_UNORM || j == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat32bppPRGBA)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R8G8B8A8_UNORM || j == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat64bppRGB)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R16G16B16A16_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat64bppPRGBA)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R16G16B16A16_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat128bppPRGBAFloat)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R32G32B32A32_FLOAT)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat128bppRGBFloat)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R32G32B32A32_FLOAT)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat64bppPRGBAHalf)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R16G16B16A16_FLOAT)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat64bppRGBHalf)
+                        && (j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R16G16B16A16_FLOAT)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE)))
+                    todo_wine_if(hr == D2DERR_UNSUPPORTED_PIXEL_FORMAT)
+                    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+                else if (wic_formats[i] == &GUID_WICPixelFormat8bppAlpha
+                        || wic_formats[i] == &GUID_WICPixelFormat32bppBGR
+                        || wic_formats[i] == &GUID_WICPixelFormat32bppPBGRA
+                        || wic_formats[i] == &GUID_WICPixelFormat32bppRGB
+                        || wic_formats[i] == &GUID_WICPixelFormat32bppPRGBA
+                        || wic_formats[i] == &GUID_WICPixelFormat64bppRGB
+                        || wic_formats[i] == &GUID_WICPixelFormat64bppPRGBA
+                        || wic_formats[i] == &GUID_WICPixelFormat128bppPRGBAFloat
+                        || wic_formats[i] == &GUID_WICPixelFormat128bppRGBFloat
+                        || wic_formats[i] == &GUID_WICPixelFormat64bppPRGBAHalf
+                        || wic_formats[i] == &GUID_WICPixelFormat64bppRGBHalf
+                        || ((wic_formats[i] == &GUID_WICPixelFormat32bppRGBA1010102)
+                        && !((j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R10G10B10A2_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_PREMULTIPLIED)))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat8bppY)
+                        && !((j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R8_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE)))
+                        || ((wic_formats[i] == &GUID_WICPixelFormat16bppCbCr)
+                        && !((j == DXGI_FORMAT_UNKNOWN || j == DXGI_FORMAT_R8G8_UNORM)
+                        && (k == D2D1_ALPHA_MODE_UNKNOWN || k == D2D1_ALPHA_MODE_IGNORE))))
+                    ok(hr == E_INVALIDARG || broken(hr == D2DERR_UNSUPPORTED_PIXEL_FORMAT
+                            && wic_formats[i] == &GUID_WICPixelFormat32bppRGBA1010102), "Got unexpected hr %#lx.\n", hr);
+                else
+                    ok(hr == D2DERR_UNSUPPORTED_PIXEL_FORMAT, "Got unexpected hr %#lx.\n", hr);
+                if (SUCCEEDED(hr))
+                    ID2D1RenderTarget_Release(rt);
+
+                winetest_pop_context();
+            }
+        }
+
+        IWICBitmap_Release(wic_bitmap);
+        winetest_pop_context();
+    }
+
+    IWICImagingFactory_Release(wic_factory);
     ID2D1Factory_Release(factory);
 }
 
@@ -13398,6 +13647,7 @@ START_TEST(d2d1)
     queue_test(test_dc_target);
     queue_test(test_hwnd_target);
     queue_test(test_bitmap_target);
+    queue_test(test_wic_bitmap_target);
     queue_d3d10_test(test_desktop_dpi);
     queue_d3d10_test(test_stroke_style);
     queue_test(test_gradient);
