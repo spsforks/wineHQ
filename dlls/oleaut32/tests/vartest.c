@@ -249,7 +249,7 @@ typedef struct IRecordInfoImpl
     unsigned int recordclear;
     unsigned int getsize;
     unsigned int recordcopy;
-    struct __tagBRECORD *rec;
+    void *validsrc;
 } IRecordInfoImpl;
 
 static inline IRecordInfoImpl *impl_from_IRecordInfo(IRecordInfo *iface)
@@ -299,6 +299,8 @@ static HRESULT WINAPI RecordInfo_RecordClear(IRecordInfo *iface, void *data)
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->recordclear++;
+    if(data == This->validsrc)
+        This->validsrc = NULL; /* not valid anymore, now that it's been cleared */
     return S_OK;
 }
 
@@ -306,7 +308,7 @@ static HRESULT WINAPI RecordInfo_RecordCopy(IRecordInfo *iface, void *src, void 
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->recordcopy++;
-    ok(src == (void*)0xdeadbeef, "wrong src pointer %p\n", src);
+    ok(This->validsrc && (src == This->validsrc), "wrong src pointer %p\n", src);
     return S_OK;
 }
 
@@ -891,7 +893,6 @@ static const IMallocSpyVtbl IMallocSpyImpl_vtbl =
 
 static void test_VariantClear(void)
 {
-  struct __tagBRECORD *rec;
   IRecordInfoImpl *recinfo;
   HRESULT hres;
   VARIANTARG v;
@@ -1020,13 +1021,11 @@ static void test_VariantClear(void)
   /* RECORD */
   recinfo = get_test_recordinfo();
   V_VT(&v) = VT_RECORD;
-  rec = &V_UNION(&v, brecVal);
-  rec->pRecInfo = &recinfo->IRecordInfo_iface;
-  rec->pvRecord = (void*)0xdeadbeef;
+  V_RECORDINFO(&v) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&v) = (void*)0xdeadbeef;
   malloc_spy.validptr = (void*)0xdeadbeef;
   recinfo->recordclear = 0;
   recinfo->ref = 2;
-  recinfo->rec = rec;
   hres = VariantClear(&v);
   ok(hres == S_OK, "ret %08lx\n", hres);
   ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
@@ -1056,7 +1055,6 @@ static void test_VariantClear(void)
 
 static void test_VariantCopy(void)
 {
-  struct __tagBRECORD *rec;
   IRecordInfoImpl *recinfo;
   VARIANTARG vSrc, vDst;
   VARTYPE vt;
@@ -1185,20 +1183,18 @@ static void test_VariantCopy(void)
   V_VT(&vDst) = VT_EMPTY;
 
   V_VT(&vSrc) = VT_RECORD;
-  rec = &V_UNION(&vSrc, brecVal);
-  rec->pRecInfo = &recinfo->IRecordInfo_iface;
-  rec->pvRecord = (void*)0xdeadbeef;
+  V_RECORDINFO(&vSrc) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&vSrc) = (void*)0xdeadbeef;
 
   recinfo->recordclear = 0;
   recinfo->recordcopy = 0;
   recinfo->getsize = 0;
-  recinfo->rec = rec;
+  recinfo->validsrc = (void*)0xdeadbeef;
   hres = VariantCopy(&vDst, &vSrc);
   ok(hres == S_OK, "ret %08lx\n", hres);
 
-  rec = &V_UNION(&vDst, brecVal);
-  ok(rec->pvRecord != (void*)0xdeadbeef && rec->pvRecord != NULL, "got %p\n", rec->pvRecord);
-  ok(rec->pRecInfo == &recinfo->IRecordInfo_iface, "got %p\n", rec->pRecInfo);
+  ok(V_RECORD(&vDst) != (void*)0xdeadbeef && V_RECORD(&vDst) != NULL, "got %p\n", V_RECORD(&vDst));
+  ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
   ok(recinfo->getsize == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->recordcopy == 1, "got %d\n", recinfo->recordclear);
 
