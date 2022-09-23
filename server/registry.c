@@ -90,6 +90,7 @@ struct key
     unsigned int      flags;       /* flags */
     timeout_t         modif;       /* last modification time */
     struct list       notify_list; /* list of notifications */
+    char             *filename;    /* loaded file name */
 };
 
 /* key flags */
@@ -649,34 +650,6 @@ static int key_close_handle( struct object *obj, struct process *process, obj_ha
     return 1;  /* ok to close */
 }
 
-static void key_destroy( struct object *obj )
-{
-    int i;
-    struct list *ptr;
-    struct key *key = (struct key *)obj;
-    assert( obj->ops == &key_ops );
-
-    free( key->class );
-    for (i = 0; i <= key->last_value; i++)
-    {
-        free( key->values[i].name );
-        free( key->values[i].data );
-    }
-    free( key->values );
-    for (i = 0; i <= key->last_subkey; i++)
-    {
-        key->subkeys[i]->obj.name->parent = NULL;
-        release_object( key->subkeys[i] );
-    }
-    free( key->subkeys );
-    /* unconditionally notify everything waiting on this key */
-    while ((ptr = list_head( &key->notify_list )))
-    {
-        struct notify *notify = LIST_ENTRY( ptr, struct notify, entry );
-        do_notification( key, notify, 1 );
-    }
-}
-
 /* allocate a key object */
 static struct key *create_key_object( struct object *parent, const struct unicode_str *name,
                                       unsigned int attributes, unsigned int options, timeout_t modif,
@@ -702,6 +675,7 @@ static struct key *create_key_object( struct object *parent, const struct unicod
             key->last_value  = -1;
             key->values      = NULL;
             key->modif       = modif;
+            key->filename    = NULL;
             list_init( &key->notify_list );
 
             if (options & REG_OPTION_CREATE_LINK) key->flags |= KEY_SYMLINK;
@@ -1763,6 +1737,36 @@ static void load_registry( struct key *key, const char *filename )
     else file_set_error();
 }
 
+static obj_handle_t load_app_registry( struct key *key, const char *filename, unsigned int access, unsigned int attributes )
+{
+    obj_handle_t handle;
+
+    /* check if we are loading in \REGISTRY\A */
+    if ( key->obj.name->parent != &application_hives->obj )
+    {
+        set_error( STATUS_PRIVILEGE_NOT_HELD );
+        return 0;
+    }
+
+    load_registry( key, filename );
+    if (get_error())
+    {
+        delete_key( key, 1 );
+        return 0;
+    }
+
+    key->filename = strdup( filename );
+    if (!key->filename)
+    {
+        delete_key( key, 1 );
+        set_error( STATUS_NO_MEMORY );
+        return 0;
+    }
+
+    handle = alloc_handle( current->process, key, access, attributes );
+    return handle;
+}
+
 /* load one of the initial registry files */
 static int load_init_registry_from_file( const char *filename, struct key *key )
 {
@@ -2123,6 +2127,48 @@ void flush_registry(void)
     if (fchdir( server_dir_fd ) == -1) fatal_error( "chdir to server dir: %s\n", strerror( errno ));
 }
 
+static void key_destroy( struct object *obj )
+{
+    int i;
+    FILE *file;
+    struct list *ptr;
+    struct key *key = (struct key *)obj;
+    assert( obj->ops == &key_ops );
+
+    if (key->filename)
+    {
+        file = fopen( key->filename, "w" );
+        if (file)
+        {
+            save_all_subkeys( key, file );
+            fclose( file );
+        }
+
+        delete_key( key, 1 );
+        free( key->filename );
+    }
+
+    free( key->class );
+    for (i = 0; i <= key->last_value; i++)
+    {
+        free( key->values[i].name );
+        free( key->values[i].data );
+    }
+    free( key->values );
+    for (i = 0; i <= key->last_subkey; i++)
+    {
+        key->subkeys[i]->obj.name->parent = NULL;
+        release_object( key->subkeys[i] );
+    }
+    free( key->subkeys );
+    /* unconditionally notify everything waiting on this key */
+    while ((ptr = list_head( &key->notify_list )))
+    {
+        struct notify *notify = LIST_ENTRY( ptr, struct notify, entry );
+        do_notification( key, notify, 1 );
+    }
+}
+
 /* determine if the thread is wow64 (32-bit client running on 64-bit prefix) */
 static int is_wow64_thread( struct thread *thread )
 {
@@ -2294,7 +2340,7 @@ DECL_HANDLER(load_registry)
     req_data = get_req_data_after_objattr( objattr, &req_data_len );
     if (!req_data) return;
 
-    if (!thread_single_check_privilege( current, SeRestorePrivilege ))
+    if (!(req->flags & REG_APP_HIVE) && !thread_single_check_privilege( current, SeRestorePrivilege ))
     {
         set_error( STATUS_PRIVILEGE_NOT_HELD );
         return;
@@ -2311,7 +2357,11 @@ DECL_HANDLER(load_registry)
             memcpy( filename, req_data, req_data_len );
             filename[req_data_len] = 0;
 
-            load_registry( key, filename );
+            if (req->flags & REG_APP_HIVE)
+                reply->hkey = load_app_registry( key, filename, req->access, objattr->attributes );
+            else
+                load_registry( key, filename );
+
             free( filename );
         }
         else
