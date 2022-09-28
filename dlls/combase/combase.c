@@ -2131,6 +2131,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                     case PENDINGMSG_CANCELCALL:
                         WARN("call canceled\n");
                         hr = RPC_E_CALL_CANCELED;
+                        goto done;
                         break;
                     case PENDINGMSG_WAITNOPROCESS:
                     case PENDINGMSG_WAITDEFPROCESS:
@@ -2192,6 +2193,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
         }
         break;
     }
+done:
     if (post_quit) PostQuitMessage(exit_code);
 
     TRACE("-- %#lx\n", hr);
