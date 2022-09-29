@@ -2038,11 +2038,34 @@ HRESULT WINAPI CoRevokeInitializeSpy(ULARGE_INTEGER cookie)
 
 static BOOL com_peek_message(struct apartment *apt, MSG *msg)
 {
-    /* First try to retrieve messages for incoming COM calls to the apartment window */
-    return (apt->win && PeekMessageW(msg, apt->win, 0, 0, PM_REMOVE | PM_NOYIELD)) ||
-            /* Next retrieve other messages necessary for the app to remain responsive */
-            PeekMessageW(msg, NULL, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE | PM_NOYIELD) ||
-            PeekMessageW(msg, NULL, 0, 0, PM_QS_PAINT | PM_QS_SENDMESSAGE | PM_REMOVE | PM_NOYIELD);
+    BOOL PeekMessage_RPC;
+    /* This first peek (and no other) must be "without filtering messages" in order to reset QS_ALLPOSTMESSAGE */
+    if (apt->win)
+    {
+        /* Try to retrieve messages for incoming COM calls to the apartment window.
+         * peeking at a specific hWnd doesn't count as filtering, so this clears QS_ALLPOSTMESSAGE. */
+        PeekMessage_RPC = PeekMessageW(msg, apt->win, 0, 0, PM_REMOVE | PM_NOYIELD);
+    }
+    else
+    {
+        /* Reset QS_ALLPOSTMESSAGE without removing anything from the queue. */
+        PeekMessageW(NULL, NULL, 0, 0, PM_QS_POSTMESSAGE | PM_NOREMOVE | PM_NOYIELD);
+        PeekMessage_RPC = FALSE;
+    }
+
+    return PeekMessage_RPC ||
+            /* Next retrieve other messages necessary for the app to remain responsive.
+             * These subsequent peeks must all be filtered; clearing the queue status again could
+             * prevent newly-posted messages that match earlier PeekMessage calls from waking MsgWait. */
+            PeekMessageW(msg, NULL, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE | PM_NOYIELD) || /* filters by WM_DDE_* */
+            PeekMessageW(msg, NULL, 0, 0, PM_QS_PAINT | PM_QS_SENDMESSAGE | PM_REMOVE | PM_NOYIELD); /* filters by PM_QS_*, excluding POSTMESSAGE */
+
+    /* When com_peek_message returns FALSE, it cleared QS_ALLPOSTMESSAGE and subsequently found nothing interesting
+     * Caller may use MsgWaitForMultipleObjects(PM_QS_ALLPOSTMESSAGE) to wait for new activity.
+     *
+     * When it returns TRUE, *msg contains the next message that should be dispatched,
+     * The queue contains un-examined messages, so com_peek_message should be called again
+     * (to finish draining it) before using MsgWaitForMultipleObjects */
 }
 
 /***********************************************************************
@@ -2140,13 +2163,6 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                          * from the 16-bit world. */
                         break;
                     }
-                }
-
-                if (!apt->win)
-                {
-                    /* If window is NULL on apartment, peek at messages so that it will not trigger
-                     * MsgWaitForMultipleObjects next time. */
-                    PeekMessageW(NULL, NULL, 0, 0, PM_QS_POSTMESSAGE | PM_NOREMOVE | PM_NOYIELD);
                 }
 
                 /* Some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
