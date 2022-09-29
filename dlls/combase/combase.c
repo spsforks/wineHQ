@@ -2186,6 +2186,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
             hr = HRESULT_FROM_WIN32(GetLastError());
             break;
         default:
+            hr = S_OK;
             *index = res;
             break;
         }
