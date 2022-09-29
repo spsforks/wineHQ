@@ -2706,6 +2706,18 @@ static LRESULT CALLBACK cowait_window_proc(HWND hwnd, UINT msg, WPARAM wparam, L
         cowait_msgs[cowait_msgs_last++] = msg;
     if(msg == WM_DDE_FIRST)
         return 6;
+    if(msg == WM_DDE_EXECUTE && lparam)
+    {
+        const char* command = (const char *)GlobalLock((HGLOBAL)lparam);
+        if(strcmp(command,"[apc]") == 0)
+            QueueUserAPC(apc_test_proc, GetCurrentThread(), 0);
+        else if(strcmp(command,"[postmessage]") == 0)
+            PostMessageA(hwnd,msg,wparam,lparam); /* post the same message again (trigges livelock) */
+        else if(strcmp(command,"[semaphore]") == 0)
+            ReleaseSemaphore(GetPropA(hwnd,"semaphore"), 1, NULL);
+        GlobalUnlock((HGLOBAL)lparam);
+        return 0;
+    }
     return DefWindowProcA(hwnd, msg, wparam, lparam);
 }
 
@@ -2848,6 +2860,15 @@ static DWORD CALLBACK test_CoWaitForMultipleHandles_thread(LPVOID arg)
     return 0;
 }
 
+static HGLOBAL globalalloc_string(const char *s) {
+    UINT len = strlen(s);
+    HGLOBAL ret = GlobalAlloc(GMEM_FIXED,len+1);
+    void *ptr = GlobalLock(ret);
+    strcpy(ptr,s);
+    GlobalUnlock(ret);
+    return ret;
+}
+
 static void test_CoWaitForMultipleHandles(void)
 {
     HANDLE handles[2], thread;
@@ -2857,6 +2878,9 @@ static void test_CoWaitForMultipleHandles(void)
     HRESULT hr;
     HWND hWnd;
     MSG msg;
+    HGLOBAL execute_apc = globalalloc_string("[apc]");
+    HGLOBAL execute_postmessage = globalalloc_string("[postmessage]");
+    HGLOBAL execute_semaphore = globalalloc_string("[semaphore]");
 
     hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     ok(hr == S_OK, "CoInitializeEx failed with error 0x%08lx\n", hr);
@@ -2878,6 +2902,8 @@ static void test_CoWaitForMultipleHandles(void)
     ok(handles[0] != 0, "CreateSemaphoreA failed %lu\n", GetLastError());
     handles[1] = CreateSemaphoreA(NULL, 1, 1, NULL);
     ok(handles[1] != 0, "CreateSemaphoreA failed %lu\n", GetLastError());
+
+    SetPropA(hWnd,"semaphore",handles[0]);
 
     /* test without flags */
 
@@ -3225,6 +3251,10 @@ static void test_CoWaitForMultipleHandles(void)
 
     CoUninitialize();
 
+    RemovePropA(hWnd,"semaphore");
+    GlobalFree(execute_apc);
+    GlobalFree(execute_postmessage);
+    GlobalFree(execute_semaphore);
     CloseHandle(handles[0]);
     CloseHandle(handles[1]);
     DestroyWindow(hWnd);
