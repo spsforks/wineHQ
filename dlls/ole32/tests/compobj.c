@@ -2953,6 +2953,17 @@ static void test_CoWaitForMultipleHandles(void)
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
     ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
 
+    /* test CoWaitForMultipleHandles stops pumping messages as soon as its handles are signaled */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    hr = CoWaitForMultipleHandles(0, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_FIRST); /* WM_DDE_EXECUTE already pumped*/
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
+
     /* test PostMessageA/SendMessageA from a different thread */
 
     index = 0xdeadbeef;
@@ -3038,6 +3049,16 @@ static void test_CoWaitForMultipleHandles(void)
     ok(index == WAIT_IO_COMPLETION, "expected index WAIT_IO_COMPLETION, got %lu\n", index);
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
     ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_apc);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    hr = CoWaitForMultipleHandles(COWAIT_ALERTABLE, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == WAIT_IO_COMPLETION, "expected index WAIT_IO_COMPLETION, got %lu\n", index);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_FIRST); /* WM_DDE_EXECUTE already pumped*/
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
 
     /* test with COWAIT_INPUTAVAILABLE (semaphores are still locked) */
 

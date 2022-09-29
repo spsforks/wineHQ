@@ -2098,7 +2098,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 
     if (message_loop)
     {
-        DWORD start_time, wait_flags = 0;
+        DWORD start_time, wait_flags = MWMO_INPUTAVAILABLE;
         struct tlsdata *tlsdata;
 
         if (FAILED(hr = com_get_tlsdata(&tlsdata)))
@@ -2125,7 +2125,6 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
             if (check_apc)
             {
                 res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL), 0, TRUE);
-                check_apc = FALSE;
             }
 
             if (res == WAIT_TIMEOUT)
@@ -2135,7 +2134,6 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 
             if (res == WAIT_OBJECT_0 + handle_count)  /* messages available */
             {
-                int msg_count = 0;
                 MSG msg;
 
                 /* call message filter */
@@ -2165,10 +2163,9 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                     }
                 }
 
-                /* Some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
-                 * so after processing 100 messages we go back to checking the wait handles */
-                while (msg_count++ < 100 && com_peek_message(apt, &msg))
+                if(com_peek_message(apt, &msg))
                 {
+                    wait_flags |= MWMO_INPUTAVAILABLE;
                     if (msg.message == WM_QUIT)
                     {
                         TRACE("Received WM_QUIT message\n");
@@ -2181,6 +2178,9 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                         TranslateMessage(&msg);
                         DispatchMessageW(&msg);
                     }
+                } else {
+                    /* no interesting input remains in the queue, so block until *new* messages are posted */
+                    wait_flags &= ~MWMO_INPUTAVAILABLE;
                 }
                 continue;
             }
