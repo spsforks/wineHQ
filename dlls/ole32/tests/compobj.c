@@ -3012,6 +3012,21 @@ static void test_CoWaitForMultipleHandles(void)
     ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
 
     ReleaseSemaphore(handles[0], 1, NULL);
+
+    /* COWAIT_ALL will get time out even if the handles became signaled while it waits
+     * in MsgWaitForMultipleObjects(...,MWIO_WAITALL), as it demands a posted message too */
+    index = 0xdeadbeef;
+    thread = CreateThread(NULL, 0, release_semaphore_thread, handles[1], 0, &tid);
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 500, 2, handles, &index);
+    ok(hr == RPC_S_CALLPENDING, "expected RPC_S_CALLPENDING, got 0x%08lx\n", hr);
+
+    /* but will succeed immediately if the handles are already available
+     * i.e. it checks the handles first before calling MsgWaitForMultipleObjects */
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 0, 2, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+
+    ReleaseSemaphore(handles[0], 1, NULL);
     ReleaseSemaphore(handles[1], 1, NULL);
 
     /* test with COWAIT_ALERTABLE */

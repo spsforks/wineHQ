@@ -2074,7 +2074,7 @@ static BOOL com_peek_message(struct apartment *apt, MSG *msg)
 HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle_count, HANDLE *handles,
         DWORD *index)
 {
-    BOOL check_apc = !!(flags & COWAIT_ALERTABLE), post_quit = FALSE, message_loop;
+    BOOL post_quit = FALSE, message_loop;
     struct apartment *apt;
     UINT exit_code;
     DWORD res;
@@ -2122,10 +2122,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 
             TRACE("waiting for rpc completion or window message\n");
 
-            if (check_apc)
-            {
-                res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL), 0, TRUE);
-            }
+            res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL), 0, !!(flags & COWAIT_ALERTABLE));
 
             if (res == WAIT_TIMEOUT)
                 res = MsgWaitForMultipleObjectsEx(handle_count, handles,
