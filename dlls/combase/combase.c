@@ -2086,16 +2086,17 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 
     while (TRUE)
     {
-        DWORD now = GetTickCount(), res;
-
-        if (now - start_time > timeout)
-        {
-            hr = RPC_S_CALLPENDING;
-            break;
-        }
-
+        DWORD res;
         if (message_loop)
         {
+            DWORD now = GetTickCount();
+
+            if (now - start_time > timeout)
+            {
+                hr = RPC_S_CALLPENDING;
+                break;
+            }
+
             TRACE("waiting for rpc completion or window message\n");
 
             res = WAIT_TIMEOUT;
@@ -2174,7 +2175,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
             TRACE("Waiting for rpc completion\n");
 
             res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL),
-                    (timeout == INFINITE) ? INFINITE : start_time + timeout - now, !!(flags & COWAIT_ALERTABLE));
+                    timeout, !!(flags & COWAIT_ALERTABLE));
         }
 
         switch (res)
