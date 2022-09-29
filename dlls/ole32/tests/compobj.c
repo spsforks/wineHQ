@@ -2641,6 +2641,14 @@ static DWORD CALLBACK post_input_later_thread(LPVOID arg)
     return 0;
 }
 
+static DWORD CALLBACK post_dde_later_thread(LPVOID arg)
+{
+    HWND hWnd = arg;
+    Sleep(50);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    return 0;
+}
+
 static const char cls_name[] = "cowait_test_class";
 
 static UINT cowait_msgs[100], cowait_msgs_first, cowait_msgs_last;
@@ -2789,6 +2797,13 @@ static DWORD CALLBACK test_CoWaitForMultipleHandles_thread(LPVOID arg)
     ok(hr == RPC_E_CALL_CANCELED, "expected RPC_E_CALL_CANCELED, got 0x%08lx\n", hr);
     success = PeekMessageA(&msg, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
     ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+    CloseHandle(thread);
+
+    /* DDE/RPC messages shouldn't go to IMessageFilter::PendingMessage */
+    thread = CreateThread(NULL, 0, post_dde_later_thread, hWnd, 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 200, 1, &thread, &index);
+    todo_wine ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr); /* wine gets RPC_E_CALL_CANCELED, because of MessageFilter_cancel */
+    ok(index == WAIT_OBJECT_0, "post_dde_later_thread didn't finish\n");
     CloseHandle(thread);
 
     hr = CoRegisterMessageFilter(NULL, NULL);
