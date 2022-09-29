@@ -2881,6 +2881,7 @@ static void test_CoWaitForMultipleHandles(void)
     HGLOBAL execute_apc = globalalloc_string("[apc]");
     HGLOBAL execute_postmessage = globalalloc_string("[postmessage]");
     HGLOBAL execute_semaphore = globalalloc_string("[semaphore]");
+    DWORD start_time;
 
     hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     ok(hr == S_OK, "CoInitializeEx failed with error 0x%08lx\n", hr);
@@ -2964,6 +2965,23 @@ static void test_CoWaitForMultipleHandles(void)
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
     ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
 
+    /* test CoWaitForMultipleHandles will keep working past the timeout if the queue
+     * still has messages (this is ensured by posting a message that, when dispatched,
+     * just posts another identical message, so the queue can *never* be drained).
+     * but it will still exit with success once the handles become signaled */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_postmessage);
+    start_time = GetTickCount();
+    /* if this thread is disabled, the call to CoWaitForMultipleHandles will livelock forever, on both windows and wine */
+    thread = CreateThread(NULL, 0, release_semaphore_thread, handles[0], 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 50, 1, handles, &index);
+    ok(GetTickCount() - start_time >= 200, "CoWaitForMultipleHandles exited too soon\n");
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_EXECUTE); /* each pumped execute_postmessage added one more back */
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
+    CloseHandle(thread);
+
     /* test PostMessageA/SendMessageA from a different thread */
 
     index = 0xdeadbeef;
@@ -3025,6 +3043,31 @@ static void test_CoWaitForMultipleHandles(void)
     hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 0, 2, handles, &index);
     ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
     ok(index == 0, "expected index 0, got %lu\n", index);
+
+    ReleaseSemaphore(handles[1], 1, NULL);
+
+    /* COWAIT_ALL will pump message which are already in the queue,
+     * (but no longer QS_ALLPOSTMESSAGE), before blocking in MsgWaitForMultipleObjectsEx */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    PeekMessageA(&msg, hWnd, 0, 0, PM_NOREMOVE); // clear QS_ALLPOSTMESSAGE
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
+
+    ReleaseSemaphore(handles[1], 1, NULL);
+
+    /* test early completion (rather than blocking in MsgWaitForMultipleObjectsEx again)
+     * if pumping a message results in all handles becoming signaled) */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 50, 2, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
 
     ReleaseSemaphore(handles[0], 1, NULL);
     ReleaseSemaphore(handles[1], 1, NULL);

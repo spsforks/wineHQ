@@ -2098,7 +2098,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 
     if (message_loop)
     {
-        DWORD start_time, wait_flags = MWMO_INPUTAVAILABLE;
+        DWORD start_time, wait_flags = 0;
         struct tlsdata *tlsdata;
 
         if (FAILED(hr = com_get_tlsdata(&tlsdata)))
@@ -2114,74 +2114,76 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
         while (TRUE)
         {
             DWORD now = GetTickCount();
-            res = WAIT_TIMEOUT;
-            if (now - start_time > timeout)
-            {
-                break;
-            }
+            MSG msg;
 
             TRACE("waiting for rpc completion or window message\n");
 
             res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL), 0, !!(flags & COWAIT_ALERTABLE));
 
-            if (res == WAIT_TIMEOUT)
-                res = MsgWaitForMultipleObjectsEx(handle_count, handles,
+            if (res != WAIT_TIMEOUT)
+            {
+                break;
+            }
+            else if (com_peek_message(apt, &msg))
+            {
+                if (msg.message == WM_QUIT)
+                {
+                    TRACE("Received WM_QUIT message\n");
+                    post_quit = TRUE;
+                    exit_code = msg.wParam;
+                }
+                else
+                {
+                    TRACE("Received message whilst waiting for RPC: 0x%04x\n", msg.message);
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            else
+            {
+                if (now - start_time <= timeout)
+                {
+                   /* nothing to return, no messages to pump, time remaining:
+                    * sleep for the remaining timeout (or until something happens) */
+                    res = MsgWaitForMultipleObjectsEx(handle_count, handles,
                         timeout == INFINITE ? INFINITE : start_time + timeout - now,
                         QS_SENDMESSAGE | QS_ALLPOSTMESSAGE | QS_PAINT, wait_flags);
-
-            if (res == WAIT_OBJECT_0 + handle_count)  /* messages available */
-            {
-                MSG msg;
-
-                /* call message filter */
-
-                if (apt->filter)
-                {
-                    PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
-                    DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, now - start_time, pendingtype);
-
-                    TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
-
-                    switch (be_handled)
-                    {
-                    case PENDINGMSG_CANCELCALL:
-                        WARN("call canceled\n");
-                        hr = RPC_E_CALL_CANCELED;
-                        goto done;
-                        break;
-                    case PENDINGMSG_WAITNOPROCESS:
-                    case PENDINGMSG_WAITDEFPROCESS:
-                    default:
-                        /* FIXME: MSDN is very vague about the difference
-                         * between WAITNOPROCESS and WAITDEFPROCESS - there
-                         * appears to be none, so it is possibly a left-over
-                         * from the 16-bit world. */
-                        break;
-                    }
                 }
 
-                if(com_peek_message(apt, &msg))
+                if (res == WAIT_OBJECT_0 + handle_count)  /* messages available */
                 {
-                    wait_flags |= MWMO_INPUTAVAILABLE;
-                    if (msg.message == WM_QUIT)
+                    /* call message filter */
+
+                    if (apt->filter)
                     {
-                        TRACE("Received WM_QUIT message\n");
-                        post_quit = TRUE;
-                        exit_code = msg.wParam;
+                        PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
+                        DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, now - start_time, pendingtype);
+
+                        TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
+
+                        switch (be_handled)
+                        {
+                        case PENDINGMSG_CANCELCALL:
+                            WARN("call canceled\n");
+                            hr = RPC_E_CALL_CANCELED;
+                            goto done;
+                            break;
+                        case PENDINGMSG_WAITNOPROCESS:
+                        case PENDINGMSG_WAITDEFPROCESS:
+                        default:
+                            /* FIXME: MSDN is very vague about the difference
+                             * between WAITNOPROCESS and WAITDEFPROCESS - there
+                             * appears to be none, so it is possibly a left-over
+                             * from the 16-bit world. */
+                            break;
+                        }
                     }
-                    else
-                    {
-                        TRACE("Received message whilst waiting for RPC: 0x%04x\n", msg.message);
-                        TranslateMessage(&msg);
-                        DispatchMessageW(&msg);
-                    }
-                } else {
-                    /* no interesting input remains in the queue, so block until *new* messages are posted */
-                    wait_flags &= ~MWMO_INPUTAVAILABLE;
                 }
-                continue;
+                else
+                {
+                    break;
+                }
             }
-            break;
         }
     }
     else
