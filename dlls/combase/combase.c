@@ -2052,10 +2052,9 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
         DWORD *index)
 {
     BOOL check_apc = !!(flags & COWAIT_ALERTABLE), post_quit = FALSE, message_loop;
-    DWORD start_time, wait_flags = 0;
-    struct tlsdata *tlsdata;
     struct apartment *apt;
     UINT exit_code;
+    DWORD res;
     HRESULT hr;
 
     TRACE("%#lx, %#lx, %lu, %p, %p\n", flags, timeout, handle_count, handles, index);
@@ -2071,35 +2070,34 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
     if (!handle_count)
         return RPC_E_NO_SYNC;
 
-    if (FAILED(hr = com_get_tlsdata(&tlsdata)))
-        return hr;
-
     apt = com_get_current_apt();
     message_loop = apt && !apt->multi_threaded;
 
-    if (flags & COWAIT_WAITALL)
-        wait_flags |= MWMO_WAITALL;
-    if (flags & COWAIT_ALERTABLE)
-        wait_flags |= MWMO_ALERTABLE;
-
-    start_time = GetTickCount();
-
-    while (TRUE)
+    if (message_loop)
     {
-        DWORD res;
-        if (message_loop)
+        DWORD start_time, wait_flags = 0;
+        struct tlsdata *tlsdata;
+
+        if (FAILED(hr = com_get_tlsdata(&tlsdata)))
+            return hr;
+
+        if (flags & COWAIT_WAITALL)
+            wait_flags |= MWMO_WAITALL;
+        if (flags & COWAIT_ALERTABLE)
+            wait_flags |= MWMO_ALERTABLE;
+
+        start_time = GetTickCount();
+
+        while (TRUE)
         {
             DWORD now = GetTickCount();
-
+            res = WAIT_TIMEOUT;
             if (now - start_time > timeout)
             {
-                hr = RPC_S_CALLPENDING;
                 break;
             }
 
             TRACE("waiting for rpc completion or window message\n");
-
-            res = WAIT_TIMEOUT;
 
             if (check_apc)
             {
@@ -2170,28 +2168,28 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                 }
                 continue;
             }
+            break;
         }
-        else
-        {
-            TRACE("Waiting for rpc completion\n");
+    }
+    else
+    {
+        TRACE("Waiting for rpc completion\n");
 
-            res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL),
-                    timeout, !!(flags & COWAIT_ALERTABLE));
-        }
+        res = WaitForMultipleObjectsEx(handle_count, handles, !!(flags & COWAIT_WAITALL),
+                timeout, !!(flags & COWAIT_ALERTABLE));
+    }
 
-        switch (res)
-        {
-        case WAIT_TIMEOUT:
-            hr = RPC_S_CALLPENDING;
-            break;
-        case WAIT_FAILED:
-            hr = HRESULT_FROM_WIN32(GetLastError());
-            break;
-        default:
-            hr = S_OK;
-            *index = res;
-            break;
-        }
+    switch (res)
+    {
+    case WAIT_TIMEOUT:
+        hr = RPC_S_CALLPENDING;
+        break;
+    case WAIT_FAILED:
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        break;
+    default:
+        hr = S_OK;
+        *index = res;
         break;
     }
 done:
