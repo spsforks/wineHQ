@@ -31,6 +31,7 @@ static BOOLEAN (WINAPI *pRtlIsNameLegalDOS8Dot3)(const UNICODE_STRING*,POEM_STRI
 static DWORD (WINAPI *pRtlGetFullPathName_U)(const WCHAR*,ULONG,WCHAR*,WCHAR**);
 static BOOLEAN (WINAPI *pRtlDosPathNameToNtPathName_U)(const WCHAR*, UNICODE_STRING*, WCHAR**, CURDIR*);
 static NTSTATUS (WINAPI *pRtlDosPathNameToNtPathName_U_WithStatus)(const WCHAR*, UNICODE_STRING*, WCHAR**, CURDIR*);
+static NTSTATUS (WINAPI* pRtlDosPathNameToRelativeNtPathName_U_WithStatus)(const WCHAR *dos_path,UNICODE_STRING *ntpath, WCHAR **file_part, RTL_RELATIVE_NAME *relative);
 static NTSTATUS (WINAPI *pNtOpenFile)( HANDLE*, ACCESS_MASK, OBJECT_ATTRIBUTES*, IO_STATUS_BLOCK*, ULONG, ULONG );
 
 static void test_RtlDetermineDosPathNameType_U(void)
@@ -434,134 +435,141 @@ static void test_RtlDosPathNameToNtPathName_U(void)
         const WCHAR *dos;
         const WCHAR *nt;
         int file_offset;    /* offset to file part */
+        const WCHAR* relative;
         const WCHAR *alt_nt;
+        const WCHAR *alt_relative;
         BOOL may_fail;
     }
     tests[] =
     {
-        {L"c:\\",           L"\\??\\c:\\",                  -1},
-        {L"c:/",            L"\\??\\c:\\",                  -1},
-        {L"c:/foo",         L"\\??\\c:\\foo",                7},
-        {L"c:/foo.",        L"\\??\\c:\\foo",                7},
-        {L"c:/foo ",        L"\\??\\c:\\foo",                7},
-        {L"c:/foo . .",     L"\\??\\c:\\foo",                7},
-        {L"c:/foo.a",       L"\\??\\c:\\foo.a",              7},
-        {L"c:/foo a",       L"\\??\\c:\\foo a",              7},
-        {L"c:/foo*",        L"\\??\\c:\\foo*",               7},
-        {L"c:/foo*a",       L"\\??\\c:\\foo*a",              7},
-        {L"c:/foo?",        L"\\??\\c:\\foo?",               7},
-        {L"c:/foo?a",       L"\\??\\c:\\foo?a",              7},
-        {L"c:/foo<",        L"\\??\\c:\\foo<",               7},
-        {L"c:/foo<a",       L"\\??\\c:\\foo<a",              7},
-        {L"c:/foo>",        L"\\??\\c:\\foo>",               7},
-        {L"c:/foo>a",       L"\\??\\c:\\foo>a",              7},
-        {L"c:/foo/",        L"\\??\\c:\\foo\\",             -1},
-        {L"c:/foo//",       L"\\??\\c:\\foo\\",             -1},
-        {L"C:/foo",         L"\\??\\C:\\foo",                7},
-        {L"C:/foo/bar",     L"\\??\\C:\\foo\\bar",          11},
-        {L"C:/foo/bar",     L"\\??\\C:\\foo\\bar",          11},
-        {L"c:.",            L"\\??\\C:\\windows",            7},
-        {L"c:foo",          L"\\??\\C:\\windows\\foo",      15},
-        {L"c:foo/bar",      L"\\??\\C:\\windows\\foo\\bar", 19},
-        {L"c:./foo",        L"\\??\\C:\\windows\\foo",      15},
-        {L"c:/./foo",       L"\\??\\c:\\foo",                7},
-        {L"c:/..",          L"\\??\\c:\\",                  -1},
-        {L"c:/foo/.",       L"\\??\\c:\\foo",                7},
-        {L"c:/foo/./bar",   L"\\??\\c:\\foo\\bar",          11},
-        {L"c:/foo/../bar",  L"\\??\\c:\\bar",                7},
-        {L"\\foo",          L"\\??\\C:\\foo",                7},
-        {L"foo",            L"\\??\\C:\\windows\\foo",      15},
-        {L".",              L"\\??\\C:\\windows",            7},
-        {L"./",             L"\\??\\C:\\windows\\",         -1},
-        {L"..",             L"\\??\\C:\\",                  -1},
-        {L"...",            L"\\??\\C:\\windows\\",         -1},
-        {L"./foo",          L"\\??\\C:\\windows\\foo",      15},
-        {L"foo/..",         L"\\??\\C:\\windows",            7},
-        {L"\\windows\\nul", L"\\??\\nul",                   -1},
-        {L"C:NUL.",         L"\\??\\NUL",                   -1},
-        {L"C:NUL",          L"\\??\\NUL",                   -1},
-        {L"AUX" ,           L"\\??\\AUX",                   -1},
-        {L"COM1" ,          L"\\??\\COM1",                  -1},
-        {L"?<>*\"|:",       L"\\??\\C:\\windows\\?<>*\"|:", 15},
-        {L"?:",             L"\\??\\?:\\",                  -1},
+        {L"c:\\",           L"\\??\\c:\\",                  -1, NULL},
+        {L"c:/",            L"\\??\\c:\\",                  -1, NULL},
+        {L"c:/foo",         L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/foo.",        L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/foo ",        L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/foo . .",     L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/foo.a",       L"\\??\\c:\\foo.a",              7, NULL},
+        {L"c:/foo a",       L"\\??\\c:\\foo a",              7, NULL},
+        {L"c:/foo*",        L"\\??\\c:\\foo*",               7, NULL},
+        {L"c:/foo*a",       L"\\??\\c:\\foo*a",              7, NULL},
+        {L"c:/foo?",        L"\\??\\c:\\foo?",               7, NULL},
+        {L"c:/foo?a",       L"\\??\\c:\\foo?a",              7, NULL},
+        {L"c:/foo<",        L"\\??\\c:\\foo<",               7, NULL},
+        {L"c:/foo<a",       L"\\??\\c:\\foo<a",              7, NULL},
+        {L"c:/foo>",        L"\\??\\c:\\foo>",               7, NULL},
+        {L"c:/foo>a",       L"\\??\\c:\\foo>a",              7, NULL},
+        {L"c:/foo/",        L"\\??\\c:\\foo\\",             -1, NULL},
+        {L"c:/foo//",       L"\\??\\c:\\foo\\",             -1, NULL},
+        {L"C:/foo",         L"\\??\\C:\\foo",                7, NULL},
+        {L"C:/foo/bar",     L"\\??\\C:\\foo\\bar",          11, NULL},
+        {L"C:/foo/bar",     L"\\??\\C:\\foo\\bar",          11, NULL},
+        {L"c:.",            L"\\??\\C:\\windows",            7, NULL},
+        {L"c:foo",          L"\\??\\C:\\windows\\foo",      15, NULL},
+        {L"c:foo/bar",      L"\\??\\C:\\windows\\foo\\bar", 19, NULL},
+        {L"c:./foo",        L"\\??\\C:\\windows\\foo",      15, NULL},
+        {L"c:/./foo",       L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/..",          L"\\??\\c:\\",                  -1, NULL},
+        {L"c:/foo/.",       L"\\??\\c:\\foo",                7, NULL},
+        {L"c:/foo/./bar",   L"\\??\\c:\\foo\\bar",          11, NULL},
+        {L"c:/foo/../bar",  L"\\??\\c:\\bar",                7, NULL},
+        {L"\\foo",          L"\\??\\C:\\foo",                7, NULL},
+        {L"foo",            L"\\??\\C:\\windows\\foo",      15, L"foo"},
+        {L".",              L"\\??\\C:\\windows",            7, NULL},
+        {L"./",             L"\\??\\C:\\windows\\",         -1, L""},
+        {L"..",             L"\\??\\C:\\",                  -1, NULL},
+        {L"...",            L"\\??\\C:\\windows\\",         -1, L""},
+        {L"./foo",          L"\\??\\C:\\windows\\foo",      15, L"foo"},
+        {L"./foo/bar",      L"\\??\\C:\\windows\\foo\\bar", 19, L"foo\\bar"},
 
-        {L"\\\\foo",        L"\\??\\UNC\\foo",              -1},
-        {L"//foo",          L"\\??\\UNC\\foo",              -1},
-        {L"\\/foo",         L"\\??\\UNC\\foo",              -1},
-        {L"//",             L"\\??\\UNC\\",                 -1},
-        {L"//foo/",         L"\\??\\UNC\\foo\\",            -1},
+        {L"foo/bar/baz",    L"\\??\\C:\\windows\\foo\\bar\\baz", 23, L"foo\\bar\\baz"},
+        {L"foo/bar/baz/..", L"\\??\\C:\\windows\\foo\\bar", 19, L"foo\\bar"},
+        {L"foo/../..",      L"\\??\\C:\\",                  -1, NULL},
 
-        {L"//.",            L"\\??\\",                      -1},
-        {L"//./",           L"\\??\\",                      -1},
-        {L"//.//",          L"\\??\\",                      -1},
-        {L"//./foo",        L"\\??\\foo",                    4},
-        {L"//./foo/",       L"\\??\\foo\\",                 -1},
-        {L"//./foo/bar",    L"\\??\\foo\\bar",               8},
-        {L"//./foo/.",      L"\\??\\foo",                    4},
-        {L"//./foo/..",     L"\\??\\",                      -1},
-        {L"//./foo. . ",    L"\\??\\foo",                    4},
+        {L"\\windows\\nul", L"\\??\\nul",                   -1, NULL},
+        {L"C:NUL.",         L"\\??\\NUL",                   -1, NULL},
+        {L"C:NUL",          L"\\??\\NUL",                   -1, NULL},
+        {L"AUX" ,           L"\\??\\AUX",                   -1, NULL},
+        {L"COM1" ,          L"\\??\\COM1",                  -1, NULL},
+        {L"?<>*\"|:",       L"\\??\\C:\\windows\\?<>*\"|:", 15, L"?<>*\"|:"},
+        {L"?:",             L"\\??\\?:\\",                  -1, NULL},
 
-        {L"//?",            L"\\??\\",                      -1},
-        {L"//?/",           L"\\??\\",                      -1},
-        {L"//?//",          L"\\??\\",                      -1},
-        {L"//?/foo",        L"\\??\\foo",                    4},
-        {L"//?/foo/",       L"\\??\\foo\\",                 -1},
-        {L"//?/foo/bar",    L"\\??\\foo\\bar",               8},
-        {L"//?/foo/.",      L"\\??\\foo",                    4},
-        {L"//?/foo/..",     L"\\??\\",                      -1},
-        {L"//?/foo. . ",    L"\\??\\foo",                    4},
+        {L"\\\\foo",        L"\\??\\UNC\\foo",              -1, NULL},
+        {L"//foo",          L"\\??\\UNC\\foo",              -1, NULL},
+        {L"\\/foo",         L"\\??\\UNC\\foo",              -1, NULL},
+        {L"//",             L"\\??\\UNC\\",                 -1, NULL},
+        {L"//foo/",         L"\\??\\UNC\\foo\\",            -1, NULL},
 
-        {L"\\\\.",          L"\\??\\",                      -1},
-        {L"\\\\.\\",        L"\\??\\",                      -1},
-        {L"\\\\.\\/",       L"\\??\\",                      -1},
-        {L"\\\\.\\foo",     L"\\??\\foo",                    4},
-        {L"\\\\.\\foo/",    L"\\??\\foo\\",                 -1},
-        {L"\\\\.\\foo/bar", L"\\??\\foo\\bar",               8},
-        {L"\\\\.\\foo/.",   L"\\??\\foo",                    4},
-        {L"\\\\.\\foo/..",  L"\\??\\",                      -1},
-        {L"\\\\.\\foo. . ", L"\\??\\foo",                    4},
-        {L"\\\\.\\CON",     L"\\??\\CON",                    4, NULL, TRUE}, /* broken on win7 */
-        {L"\\\\.\\CONIN$",  L"\\??\\CONIN$",                 4},
-        {L"\\\\.\\CONOUT$", L"\\??\\CONOUT$",                4},
+        {L"//.",            L"\\??\\",                      -1, NULL},
+        {L"//./",           L"\\??\\",                      -1, NULL},
+        {L"//.//",          L"\\??\\",                      -1, NULL},
+        {L"//./foo",        L"\\??\\foo",                    4, NULL},
+        {L"//./foo/",       L"\\??\\foo\\",                 -1, NULL},
+        {L"//./foo/bar",    L"\\??\\foo\\bar",               8, NULL},
+        {L"//./foo/.",      L"\\??\\foo",                    4, NULL},
+        {L"//./foo/..",     L"\\??\\",                      -1, NULL},
+        {L"//./foo. . ",    L"\\??\\foo",                    4, NULL},
+
+        {L"//?",            L"\\??\\",                      -1,NULL},
+        {L"//?/",           L"\\??\\",                      -1, NULL},
+        {L"//?//",          L"\\??\\",                      -1,NULL},
+        {L"//?/foo",        L"\\??\\foo",                    4,NULL},
+        {L"//?/foo/",       L"\\??\\foo\\",                 -1, NULL},
+        {L"//?/foo/bar",    L"\\??\\foo\\bar",               8, NULL},
+        {L"//?/foo/.",      L"\\??\\foo",                    4, NULL},
+        {L"//?/foo/..",     L"\\??\\",                      -1, NULL},
+        {L"//?/foo. . ",    L"\\??\\foo",                    4, NULL},
+
+        {L"\\\\.",          L"\\??\\",                      -1, NULL},
+        {L"\\\\.\\",        L"\\??\\",                      -1, NULL},
+        {L"\\\\.\\/",       L"\\??\\",                      -1, NULL},
+        {L"\\\\.\\foo",     L"\\??\\foo",                    4, NULL},
+        {L"\\\\.\\foo/",    L"\\??\\foo\\",                 -1, NULL},
+        {L"\\\\.\\foo/bar", L"\\??\\foo\\bar",               8, NULL},
+        {L"\\\\.\\foo/.",   L"\\??\\foo",                    4, NULL},
+        {L"\\\\.\\foo/..",  L"\\??\\",                      -1, NULL},
+        {L"\\\\.\\foo. . ", L"\\??\\foo",                    4, NULL},
+        {L"\\\\.\\CON",     L"\\??\\CON",                    4, NULL,NULL, NULL, TRUE}, /* broken on win7 */
+        {L"\\\\.\\CONIN$",  L"\\??\\CONIN$",                 4, NULL},
+        {L"\\\\.\\CONOUT$", L"\\??\\CONOUT$",                4, NULL},
 
         {L"\\\\?",          L"\\??\\",                      -1},
-        {L"\\\\?\\",        L"\\??\\",                      -1},
+        {L"\\\\?\\",        L"\\??\\",                      -1, NULL},
 
-        {L"\\\\?\\/",       L"\\??\\/",                      4},
-        {L"\\\\?\\foo",     L"\\??\\foo",                    4},
-        {L"\\\\?\\foo/",    L"\\??\\foo/",                   4},
-        {L"\\\\?\\foo/bar", L"\\??\\foo/bar",                4},
-        {L"\\\\?\\foo/.",   L"\\??\\foo/.",                  4},
-        {L"\\\\?\\foo/..",  L"\\??\\foo/..",                 4},
-        {L"\\\\?\\\\",      L"\\??\\\\",                    -1},
-        {L"\\\\?\\\\\\",    L"\\??\\\\\\",                  -1},
-        {L"\\\\?\\foo\\",   L"\\??\\foo\\",                 -1},
-        {L"\\\\?\\foo\\bar",L"\\??\\foo\\bar",               8},
-        {L"\\\\?\\foo\\.",  L"\\??\\foo\\.",                 8},
-        {L"\\\\?\\foo\\..", L"\\??\\foo\\..",                8},
-        {L"\\\\?\\foo. . ", L"\\??\\foo. . ",                4},
+        {L"\\\\?\\/",       L"\\??\\/",                      4, NULL},
+        {L"\\\\?\\foo",     L"\\??\\foo",                    4, NULL},
+        {L"\\\\?\\foo/",    L"\\??\\foo/",                   4, NULL},
+        {L"\\\\?\\foo/bar", L"\\??\\foo/bar",                4, NULL},
+        {L"\\\\?\\foo/.",   L"\\??\\foo/.",                  4, NULL},
+        {L"\\\\?\\foo/..",  L"\\??\\foo/..",                 4, NULL},
+        {L"\\\\?\\\\",      L"\\??\\\\",                    -1, NULL},
+        {L"\\\\?\\\\\\",    L"\\??\\\\\\",                  -1, NULL},
+        {L"\\\\?\\foo\\",   L"\\??\\foo\\",                 -1, NULL},
+        {L"\\\\?\\foo\\bar",L"\\??\\foo\\bar",               8, NULL},
+        {L"\\\\?\\foo\\.",  L"\\??\\foo\\.",                 8, NULL},
+        {L"\\\\?\\foo\\..", L"\\??\\foo\\..",                8, NULL},
+        {L"\\\\?\\foo. . ", L"\\??\\foo. . ",                4, NULL},
 
-        {L"\\??",           L"\\??\\C:\\??",                 7},
-        {L"\\??\\",         L"\\??\\C:\\??\\",              -1},
+        {L"\\??",           L"\\??\\C:\\??",                 7, NULL},
+        {L"\\??\\",         L"\\??\\C:\\??\\",              -1, NULL},
 
-        {L"\\??\\/",        L"\\??\\/",                      4},
-        {L"\\??\\foo",      L"\\??\\foo",                    4},
-        {L"\\??\\foo/",     L"\\??\\foo/",                   4},
-        {L"\\??\\foo/bar",  L"\\??\\foo/bar",                4},
-        {L"\\??\\foo/.",    L"\\??\\foo/.",                  4},
-        {L"\\??\\foo/..",   L"\\??\\foo/..",                 4},
-        {L"\\??\\\\",       L"\\??\\\\",                    -1},
-        {L"\\??\\\\\\",     L"\\??\\\\\\",                  -1},
-        {L"\\??\\foo\\",    L"\\??\\foo\\",                 -1},
-        {L"\\??\\foo\\bar", L"\\??\\foo\\bar",               8},
-        {L"\\??\\foo\\.",   L"\\??\\foo\\.",                 8},
-        {L"\\??\\foo\\..",  L"\\??\\foo\\..",                8},
-        {L"\\??\\foo. . ",  L"\\??\\foo. . ",                4},
+        {L"\\??\\/",        L"\\??\\/",                      4, NULL},
+        {L"\\??\\foo",      L"\\??\\foo",                    4, NULL},
+        {L"\\??\\foo/",     L"\\??\\foo/",                   4, NULL},
+        {L"\\??\\foo/bar",  L"\\??\\foo/bar",                4, NULL},
+        {L"\\??\\foo/.",    L"\\??\\foo/.",                  4, NULL},
+        {L"\\??\\foo/..",   L"\\??\\foo/..",                 4, NULL},
+        {L"\\??\\\\",       L"\\??\\\\",                    -1, NULL},
+        {L"\\??\\\\\\",     L"\\??\\\\\\",                  -1, NULL},
+        {L"\\??\\foo\\",    L"\\??\\foo\\",                 -1, NULL},
+        {L"\\??\\foo\\bar", L"\\??\\foo\\bar",               8, NULL},
+        {L"\\??\\foo\\.",   L"\\??\\foo\\.",                 8, NULL},
+        {L"\\??\\foo\\..",  L"\\??\\foo\\..",                8, NULL},
+        {L"\\??\\foo. . ",  L"\\??\\foo. . ",                4, NULL},
 
-        {L"CONIN$",         L"\\??\\CONIN$",                -1, L"\\??\\C:\\windows\\CONIN$"   /* win7 */ },
-        {L"CONOUT$",        L"\\??\\CONOUT$",               -1, L"\\??\\C:\\windows\\CONOUT$"  /* win7 */ },
-        {L"cOnOuT$",        L"\\??\\cOnOuT$",               -1, L"\\??\\C:\\windows\\cOnOuT$"  /* win7 */ },
-        {L"CONERR$",        L"\\??\\C:\\windows\\CONERR$",  15},
+        {L"CONIN$",         L"\\??\\CONIN$",                -1, NULL,L"\\??\\C:\\windows\\CONIN$",  L"CONIN$"   /* win7 */ },
+        {L"CONOUT$",        L"\\??\\CONOUT$",               -1, NULL,L"\\??\\C:\\windows\\CONOUT$", L"CONOUT$" /* win7 */ },
+        {L"cOnOuT$",        L"\\??\\cOnOuT$",               -1, NULL,L"\\??\\C:\\windows\\cOnOuT$", L"cOnOuT$" /* win7 */ },
+        {L"CONERR$",        L"\\??\\C:\\windows\\CONERR$",  15, L"CONERR$"},
     };
     static const WCHAR *error_paths[] = {
         NULL, L"", L" ", L"C:\\nonexistent\\nul", L"C:\\con\\con"
@@ -619,6 +627,24 @@ static void test_RtlDosPathNameToNtPathName_U(void)
                    debugstr_w(tests[i].dos), debugstr_w(file_part));
         }
 
+        
+        if (pRtlDosPathNameToRelativeNtPathName_U_WithStatus)
+        {
+            RTL_RELATIVE_NAME rtl;
+
+            RtlFreeUnicodeString(&nameW);
+            status = pRtlDosPathNameToRelativeNtPathName_U_WithStatus(tests[i].dos, &nameW, &file_part, &rtl);
+            ok(status == STATUS_SUCCESS, "%s: Got status %#lx.\n", debugstr_w(tests[i].dos), status);
+       
+            ok((tests[i].relative && rtl.RelativeName.Buffer && !wcscmp(rtl.RelativeName.Buffer,tests[i].relative)) 
+                || broken(tests[i].alt_relative && rtl.RelativeName.Buffer && !wcscmp(rtl.RelativeName.Buffer,tests[i].alt_relative))
+                || (tests[i].relative == NULL && rtl.RelativeName.Buffer == NULL)
+            ,
+                "%s: Expected relative path %s, got %s.\n", debugstr_w(tests[i].dos), debugstr_w(tests[i].relative), debugstr_w(rtl.RelativeName.Buffer));
+            
+            ok((rtl.RelativeName.Buffer && rtl.ContainerDirectory != 0) || (rtl.RelativeName.Buffer == NULL && rtl.ContainerDirectory == 0),
+            "Unexpected Directory Handle: %p.\n",rtl.ContainerDirectory);
+        }
         RtlFreeUnicodeString(&nameW);
     }
 
@@ -726,7 +752,6 @@ static void test_nt_names(void)
     }
 }
 
-
 START_TEST(path)
 {
     HMODULE mod = GetModuleHandleA("ntdll.dll");
@@ -741,6 +766,7 @@ START_TEST(path)
     pRtlDosPathNameToNtPathName_U = (void *)GetProcAddress(mod, "RtlDosPathNameToNtPathName_U");
     pRtlDosPathNameToNtPathName_U_WithStatus = (void *)GetProcAddress(mod, "RtlDosPathNameToNtPathName_U_WithStatus");
     pNtOpenFile             = (void *)GetProcAddress(mod, "NtOpenFile");
+    pRtlDosPathNameToRelativeNtPathName_U_WithStatus = (void*) GetProcAddress(mod,"RtlDosPathNameToRelativeNtPathName_U_WithStatus");
 
     test_RtlDetermineDosPathNameType_U();
     test_RtlIsDosDeviceName_U();
