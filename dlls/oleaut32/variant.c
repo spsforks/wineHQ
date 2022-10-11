@@ -654,6 +654,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH VariantClear(VARIANTARG* pVarg)
           IRecordInfo_RecordClear(pBr->pRecInfo, pBr->pvRecord);
           IRecordInfo_Release(pBr->pRecInfo);
         }
+        CoTaskMemFree(pBr->pvRecord);
       }
       else if (V_VT(pVarg) == VT_DISPATCH ||
                V_VT(pVarg) == VT_UNKNOWN)
@@ -689,7 +690,7 @@ static HRESULT VARIANT_CopyIRecordInfo(VARIANT *dest, const VARIANT *src)
   /* This could look cleaner if only RecordCreate() was used, but native doesn't use it.
      Memory should be allocated in a same way as RecordCreate() does, so RecordDestroy()
      could free it later. */
-  dest_rec->pvRecord = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+  dest_rec->pvRecord = CoTaskMemAlloc(size);
   if (!dest_rec->pvRecord) return E_OUTOFMEMORY;
 
   dest_rec->pRecInfo = src_rec->pRecInfo;

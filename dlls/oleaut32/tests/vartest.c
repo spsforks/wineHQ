@@ -1037,7 +1037,7 @@ static void test_VariantClear(void)
   hres = VariantClear(&v);
   ok(hres == S_OK, "ret %08lx\n", hres);
   ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
-  todo_wine ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
+  ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
   ok(recinfo->recordclear == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
   IRecordInfo_Release(&recinfo->IRecordInfo_iface);
@@ -1204,7 +1204,7 @@ static void test_VariantCopy(void)
 
   ok(V_RECORD(&vDst) != (void*)0xdeadbeef && V_RECORD(&vDst) != NULL, "got %p\n", V_RECORD(&vDst));
   ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
-  todo_wine ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
+  ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
   ok(recinfo->getsize == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->recordcopy == 1, "got %d\n", recinfo->recordclear);
 
@@ -1214,7 +1214,7 @@ static void test_VariantCopy(void)
 
   malloc_spy.validptr = (void*)0xdeadbeef;
   VariantClear(&vSrc);
-  todo_wine ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
+  ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
 
   hres = CoRevokeMallocSpy();
   ok(hres == S_OK, "ret 0x%08lx\n", hres);
@@ -1452,7 +1452,7 @@ static void test_VariantCopyInd(void)
   ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
   ok(recinfo->recordclear == 0,"got %d\n", recinfo->recordclear);
   ok(V_RECORD(&vDst) != (void*)0xdeadbeef, "expected a newly-allocated deep copy\n");
-  todo_wine ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
+  ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
   ok(recinfo->getsize == 1,"got %d\n", recinfo->getsize);
   ok(recinfo->recordcopy == 1,"got %d\n", recinfo->recordcopy);
   ok(recinfo->ref == 2,"got %ld\n", recinfo->ref);
