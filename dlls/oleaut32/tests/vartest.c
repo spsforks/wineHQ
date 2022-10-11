@@ -299,7 +299,6 @@ static HRESULT WINAPI RecordInfo_RecordClear(IRecordInfo *iface, void *data)
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->recordclear++;
-    This->rec->pvRecord = NULL;
     return S_OK;
 }
 
@@ -765,6 +764,131 @@ static const IUnknownVtbl test_VariantClear_vtbl = {
 
 static test_VariantClearImpl test_myVariantClearImpl = {{&test_VariantClear_vtbl}, 1, 0};
 
+typedef struct IMallocSpyImpl
+{
+    IMallocSpy IMallocSpy_iface;
+    void *validptr;
+} IMallocSpyImpl;
+
+static inline IMallocSpyImpl *impl_from_IMallocSpy(IMallocSpy *iface)
+{
+    return CONTAINING_RECORD(iface, IMallocSpyImpl, IMallocSpy_iface);
+}
+
+static HRESULT WINAPI IMallocSpyImpl_QueryInterface(IMallocSpy *iface, REFIID riid, void **obj)
+{
+    if (IsEqualIID(riid, &IID_IMallocSpy) || IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = iface;
+        IMallocSpy_AddRef(iface);
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI IMallocSpyImpl_AddRef(IMallocSpy *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI IMallocSpyImpl_Release(IMallocSpy *iface)
+{
+    return 1;
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PreAlloc(IMallocSpy *iface, SIZE_T cb)
+{
+    return cb;
+}
+
+static void* WINAPI IMallocSpyImpl_PostAlloc(IMallocSpy *iface, void *ptr)
+{
+    return ptr;
+}
+
+static void* WINAPI IMallocSpyImpl_PreFree(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    if(This->validptr && ptr == This->validptr)
+    {
+        This->validptr = NULL;
+        /* allow (but swallow) a prearranged pretend-it's-valid ptr */
+	return NULL;
+    }
+    ok(spyed, "freed %p not allocated by this spy\n",ptr);
+    return ptr;
+}
+
+static void WINAPI IMallocSpyImpl_PostFree(IMallocSpy *iface, BOOL spyed)
+{
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PreRealloc(IMallocSpy *iface, void *ptr, SIZE_T cb, void **newptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return 0;
+}
+
+static void* WINAPI IMallocSpyImpl_PostRealloc(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return NULL;
+}
+
+static void* WINAPI IMallocSpyImpl_PreGetSize(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return ptr;
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PostGetSize(IMallocSpy *iface, SIZE_T actual, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return actual;
+}
+
+static void* WINAPI IMallocSpyImpl_PreDidAlloc(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return ptr;
+}
+
+static int WINAPI IMallocSpyImpl_PostDidAlloc(IMallocSpy *iface, void *ptr, BOOL spyed, int actual)
+{
+    ok(0, "unexpected call\n");
+    return actual;
+}
+
+static void WINAPI IMallocSpyImpl_PreHeapMinimize(IMallocSpy *iface)
+{
+    ok(0, "unexpected call\n");
+}
+
+static void WINAPI IMallocSpyImpl_PostHeapMinimize(IMallocSpy *iface)
+{
+    ok(0, "unexpected call\n");
+}
+
+static const IMallocSpyVtbl IMallocSpyImpl_vtbl =
+{
+    IMallocSpyImpl_QueryInterface,
+    IMallocSpyImpl_AddRef,
+    IMallocSpyImpl_Release,
+    IMallocSpyImpl_PreAlloc,
+    IMallocSpyImpl_PostAlloc,
+    IMallocSpyImpl_PreFree,
+    IMallocSpyImpl_PostFree,
+    IMallocSpyImpl_PreRealloc,
+    IMallocSpyImpl_PostRealloc,
+    IMallocSpyImpl_PreGetSize,
+    IMallocSpyImpl_PostGetSize,
+    IMallocSpyImpl_PreDidAlloc,
+    IMallocSpyImpl_PostDidAlloc,
+    IMallocSpyImpl_PreHeapMinimize,
+    IMallocSpyImpl_PostHeapMinimize
+};
+
 static void test_VariantClear(void)
 {
   struct __tagBRECORD *rec;
@@ -775,6 +899,7 @@ static void test_VariantClear(void)
   size_t i;
   LONG i4;
   IUnknown *punk;
+  IMallocSpyImpl malloc_spy = { {&IMallocSpyImpl_vtbl} };
 
   /* Crashes: Native does not test input for NULL, so neither does Wine */
   if (0)
@@ -889,21 +1014,29 @@ static void test_VariantClear(void)
   /* Check that nothing got called */
   ok(test_myVariantClearImpl.events ==  0, "Unexpected call. events %08lx\n", test_myVariantClearImpl.events);
 
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
   /* RECORD */
   recinfo = get_test_recordinfo();
   V_VT(&v) = VT_RECORD;
   rec = &V_UNION(&v, brecVal);
   rec->pRecInfo = &recinfo->IRecordInfo_iface;
   rec->pvRecord = (void*)0xdeadbeef;
+  malloc_spy.validptr = (void*)0xdeadbeef;
   recinfo->recordclear = 0;
   recinfo->ref = 2;
   recinfo->rec = rec;
   hres = VariantClear(&v);
   ok(hres == S_OK, "ret %08lx\n", hres);
-  ok(rec->pvRecord == NULL, "got %p\n", rec->pvRecord);
+  ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
+  todo_wine ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
   ok(recinfo->recordclear == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
   IRecordInfo_Release(&recinfo->IRecordInfo_iface);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 static void test_VariantCopy(void)
@@ -914,6 +1047,7 @@ static void test_VariantCopy(void)
   VARTYPE vt;
   size_t i;
   HRESULT hres, hExpected;
+  IMallocSpyImpl malloc_spy = { {&IMallocSpyImpl_vtbl} };
 
   /* Establish that the failure/other cases are dealt with. Individual tests
    * for each type should verify that data is copied correctly, references
@@ -1026,6 +1160,9 @@ static void test_VariantCopy(void)
     VariantClear(&vDst);
   }
 
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
   /* copy RECORD */
   recinfo = get_test_recordinfo();
 
@@ -1050,8 +1187,15 @@ static void test_VariantCopy(void)
   ok(recinfo->getsize == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->recordcopy == 1, "got %d\n", recinfo->recordclear);
 
+  malloc_spy.validptr = NULL;
   VariantClear(&vDst);
+
+  malloc_spy.validptr = (void*)0xdeadbeef;
   VariantClear(&vSrc);
+  todo_wine ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 /* Determine if a vt is valid for VariantCopyInd() */
