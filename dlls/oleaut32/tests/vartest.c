@@ -1035,6 +1035,21 @@ static void test_VariantClear(void)
   ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
   IRecordInfo_Release(&recinfo->IRecordInfo_iface);
 
+  /* RECORD BYREF */
+  recinfo = get_test_recordinfo();
+  V_VT(&v) = VT_RECORD | VT_BYREF;
+  V_RECORDINFO(&v) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&v) = (void*)0xdeadbeef;
+  malloc_spy.validptr = NULL; /* BYREF will not free */
+  recinfo->recordclear = 0;
+  recinfo->ref = 1; /* BYREF does not own a refcount */
+  hres = VariantClear(&v);
+  ok(hres == S_OK, "ret %08lx\n", hres);
+  ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
+  ok(recinfo->recordclear == 0, "got %d\n", recinfo->recordclear);
+  ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
+  IRecordInfo_Release(&recinfo->IRecordInfo_iface);
+
   hres = CoRevokeMallocSpy();
   ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
