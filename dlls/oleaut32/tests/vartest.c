@@ -328,7 +328,7 @@ static HRESULT WINAPI RecordInfo_GetSize(IRecordInfo *iface, ULONG* size)
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->getsize++;
-    *size = 0;
+    *size = 1;
     return S_OK;
 }
 
@@ -770,6 +770,8 @@ typedef struct IMallocSpyImpl
 {
     IMallocSpy IMallocSpy_iface;
     void *validptr;
+    void *lastalloc;
+    SIZE_T cbAlloc;
 } IMallocSpyImpl;
 
 static inline IMallocSpyImpl *impl_from_IMallocSpy(IMallocSpy *iface)
@@ -801,11 +803,15 @@ static ULONG WINAPI IMallocSpyImpl_Release(IMallocSpy *iface)
 
 static SIZE_T WINAPI IMallocSpyImpl_PreAlloc(IMallocSpy *iface, SIZE_T cb)
 {
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    ok(This->cbAlloc && cb == This->cbAlloc, "unexpected allocation size=%Iu\n",cb);
     return cb;
 }
 
 static void* WINAPI IMallocSpyImpl_PostAlloc(IMallocSpy *iface, void *ptr)
 {
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    This->lastalloc = ptr;
     return ptr;
 }
 
@@ -818,6 +824,8 @@ static void* WINAPI IMallocSpyImpl_PreFree(IMallocSpy *iface, void *ptr, BOOL sp
         /* allow (but swallow) a prearranged pretend-it's-valid ptr */
 	return NULL;
     }
+    if(ptr == This->lastalloc)
+        This->lastalloc = NULL;
     ok(spyed, "freed %p not allocated by this spy\n",ptr);
     return ptr;
 }
@@ -1190,16 +1198,19 @@ static void test_VariantCopy(void)
   recinfo->recordcopy = 0;
   recinfo->getsize = 0;
   recinfo->validsrc = (void*)0xdeadbeef;
+  malloc_spy.cbAlloc = 1;
   hres = VariantCopy(&vDst, &vSrc);
   ok(hres == S_OK, "ret %08lx\n", hres);
 
   ok(V_RECORD(&vDst) != (void*)0xdeadbeef && V_RECORD(&vDst) != NULL, "got %p\n", V_RECORD(&vDst));
   ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
+  todo_wine ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
   ok(recinfo->getsize == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->recordcopy == 1, "got %d\n", recinfo->recordclear);
 
   malloc_spy.validptr = NULL;
   VariantClear(&vDst);
+  ok(!malloc_spy.lastalloc, "%p not freed\n",malloc_spy.lastalloc);
 
   malloc_spy.validptr = (void*)0xdeadbeef;
   VariantClear(&vSrc);
@@ -1230,6 +1241,8 @@ static void test_VariantCopyInd(void)
   size_t i;
   BYTE buffer[64];
   HRESULT hres, hExpected;
+  IRecordInfoImpl *recinfo;
+  IMallocSpyImpl malloc_spy = {{&IMallocSpyImpl_vtbl}, 0, NULL };
 
   memset(buffer, 0, sizeof(buffer));
 
@@ -1420,6 +1433,37 @@ static void test_VariantCopyInd(void)
   hres = VariantCopyInd(&vDst, &vSrc);
   ok(hres == E_INVALIDARG,
      "CopyInd(ref->ref): expected E_INVALIDARG, got 0x%08lx\n", hres);
+
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
+  /* Copy RECORD BYREF */
+  recinfo = get_test_recordinfo();
+  V_VT(&vSrc) = VT_RECORD|VT_BYREF;
+  V_RECORDINFO(&vSrc) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&vSrc) = (void*)0xdeadbeef;
+
+  VariantInit(&vDst);
+  recinfo->validsrc = (void*)0xdeadbeef;
+  malloc_spy.cbAlloc = 1;
+  hres = VariantCopyInd(&vDst, &vSrc);
+  ok(hres == S_OK, "VariantCopyInd failed: 0x%08lx\n", hres);
+  ok(V_VT(&vDst) == VT_RECORD, "got vt = %d|0x%X\n", V_VT(&vDst) & VT_TYPEMASK, V_VT(&vDst) & ~VT_TYPEMASK);
+  ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
+  ok(recinfo->recordclear == 0,"got %d\n", recinfo->recordclear);
+  ok(V_RECORD(&vDst) != (void*)0xdeadbeef, "expected a newly-allocated deep copy\n");
+  todo_wine ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
+  ok(recinfo->getsize == 1,"got %d\n", recinfo->getsize);
+  ok(recinfo->recordcopy == 1,"got %d\n", recinfo->recordcopy);
+  ok(recinfo->ref == 2,"got %ld\n", recinfo->ref);
+
+  VariantClear(&vDst);
+  ok(recinfo->ref == 1,"got %ld\n", recinfo->ref);
+  ok(recinfo->recordclear == 1,"got %d\n", recinfo->recordclear);
+  ok(!malloc_spy.lastalloc, "%p not freed\n",malloc_spy.lastalloc);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 static HRESULT (WINAPI *pVarParseNumFromStr)(const OLECHAR*,LCID,ULONG,NUMPARSE*,BYTE*);
