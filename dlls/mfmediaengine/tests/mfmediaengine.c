@@ -1419,7 +1419,7 @@ static void test_formats(void)
     {
         /* Some supported media engine and output texture formats. */
         {
-            .engine_fmt = DXGI_FORMAT_R32G32B32_FLOAT, .engine_todo = TRUE,
+            .engine_fmt = DXGI_FORMAT_R32G32B32_FLOAT,
             .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
         },
         {
@@ -1427,7 +1427,7 @@ static void test_formats(void)
             .output_fmt = DXGI_FORMAT_R10G10B10A2_UNORM, .exp_hr = S_OK,
         },
         {
-            .engine_fmt = DXGI_FORMAT_R16G16B16A16_UINT, .engine_todo = TRUE,
+            .engine_fmt = DXGI_FORMAT_R16G16B16A16_UINT,
             .output_fmt = DXGI_FORMAT_B8G8R8X8_UNORM, .exp_hr = S_OK,
         },
         {
@@ -1461,12 +1461,12 @@ static void test_formats(void)
             .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK, .output_todo = TRUE,
         },
         {
-            .engine_fmt = NON_EXISITING_DXGI_FORMAT, .engine_todo = TRUE,
-            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+            .engine_fmt = NON_EXISITING_DXGI_FORMAT,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK, .output_todo = TRUE,
         },
         /* Output texture format working with NVIDIA and AMD driver, but broken in VMs. */
         {
-            .engine_fmt = DXGI_FORMAT_B5G5R5A1_UNORM, .engine_todo = TRUE,
+            .engine_fmt = DXGI_FORMAT_B5G5R5A1_UNORM,
             .output_fmt = DXGI_FORMAT_R8G8B8A8_UNORM, .exp_hr = S_OK, .broken_hr = MF_E_INVALIDMEDIATYPE,
         },
         /* Some unsupported output texture formats. */
