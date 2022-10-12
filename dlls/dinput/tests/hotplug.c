@@ -36,6 +36,7 @@
 #include "winstring.h"
 
 #include "wine/hid.h"
+#include "wine/winrt.h"
 
 #include "dinput_test.h"
 
@@ -546,42 +547,6 @@ static struct controller_handler controller_added = {{&controller_handler_vtbl}}
 
 DEFINE_GUID( IID_IGameControllerImpl, 0x06e58977, 0x7684, 0x4dc5, 0xba, 0xd1, 0xcd, 0xa5, 0x2a, 0x4a, 0xa0, 0x6d );
 typedef IInspectable IGameControllerImpl;
-
-#define DEFINE_IINSPECTABLE_OUTER( pfx, iface_type, impl_type, outer_iface )                       \
-    static inline impl_type *impl_from_##iface_type( iface_type *iface )                           \
-    {                                                                                              \
-        return CONTAINING_RECORD( iface, impl_type, iface_type##_iface );                          \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_QueryInterface( iface_type *iface, REFIID iid, void **out )        \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_QueryInterface( (IInspectable *)impl->outer_iface, iid, out );         \
-    }                                                                                              \
-    static ULONG WINAPI pfx##_AddRef( iface_type *iface )                                          \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_AddRef( (IInspectable *)impl->outer_iface );                           \
-    }                                                                                              \
-    static ULONG WINAPI pfx##_Release( iface_type *iface )                                         \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_Release( (IInspectable *)impl->outer_iface );                          \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetIids( iface_type *iface, ULONG *iid_count, IID **iids )         \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_GetIids( (IInspectable *)impl->outer_iface, iid_count, iids );         \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetRuntimeClassName( iface_type *iface, HSTRING *class_name )      \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_GetRuntimeClassName( (IInspectable *)impl->outer_iface, class_name );  \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetTrustLevel( iface_type *iface, TrustLevel *trust_level )        \
-    {                                                                                              \
-        impl_type *impl = impl_from_##iface_type( iface );                                         \
-        return IInspectable_GetTrustLevel( (IInspectable *)impl->outer_iface, trust_level );       \
-    }
 
 struct custom_controller
 {
