@@ -2068,6 +2068,36 @@ static BOOL com_peek_message(struct apartment *apt, MSG *msg)
      * (to finish draining it) before using MsgWaitForMultipleObjects */
 }
 
+static HRESULT com_filter_messagepending(struct tlsdata *tlsdata, DWORD dwTickCount)
+{
+    struct apartment *apt = tlsdata->apt;
+
+    if (apt->filter)
+    {
+        PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
+        DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, dwTickCount, pendingtype);
+
+        TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
+
+        switch (be_handled)
+        {
+        case PENDINGMSG_CANCELCALL:
+            WARN("call canceled\n");
+            return RPC_E_CALL_CANCELED;
+            break;
+        case PENDINGMSG_WAITNOPROCESS:
+        case PENDINGMSG_WAITDEFPROCESS:
+        default:
+            /* FIXME: MSDN is very vague about the difference
+             * between WAITNOPROCESS and WAITDEFPROCESS - there
+             * appears to be none, so it is possibly a left-over
+             * from the 16-bit world. */
+            break;
+        }
+    }
+    return S_OK;
+}
+
 /***********************************************************************
  *           CoWaitForMultipleHandles    (combase.@)
  */
@@ -2097,7 +2127,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
     if (FAILED(hr = com_get_tlsdata(&tlsdata)))
         return hr;
 
-    apt = com_get_current_apt();
+    apt = tlsdata->apt;
     message_loop = apt && !apt->multi_threaded;
 
     if (flags & COWAIT_WAITALL)
@@ -2139,31 +2169,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                 int msg_count = 0;
                 MSG msg;
 
-                /* call message filter */
-
-                if (apt->filter)
-                {
-                    PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
-                    DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, now - start_time, pendingtype);
-
-                    TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
-
-                    switch (be_handled)
-                    {
-                    case PENDINGMSG_CANCELCALL:
-                        WARN("call canceled\n");
-                        hr = RPC_E_CALL_CANCELED;
-                        break;
-                    case PENDINGMSG_WAITNOPROCESS:
-                    case PENDINGMSG_WAITDEFPROCESS:
-                    default:
-                        /* FIXME: MSDN is very vague about the difference
-                         * between WAITNOPROCESS and WAITDEFPROCESS - there
-                         * appears to be none, so it is possibly a left-over
-                         * from the 16-bit world. */
-                        break;
-                    }
-                }
+                hr = com_filter_messagepending(tlsdata, now - start_time);
 
                 /* Some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
                  * so after processing 100 messages we go back to checking the wait handles */
