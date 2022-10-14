@@ -975,6 +975,16 @@ static DWORD WINAPI MessageFilter_MessagePending(
     return PENDINGMSG_WAITNOPROCESS;
 }
 
+static DWORD WINAPI MessageFilter_MessagePending_cancel(
+  IMessageFilter *iface,
+  HTASK threadIDCallee,
+  DWORD dwTickCount,
+  DWORD dwPendingType)
+{
+    trace("MessagePending(cancel)\n");
+    return PENDINGMSG_CANCELCALL;
+}
+
 static const IMessageFilterVtbl MessageFilter_Vtbl =
 {
     MessageFilter_QueryInterface,
@@ -986,6 +996,18 @@ static const IMessageFilterVtbl MessageFilter_Vtbl =
 };
 
 static IMessageFilter MessageFilter = { &MessageFilter_Vtbl };
+
+static const IMessageFilterVtbl MessageFilter_Vtbl_cancel =
+{
+    MessageFilter_QueryInterface,
+    MessageFilter_AddRef,
+    MessageFilter_Release,
+    MessageFilter_HandleInComingCall,
+    MessageFilter_RetryRejectedCall,
+    MessageFilter_MessagePending_cancel
+};
+
+static IMessageFilter MessageFilter_cancel = { &MessageFilter_Vtbl_cancel };
 
 static void test_CoRegisterMessageFilter(void)
 {
@@ -2619,6 +2641,14 @@ static DWORD CALLBACK post_dde_later_thread(LPVOID arg)
     return 0;
 }
 
+static DWORD CALLBACK post_input_later_thread(LPVOID arg)
+{
+    HWND hWnd = arg;
+    Sleep(50);
+    PostMessageA(hWnd, WM_CHAR, VK_ESCAPE, 0);
+    return 0;
+}
+
 static const char cls_name[] = "cowait_test_class";
 
 static UINT cowait_msgs[100], cowait_msgs_first, cowait_msgs_last;
@@ -2756,6 +2786,21 @@ static DWORD CALLBACK test_CoWaitForMultipleHandles_thread(LPVOID arg)
     /* But not pumped */
     success = PeekMessageA(&msg, NULL, uMSG, uMSG, PM_REMOVE);
     ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+
+    hr = CoRegisterMessageFilter(&MessageFilter_cancel, NULL);
+    ok(hr == S_OK, "CoRegisterMessageFilter failed: %08lx\n", hr);
+
+    /* a message which arrives during the wait calls IMessageFilter::PendingMessage,
+     * which can cancel the wait (without pumping the message) */
+    thread = CreateThread(NULL, 0, post_input_later_thread, hWnd, 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 200, 2, handles, &index);
+    ok(hr == RPC_E_CALL_CANCELED, "expected RPC_E_CALL_CANCELED, got 0x%08lx\n", hr);
+    success = PeekMessageA(&msg, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+    ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+    CloseHandle(thread);
+
+    hr = CoRegisterMessageFilter(NULL, NULL);
+    ok(hr == S_OK, "CoRegisterMessageFilter failed: %08lx\n", hr);
 
     DestroyWindow(hWnd);
     CoUninitialize();

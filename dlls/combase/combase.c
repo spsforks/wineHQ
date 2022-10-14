@@ -2170,6 +2170,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                 MSG msg;
 
                 hr = com_filter_messagepending(tlsdata, now - start_time);
+                if(FAILED(hr)) break;
 
                 /* Some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
                  * so after processing 100 messages we go back to checking the wait handles */
