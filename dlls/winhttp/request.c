@@ -1635,6 +1635,9 @@ static DWORD open_connection( struct request *request )
         len = lstrlenW( addressW ) + 1;
         send_callback( &request->hdr, WINHTTP_CALLBACK_STATUS_CONNECTING_TO_SERVER, addressW, len );
 
+        EnterCriticalSection( &connection_pool_cs );
+        ++host->ref;
+        LeaveCriticalSection( &connection_pool_cs );
         if ((ret = netconn_create( host, &connect->sockaddr, request->connect_timeout, &netconn )))
         {
             free( addressW );
