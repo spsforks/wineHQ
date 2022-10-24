@@ -1571,7 +1571,7 @@ static void test_reg_load_key(void)
     RegCloseKey(hkHandle);
 
     ret = RegLoadKeyA(HKEY_LOCAL_MACHINE, "Test", "saved_key");
-    todo_wine ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
 
     ret = RegOpenKeyA(HKEY_LOCAL_MACHINE, "Test", &hkHandle);
     ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
@@ -1586,7 +1586,7 @@ static void test_reg_load_key(void)
     RegCloseKey(hkHandle);
 
     ret = RegLoadKeyA(HKEY_LOCAL_MACHINE, "Test", "saved_key");
-    todo_wine ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
 
     ret = RegOpenKeyA(HKEY_LOCAL_MACHINE, "Test", &hkHandle);
     ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);

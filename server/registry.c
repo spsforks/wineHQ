@@ -2333,7 +2333,7 @@ DECL_HANDLER(load_registry)
         if (!(parent = get_hkey_obj( objattr->rootdir, 0 ))) return;
     }
 
-    if ((key = create_key( parent, &name, 0, KEY_WOW64_64KEY, 0, sd )))
+    if ((key = create_key( parent, &name, 0, KEY_WOW64_64KEY, OBJ_OPENIF, sd )))
     {
         load_registry( key, req->file );
         release_object( key );
