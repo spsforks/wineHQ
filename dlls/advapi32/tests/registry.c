@@ -1545,7 +1545,7 @@ static void test_reg_save_key(void)
 static void test_reg_load_key(void)
 {
     DWORD ret;
-    HKEY hkHandle;
+    HKEY hkHandle, child_key;
 
     if (!set_privileges(SE_RESTORE_NAME, TRUE) ||
         !set_privileges(SE_BACKUP_NAME, FALSE))
@@ -1556,6 +1556,45 @@ static void test_reg_load_key(void)
 
     ret = RegLoadKeyA(HKEY_LOCAL_MACHINE, "Test", "saved_key");
     ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegDeleteKeyA(HKEY_LOCAL_MACHINE, "Test");
+    ok(ret == ERROR_ACCESS_DENIED, "expected ERROR_ACCESS_DENIED, got %ld\n", ret);
+
+    /* Test behaviour when loading a loaded key again */
+    ret = RegOpenKeyA(HKEY_LOCAL_MACHINE, "Test", &hkHandle);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegCreateKeyA(hkHandle, "child_key", &child_key);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    RegCloseKey(child_key);
+    RegCloseKey(hkHandle);
+
+    ret = RegLoadKeyA(HKEY_LOCAL_MACHINE, "Test", "saved_key");
+    todo_wine ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegOpenKeyA(HKEY_LOCAL_MACHINE, "Test", &hkHandle);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegOpenKeyA(hkHandle, "child_key", &child_key);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    RegCloseKey(child_key);
+
+    ret = RegDeleteKeyA(hkHandle, "child_key");
+    ok(ret == S_OK, "expected ERROR_SUCCESS, got %ld\n", ret);
+    RegCloseKey(hkHandle);
+
+    ret = RegLoadKeyA(HKEY_LOCAL_MACHINE, "Test", "saved_key");
+    todo_wine ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegOpenKeyA(HKEY_LOCAL_MACHINE, "Test", &hkHandle);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    ret = RegOpenKeyA(hkHandle, "child_key", &child_key);
+    ok(ret == ERROR_FILE_NOT_FOUND, "expected ERROR_SUCCESS, got %ld\n", ret);
+
+    RegCloseKey(hkHandle);
 
     set_privileges(SE_RESTORE_NAME, FALSE);
 
