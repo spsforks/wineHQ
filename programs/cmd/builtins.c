@@ -4371,10 +4371,10 @@ void WCMD_shift (const WCHAR *args) {
  */
 void WCMD_start(WCHAR *args)
 {
-    int argno;
     int have_title;
     WCHAR file[MAX_PATH];
     WCHAR *cmdline, *cmdline_params;
+    WCHAR *thisArg, *argN = NULL;
     STARTUPINFOW st;
     PROCESS_INFORMATION pi;
 
@@ -4419,46 +4419,27 @@ void WCMD_start(WCHAR *args)
      * WCMD_parameter_with_delims will take care of everything for us.
      */
     have_title = FALSE;
-    for (argno=0; ; argno++) {
-        WCHAR *thisArg, *argN;
 
-        argN = NULL;
-        thisArg = WCMD_parameter_with_delims(args, argno, &argN, FALSE, FALSE, L" \t/");
+    argN = NULL;
+    thisArg = WCMD_parameter_with_delims(args, 0, &argN, FALSE, FALSE, L" \t/");
 
-        /* No more parameters */
-        if (!argN)
-            break;
+    if (argN && *argN == '"')
+    {
+        TRACE("detected console title: %s\n", wine_dbgstr_w(thisArg));
+        have_title = TRUE;
 
-        /* Found the title */
-        if (argN[0] == '"') {
-            TRACE("detected console title: %s\n", wine_dbgstr_w(thisArg));
-            have_title = TRUE;
+        /* Copy all of the cmdline processed */
+        memcpy(cmdline_params, args, sizeof(WCHAR) * (argN - args));
+        cmdline_params[argN - args] = '\0';
 
-            /* Copy all of the cmdline processed */
-            memcpy(cmdline_params, args, sizeof(WCHAR) * (argN - args));
-            cmdline_params[argN - args] = '\0';
+        /* Add quoted title */
+        lstrcatW(cmdline_params, L"\"\\\"");
+        lstrcatW(cmdline_params, thisArg);
+        lstrcatW(cmdline_params, L"\\\"\"");
 
-            /* Add quoted title */
-            lstrcatW(cmdline_params, L"\"\\\"");
-            lstrcatW(cmdline_params, thisArg);
-            lstrcatW(cmdline_params, L"\\\"\"");
-
-            /* Concatenate remaining command-line */
-            thisArg = WCMD_parameter_with_delims(args, argno, &argN, TRUE, FALSE, L" \t/");
-            lstrcatW(cmdline_params, argN + lstrlenW(thisArg));
-
-            break;
-        }
-
-        /* Skipping a regular argument? */
-        else if (argN != args && argN[-1] == '/') {
-            continue;
-
-        /* Not an argument nor the title, start of program arguments,
-         * stop looking for title.
-         */
-        } else
-            break;
+        /* Concatenate remaining command-line */
+        thisArg = WCMD_parameter_with_delims(args, 0, &argN, TRUE, FALSE, L" \t/");
+        lstrcatW(cmdline_params, argN + lstrlenW(thisArg));
     }
 
     /* build command-line if not built yet */
