@@ -237,6 +237,7 @@ static ID3D11Device *create_d3d11_device(void)
 {
     static const D3D_FEATURE_LEVEL default_feature_level[] =
     {
+        D3D_FEATURE_LEVEL_11_1,
         D3D_FEATURE_LEVEL_11_0,
         D3D_FEATURE_LEVEL_10_1,
         D3D_FEATURE_LEVEL_10_0,
@@ -1313,6 +1314,281 @@ done:
     CloseHandle(notify.ready_event);
 }
 
+struct test_formats_notify
+{
+    IMFMediaEngineNotify IMFMediaEngineNotify_iface;
+
+    DXGI_FORMAT engine_fmt, output_fmt;
+    IMFMediaEngineEx *media_engine;
+    HANDLE playing_event;
+    HANDLE ready_event;
+    HRESULT error;
+};
+
+static HRESULT WINAPI test_formats_notify_QueryInterface(IMFMediaEngineNotify *iface, REFIID riid, void **obj)
+{
+    if (IsEqualIID(riid, &IID_IUnknown)
+            || IsEqualIID(riid, &IID_IMFMediaEngineNotify))
+    {
+        *obj = iface;
+        IMFMediaEngineNotify_AddRef(iface);
+        return S_OK;
+    }
+
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI test_formats_notify_AddRef(IMFMediaEngineNotify *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI test_formats_notify_Release(IMFMediaEngineNotify *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI test_formats_notify_EventNotify(IMFMediaEngineNotify *iface, DWORD event, DWORD_PTR param1, DWORD param2)
+{
+    struct test_formats_notify *notify = CONTAINING_RECORD(iface, struct test_formats_notify, IMFMediaEngineNotify_iface);
+    IMFMediaEngineEx *media_engine = notify->media_engine;
+    DWORD width, height;
+    HRESULT hr;
+    BOOL ret;
+
+    winetest_push_context("%x, %x", notify->engine_fmt, notify->output_fmt);
+
+    switch (event)
+    {
+    case MF_MEDIA_ENGINE_EVENT_CANPLAY:
+        hr = IMFMediaEngineEx_Play(media_engine);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        break;
+
+    case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
+        ret = IMFMediaEngineEx_HasVideo(media_engine);
+        ok(ret, "Unexpected HasVideo %u.\n", ret);
+        hr = IMFMediaEngineEx_GetNativeVideoSize(media_engine, &width, &height);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        ok(width == 64, "Unexpected width %lu.\n", width);
+        ok(height == 64, "Unexpected height %lu.\n", height);
+        break;
+
+    case MF_MEDIA_ENGINE_EVENT_ERROR:
+        notify->error = param2;
+        /* fallthrough */
+    case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
+    case MF_MEDIA_ENGINE_EVENT_TIMEUPDATE:
+    case MF_MEDIA_ENGINE_EVENT_PLAYING:
+        SetEvent(notify->ready_event);
+        break;
+
+    }
+
+    winetest_pop_context();
+
+    return S_OK;
+}
+
+static IMFMediaEngineNotifyVtbl test_formats_notify_vtbl =
+{
+    test_formats_notify_QueryInterface,
+    test_formats_notify_AddRef,
+    test_formats_notify_Release,
+    test_formats_notify_EventNotify,
+};
+
+
+struct tested_format
+{
+    const DXGI_FORMAT engine_fmt;
+    BOOL bad_fmt;
+    BOOL engine_todo;
+    const DXGI_FORMAT output_fmt;
+    HRESULT exp_hr;
+    HRESULT broken_hr;
+    BOOL output_todo;
+};
+
+static void test_formats(void)
+{
+#define NON_EXISITING_DXGI_FORMAT 0x80
+
+    const struct tested_format tested_formats[] =
+    {
+        /* Some supported media engine and output texture formats. */
+        {
+            .engine_fmt = DXGI_FORMAT_R32G32B32_FLOAT, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R16G16B16A16_FLOAT,
+            .output_fmt = DXGI_FORMAT_R10G10B10A2_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R16G16B16A16_UINT, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8X8_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R8G8B8A8_UNORM,
+            .output_fmt = DXGI_FORMAT_R16G16B16A16_FLOAT, .exp_hr = S_OK, .broken_hr = MF_E_INVALIDMEDIATYPE, /* Broken until 1507. */
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R8G8B8A8_UNORM,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, .exp_hr = S_OK, .broken_hr = E_INVALIDARG, /* Broken on NVIDIA */
+        },
+        /* Not supported media engine formats. */
+        {
+            .engine_fmt = DXGI_FORMAT_R32G32B32A32_FLOAT, .bad_fmt = TRUE, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R10G10B10A2_UNORM,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        /* Some exotic, ridiculous and non-exisiting media engine formats. */
+        {
+            .engine_fmt = DXGI_FORMAT_D24_UNORM_S8_UINT, .bad_fmt = TRUE, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_BC2_UNORM_SRGB, .bad_fmt = TRUE, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_NV12,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK, .output_todo = TRUE,
+        },
+        {
+            .engine_fmt = NON_EXISITING_DXGI_FORMAT, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_B8G8R8A8_UNORM, .exp_hr = S_OK,
+        },
+        /* Output texture format working with NVIDIA and AMD driver, but broken in VMs. */
+        {
+            .engine_fmt = DXGI_FORMAT_B5G5R5A1_UNORM, .engine_todo = TRUE,
+            .output_fmt = DXGI_FORMAT_R8G8B8A8_UNORM, .exp_hr = S_OK, .broken_hr = MF_E_INVALIDMEDIATYPE,
+        },
+        /* Some unsupported output texture formats. */
+        {
+            .engine_fmt = DXGI_FORMAT_R8G8B8A8_UNORM,
+            .output_fmt = DXGI_FORMAT_R16G16B16A16_UNORM, .exp_hr = MF_E_INVALIDMEDIATYPE, .output_todo = TRUE,
+        },
+        {
+            .engine_fmt = DXGI_FORMAT_R8G8B8A8_UNORM,
+            .output_fmt = DXGI_FORMAT_R11G11B10_FLOAT, .exp_hr = MF_E_INVALIDMEDIATYPE, .output_todo = TRUE,
+        }
+    };
+
+#undef NON_EXISITING_DXGI_FORMAT
+
+    struct test_formats_notify notify = {{&test_formats_notify_vtbl}};
+    WCHAR url[] = {L"i420-64x64.avi"};
+    IMFDXGIDeviceManager *manager;
+    D3D11_TEXTURE2D_DESC desc;
+    ID3D11Texture2D *texture;
+    IMFByteStream *stream;
+    ID3D11Device *device;
+    RECT dst_rect;
+    UINT token;
+    HRESULT hr;
+    DWORD res;
+    UINT32 i;
+
+    notify.ready_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(!!notify.ready_event, "CreateEventW failed, error %lu\n", GetLastError());
+
+    stream = load_resource(L"i420-64x64.avi", L"video/avi");
+
+    if (!(device = create_d3d11_device()))
+    {
+        skip("Failed to create a D3D11 device, skipping tests.\n");
+        return;
+    }
+
+    hr = pMFCreateDXGIDeviceManager(&token, &manager);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFDXGIDeviceManager_ResetDevice(manager, (IUnknown *)device, token);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    for (i = 0; i < ARRAY_SIZE(tested_formats); ++i)
+    {
+        struct tested_format test = tested_formats[i];
+        notify.engine_fmt = test.engine_fmt;
+        notify.output_fmt = test.output_fmt;
+        notify.media_engine = NULL;
+        notify.error = S_OK;
+
+        winetest_push_context("%02x, %02x", test.engine_fmt, test.output_fmt);
+
+        notify.media_engine = create_media_engine_ex(&notify.IMFMediaEngineNotify_iface,
+                manager, test.engine_fmt);
+
+        ok(!!notify.media_engine, "MfMediaEngine creation failed.\n");
+
+        hr = IMFMediaEngineEx_SetSourceFromByteStream(notify.media_engine, stream, url);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        res = WaitForSingleObject(notify.ready_event, 5000);
+        ok(!res, "Unexpected res %#lx.\n", res);
+
+        if (test.bad_fmt)
+        {
+            todo_wine_if(test.engine_todo)
+            ok(notify.error == MF_E_INVALIDMEDIATYPE || broken(notify.error == E_UNEXPECTED), /* Broken on Win 8. */
+                "Media engine reported unexpected error %#lx on bad format.\n", notify.error);
+        }
+        else
+        {
+            /* Some formats aren't working on VMs or Wine, so they will fail even though not being maked as bad_fmt. */
+            todo_wine_if(test.engine_todo)
+            ok(notify.error == S_OK || broken(notify.error == MF_E_INVALIDMEDIATYPE || notify.error == E_UNEXPECTED),
+                "Media engine reported unexpected error %#lx on good format.\n", notify.error);
+        }
+
+        if (FAILED(notify.error))
+        {
+            skip("Had error %#lx.\n", notify.error);
+            goto skip_transfer;
+        }
+
+        texture = NULL;
+
+        memset(&desc, 0, sizeof(desc));
+        desc.Width = 64;
+        desc.Height = 64;
+        desc.ArraySize = 1;
+        desc.Format = test.output_fmt;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+        desc.SampleDesc.Count = 1;
+        hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        res = WaitForSingleObject(notify.ready_event, 500);
+        ok(!res, "Unexpected res %#lx.\n", res);
+
+        SetRect(&dst_rect, 0, 0, desc.Width, desc.Height);
+        hr = IMFMediaEngineEx_TransferVideoFrame(notify.media_engine, (IUnknown *)texture, NULL, &dst_rect, NULL);
+
+        todo_wine_if(test.output_todo)
+        ok(hr == test.exp_hr || broken(test.broken_hr && hr == test.broken_hr), "Unexpected hr %#lx.\n", hr);
+
+        ID3D11Texture2D_Release(texture);
+
+skip_transfer:
+        IMFMediaEngineEx_Shutdown(notify.media_engine);
+        IMFMediaEngineEx_Release(notify.media_engine);
+
+        winetest_pop_context();
+    }
+
+    IMFDXGIDeviceManager_Release(manager);
+
+    ID3D11Device_Release(device);
+    IMFByteStream_Release(stream);
+    CloseHandle(notify.ready_event);
+}
+
 START_TEST(mfmediaengine)
 {
     HRESULT hr;
@@ -1344,6 +1620,7 @@ START_TEST(mfmediaengine)
     test_SetSourceFromByteStream();
     test_audio_configuration();
     test_TransferVideoFrames();
+    test_formats();
 
     IMFMediaEngineClassFactory_Release(factory);
 
