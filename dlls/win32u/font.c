@@ -4317,7 +4317,7 @@ static void scale_font_metrics( struct gdi_font *font, TEXTMETRICW *tm )
     double scale_x, scale_y;
 
     /* Make sure that the font has sane width/height ratio */
-    if (font->aveWidth && (font->aveWidth + tm->tmHeight - 1) / tm->tmHeight > 100)
+    if (font->aveWidth && tm->tmHeight && (font->aveWidth + tm->tmHeight - 1) / tm->tmHeight > 100)
     {
         WARN( "Ignoring too large font->aveWidth %d\n", font->aveWidth );
         font->aveWidth = 0;
