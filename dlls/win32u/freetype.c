@@ -1951,6 +1951,13 @@ static LONG calc_ppem_for_height(FT_Face ft_face, LONG height)
         ppem = 1;
     }
 
+    /*
+     * It's possible for EM to be 0 for some fonts, and it should be handled
+     * gracefully, but it can cause problems, so warn when it happens.
+     */
+    if(ppem == 0)
+        WARN("Font family %s with style %s and height %i has EM == 0\n", ft_face->family_name, ft_face->style_name, height);
+
     return ppem;
 }
 
