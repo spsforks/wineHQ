@@ -2607,11 +2607,17 @@ static FT_Matrix *get_transform_matrices( struct gdi_font *font, BOOL vertical, 
     matrices[matrix_unrotated] = identity_mat;
 
     /* Scaling factor */
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         if (!freetype_set_outline_text_metrics( font )) freetype_set_bitmap_text_metrics( font );
-        width_ratio = (double)font->aveWidth;
-        width_ratio /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
+        /* Metrics were recalculated, so test again */
+        if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
+        {
+            width_ratio = (double)font->aveWidth;
+            width_ratio /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
+        }
+        else
+            width_ratio = font->scale_y;
     }
     else
         width_ratio = font->scale_y;
