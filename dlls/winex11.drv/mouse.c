@@ -382,6 +382,10 @@ static BOOL grab_clipping_window( const RECT *clip )
         return TRUE;  /* don't clip in the desktop process */
 
     if (!data) return FALSE;
+
+    if (data->clipping && EqualRect( clip, &clip_rect ) && !grab_retry)
+        return TRUE;
+
     if (!(clip_window = init_clip_window())) return TRUE;
 
     if (!data->clip_hwnd)
@@ -440,6 +444,7 @@ static BOOL grab_clipping_window( const RECT *clip )
         return FALSE;
     }
     clip_rect = *clip;
+    grab_retry = FALSE;
     if (!data->clipping) sync_window_cursor( clip_window );
     InterlockedExchangePointer( (void **)&cursor_window, data->clip_hwnd );
     data->clipping = TRUE;
@@ -491,6 +496,7 @@ void reset_clipping_window(void)
  */
 void retry_grab_clipping_window(void)
 {
+    grab_retry = TRUE;
     if (clipping_cursor)
         NtUserClipCursor( &clip_rect );
     else if (last_clip_refused && NtUserGetForegroundWindow() == last_clip_foreground_window)

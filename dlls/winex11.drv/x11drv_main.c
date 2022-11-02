@@ -79,6 +79,7 @@ BOOL use_system_cursors = TRUE;
 BOOL show_systray = TRUE;
 BOOL grab_pointer = TRUE;
 BOOL grab_fullscreen = FALSE;
+BOOL grab_retry = FALSE;
 BOOL managed_mode = TRUE;
 BOOL decorated_mode = TRUE;
 BOOL private_color_map = FALSE;
