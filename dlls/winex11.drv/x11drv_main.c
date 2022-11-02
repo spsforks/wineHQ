@@ -728,6 +728,7 @@ void X11DRV_ThreadDetach(void)
 
     if (data)
     {
+        HWND clip_hwnd = data->clip_hwnd;
         vulkan_thread_detach();
         if (data->xim) XCloseIM( data->xim );
         if (data->font_set) XFreeFontSet( data->display, data->font_set );
@@ -735,6 +736,7 @@ void X11DRV_ThreadDetach(void)
         free( data );
         /* clear data in case we get re-entered from user32 before the thread is truly dead */
         NtUserGetThreadInfo()->driver_data = 0;
+        if (clip_hwnd) NtUserDestroyWindow( clip_hwnd );
     }
 }
 
