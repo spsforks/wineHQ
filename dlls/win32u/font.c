@@ -3390,13 +3390,23 @@ static BOOL get_face_enum_data( struct gdi_font_face *face, ENUMLOGFONTEXW *elf,
 #define SCALE_NTM(value) (muldiv( ntm->ntmTm.tmHeight, (value), TM.tmHeight ))
         cell_height = TM.tmHeight / ( -lf.lfHeight / font->otm.otmEMSquare );
         ntm->ntmTm.tmHeight = muldiv( ntm_ppem, cell_height, font->otm.otmEMSquare );
-        ntm->ntmTm.tmAscent = SCALE_NTM( TM.tmAscent );
+        if (TM.tmHeight != 0)
+        {
+            ntm->ntmTm.tmAscent = SCALE_NTM( TM.tmAscent );
+            ntm->ntmTm.tmInternalLeading = SCALE_NTM( TM.tmInternalLeading );
+            ntm->ntmTm.tmExternalLeading = SCALE_NTM( TM.tmExternalLeading );
+            ntm->ntmTm.tmAveCharWidth = SCALE_NTM( TM.tmAveCharWidth );
+            ntm->ntmTm.tmMaxCharWidth = SCALE_NTM( TM.tmMaxCharWidth );
+        }
+        else
+        {
+            ntm->ntmTm.tmAscent = 0;
+            ntm->ntmTm.tmInternalLeading = 0;
+            ntm->ntmTm.tmExternalLeading = 0;
+            ntm->ntmTm.tmAveCharWidth = 0;
+            ntm->ntmTm.tmMaxCharWidth = 0;
+        }
         ntm->ntmTm.tmDescent = ntm->ntmTm.tmHeight - ntm->ntmTm.tmAscent;
-        ntm->ntmTm.tmInternalLeading = SCALE_NTM( TM.tmInternalLeading );
-        ntm->ntmTm.tmExternalLeading = SCALE_NTM( TM.tmExternalLeading );
-        ntm->ntmTm.tmAveCharWidth = SCALE_NTM( TM.tmAveCharWidth );
-        ntm->ntmTm.tmMaxCharWidth = SCALE_NTM( TM.tmMaxCharWidth );
-
         memcpy((char *)&ntm->ntmTm + offsetof( TEXTMETRICW, tmWeight ),
                (const char *)&TM + offsetof( TEXTMETRICW, tmWeight ),
                sizeof(TEXTMETRICW) - offsetof( TEXTMETRICW, tmWeight ));
