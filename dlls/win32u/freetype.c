@@ -3757,8 +3757,9 @@ static BOOL freetype_set_outline_text_metrics( struct gdi_font *font )
                                            (pHori->Ascender - pHori->Descender))));
 
     TM.tmAveCharWidth = SCALE_X(pOS2->xAvgCharWidth);
-    if (TM.tmAveCharWidth == 0) {
-        TM.tmAveCharWidth = 1; 
+    if(TM.tmAveCharWidth == 0 && TM.tmHeight != 0)
+    {
+        TM.tmAveCharWidth = 1;
     }
     TM.tmMaxCharWidth = SCALE_X(ft_face->bbox.xMax - ft_face->bbox.xMin);
     TM.tmWeight = FW_REGULAR;
