@@ -4118,7 +4118,7 @@ static void scale_outline_font_metrics( const struct gdi_font *font, OUTLINETEXT
 {
     double scale_x, scale_y;
 
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         scale_x = (double)font->aveWidth;
         scale_x /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
@@ -4333,7 +4333,7 @@ static void scale_font_metrics( struct gdi_font *font, TEXTMETRICW *tm )
         font->aveWidth = 0;
     }
 
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         scale_x = (double)font->aveWidth;
         scale_x /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
