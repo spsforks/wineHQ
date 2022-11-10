@@ -8986,8 +8986,11 @@ static void test_put_nodeTypedValue(void)
 {
     static const BYTE binhexdata[16] =
         {0,1,2,3,4,5,6,7,8,9,0xa,0xb,0xc,0xd,0xe,0xf};
+    static const char special_characters_escaped[] = "<Element>&lt;&gt;&amp;\"'/\\</Element>";
+    BSTR special_characters = _bstr_("<>&\"'/\\");
     IXMLDOMDocument *doc;
     IXMLDOMElement *elem;
+    IStream *stream;
     VARIANT type, value;
     LONG ubound, lbound;
     IXMLDOMNode *node;
@@ -8995,6 +8998,8 @@ static void test_put_nodeTypedValue(void)
     HRESULT hr;
     BYTE *ptr;
     BSTR str;
+    HGLOBAL global;
+    char *p;
 
     doc = create_document(&IID_IXMLDOMDocument);
 
@@ -9025,6 +9030,50 @@ static void test_put_nodeTypedValue(void)
     ok(memcmp(V_BSTR(&type), L"1", 2*sizeof(WCHAR)) == 0,
        "got %s, expected \"1\"\n", wine_dbgstr_w(V_BSTR(&type)));
     VariantClear(&type);
+
+    /* Test weird characters in strings */
+    V_VT(&value) = VT_BSTR;
+    V_BSTR(&value) = special_characters;
+    hr = IXMLDOMElement_put_nodeTypedValue(elem, value);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    V_VT(&value) = VT_EMPTY;
+    hr = IXMLDOMElement_get_nodeTypedValue(elem, &value);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(V_VT(&value) == VT_BSTR, "got %d, expected VT_BSTR\n", V_VT(&value));
+    todo_wine ok(memcmp(V_BSTR(&value), special_characters, 2*SysStringLen(special_characters)) == 0,
+        "got %s, expected %s\n", wine_dbgstr_w(V_BSTR(&value)), wine_dbgstr_w(special_characters));
+    VariantClear(&value);
+
+    hr = IXMLDOMDocument_appendChild(doc, (IXMLDOMNode *)elem, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    V_VT(&value) = VT_UNKNOWN;
+    V_UNKNOWN(&value) = (IUnknown*)stream;
+    hr = IXMLDOMDocument_save(doc, value);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = GetHGlobalFromStream(stream, &global);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    p = GlobalLock(global);
+    todo_wine ok(!memcmp(p, special_characters_escaped, sizeof(special_characters_escaped) - 1), "got %s\n", wine_dbgstr_a(p));
+    GlobalUnlock(global);
+
+    IStream_Release(stream);
+    hr = IXMLDOMDocument_removeChild(doc, (IXMLDOMNode *)elem, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXMLDOMElement_put_dataType(elem, _bstr_("int"));
+    todo_wine ok(hr == E_FAIL, "Unexpected hr %#lx.\n", hr);
+
+    V_VT(&type) = VT_I1;
+    V_I1(&type) = 1;
+    hr = IXMLDOMElement_put_nodeTypedValue(elem, type);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     /* int */
     hr = IXMLDOMElement_put_dataType(elem, _bstr_("int"));
