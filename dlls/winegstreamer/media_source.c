@@ -533,10 +533,20 @@ static void wait_on_sample(struct media_stream *stream, IUnknown *token)
     struct media_source *source = stream->parent_source;
     PROPVARIANT empty_var = {.vt = VT_EMPTY};
     struct wg_parser_buffer buffer;
+    bool res;
 
     TRACE("%p, %p\n", stream, token);
 
-    if (wg_parser_stream_get_buffer(source->wg_parser, stream->wg_stream, &buffer))
+    LeaveCriticalSection(&source->cs);
+    res = wg_parser_stream_get_buffer(source->wg_parser, stream->wg_stream, &buffer);
+    EnterCriticalSection(&source->cs);
+
+    /* If the media source has been shut down during the wait, then
+     * resources have been released, so don't touch anything. */
+    if (source->state == SOURCE_SHUTDOWN)
+        return;
+
+    if (res)
     {
         send_buffer(stream, &buffer, token);
     }
@@ -555,11 +565,17 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
     IUnknown *state;
     HRESULT hr;
 
-    if (source->state == SOURCE_SHUTDOWN)
-        return S_OK;
-
     if (FAILED(hr = IMFAsyncResult_GetState(result, &state)))
         return hr;
+
+    EnterCriticalSection(&source->cs);
+
+    if (source->state == SOURCE_SHUTDOWN)
+    {
+        LeaveCriticalSection(&source->cs);
+        IUnknown_Release(state);
+        return S_OK;
+    }
 
     command = impl_from_async_command_IUnknown(state);
     switch (command->op)
@@ -580,6 +596,8 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
                 wait_on_sample(command->u.request_sample.stream, command->u.request_sample.token);
             break;
     }
+
+    LeaveCriticalSection(&source->cs);
 
     IUnknown_Release(state);
 
