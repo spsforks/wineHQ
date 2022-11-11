@@ -856,12 +856,12 @@ static HRESULT WINAPI domelem_put_nodeTypedValue(
             hr = VariantChangeType(&content, &value, 0, VT_BSTR);
             if (hr == S_OK)
             {
-                hr = node_set_content(&This->node, V_BSTR(&content));
+                hr = node_set_content_escaped(&This->node, V_BSTR(&content));
                 VariantClear(&content);
             }
         }
         else
-            hr = node_set_content(&This->node, V_BSTR(&value));
+            hr = node_set_content_escaped(&This->node, V_BSTR(&value));
         break;
     case DT_BIN_BASE64:
         if (V_VT(&value) == VT_BSTR)

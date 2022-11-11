@@ -238,7 +238,7 @@ HRESULT node_set_content(xmlnode *This, LPCWSTR value)
     return S_OK;
 }
 
-static HRESULT node_set_content_escaped(xmlnode *This, LPCWSTR value)
+HRESULT node_set_content_escaped(xmlnode *This, LPCWSTR value)
 {
     xmlChar *str, *escaped;
 

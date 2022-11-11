@@ -217,6 +217,7 @@ extern HRESULT node_append_child(xmlnode*,IXMLDOMNode*,IXMLDOMNode**) DECLSPEC_H
 extern HRESULT node_get_nodeName(xmlnode*,BSTR*) DECLSPEC_HIDDEN;
 extern HRESULT node_get_content(xmlnode*,VARIANT*) DECLSPEC_HIDDEN;
 extern HRESULT node_set_content(xmlnode*,LPCWSTR) DECLSPEC_HIDDEN;
+extern HRESULT node_set_content_escaped(xmlnode*,LPCWSTR) DECLSPEC_HIDDEN;
 extern HRESULT node_put_value(xmlnode*,VARIANT*) DECLSPEC_HIDDEN;
 extern HRESULT node_put_value_escaped(xmlnode*,VARIANT*) DECLSPEC_HIDDEN;
 extern HRESULT node_get_parent(xmlnode*,IXMLDOMNode**) DECLSPEC_HIDDEN;

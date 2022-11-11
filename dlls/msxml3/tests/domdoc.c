@@ -9041,7 +9041,7 @@ static void test_put_nodeTypedValue(void)
     hr = IXMLDOMElement_get_nodeTypedValue(elem, &value);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok(V_VT(&value) == VT_BSTR, "got %d, expected VT_BSTR\n", V_VT(&value));
-    todo_wine ok(memcmp(V_BSTR(&value), special_characters, 2*SysStringLen(special_characters)) == 0,
+    ok(memcmp(V_BSTR(&value), special_characters, 2*SysStringLen(special_characters)) == 0,
         "got %s, expected %s\n", wine_dbgstr_w(V_BSTR(&value)), wine_dbgstr_w(special_characters));
     VariantClear(&value);
 
@@ -9060,7 +9060,7 @@ static void test_put_nodeTypedValue(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     p = GlobalLock(global);
-    todo_wine ok(!memcmp(p, special_characters_escaped, sizeof(special_characters_escaped) - 1), "got %s\n", wine_dbgstr_a(p));
+    ok(!memcmp(p, special_characters_escaped, sizeof(special_characters_escaped) - 1), "got %s\n", wine_dbgstr_a(p));
     GlobalUnlock(global);
 
     IStream_Release(stream);
