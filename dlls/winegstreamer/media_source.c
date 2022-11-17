@@ -92,6 +92,7 @@ struct media_source
     IMFMediaEventQueue *event_queue;
     IMFByteStream *byte_stream;
 
+    CRITICAL_SECTION shutdown_cs;
     CRITICAL_SECTION cs;
 
     struct wg_parser *wg_parser;
@@ -568,11 +569,13 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
     if (FAILED(hr = IMFAsyncResult_GetState(result, &state)))
         return hr;
 
+    EnterCriticalSection(&source->shutdown_cs);
     EnterCriticalSection(&source->cs);
 
     if (source->state == SOURCE_SHUTDOWN)
     {
         LeaveCriticalSection(&source->cs);
+        LeaveCriticalSection(&source->shutdown_cs);
         IUnknown_Release(state);
         return S_OK;
     }
@@ -598,6 +601,7 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
     }
 
     LeaveCriticalSection(&source->cs);
+    LeaveCriticalSection(&source->shutdown_cs);
 
     IUnknown_Release(state);
 
@@ -1239,6 +1243,8 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
         IMFMediaEventQueue_Release(source->event_queue);
         source->cs.DebugInfo->Spare[0] = 0;
         DeleteCriticalSection(&source->cs);
+        source->shutdown_cs.DebugInfo->Spare[0] = 0;
+        DeleteCriticalSection(&source->shutdown_cs);
         free(source);
     }
 
@@ -1403,11 +1409,13 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
 
     TRACE("%p.\n", iface);
 
+    EnterCriticalSection(&source->shutdown_cs);
     EnterCriticalSection(&source->cs);
 
     if (source->state == SOURCE_SHUTDOWN)
     {
         LeaveCriticalSection(&source->cs);
+        LeaveCriticalSection(&source->shutdown_cs);
         return MF_E_SHUTDOWN;
     }
 
@@ -1443,6 +1451,7 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
     MFUnlockWorkQueue(source->async_commands_queue);
 
     LeaveCriticalSection(&source->cs);
+    LeaveCriticalSection(&source->shutdown_cs);
 
     return S_OK;
 }
@@ -1503,6 +1512,8 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, struct media_
     object->byte_stream = bytestream;
     IMFByteStream_AddRef(bytestream);
     object->rate = 1.0f;
+    InitializeCriticalSection(&object->shutdown_cs);
+    object->shutdown_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": shutdown_cs");
     InitializeCriticalSection(&object->cs);
     object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
 
