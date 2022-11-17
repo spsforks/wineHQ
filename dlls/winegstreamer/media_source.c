@@ -746,31 +746,51 @@ static HRESULT WINAPI media_stream_QueueEvent(IMFMediaStream *iface, MediaEventT
 static HRESULT WINAPI media_stream_GetMediaSource(IMFMediaStream *iface, IMFMediaSource **source)
 {
     struct media_stream *stream = impl_from_IMFMediaStream(iface);
+    HRESULT hr;
 
     TRACE("%p, %p.\n", iface, source);
 
+    EnterCriticalSection(&stream->parent_source->cs);
+
     if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else
+    {
+        IMFMediaSource_AddRef(&stream->parent_source->IMFMediaSource_iface);
+        *source = &stream->parent_source->IMFMediaSource_iface;
+        hr = S_OK;
+    }
 
-    IMFMediaSource_AddRef(&stream->parent_source->IMFMediaSource_iface);
-    *source = &stream->parent_source->IMFMediaSource_iface;
+    LeaveCriticalSection(&stream->parent_source->cs);
 
-    return S_OK;
+    return hr;
 }
 
 static HRESULT WINAPI media_stream_GetStreamDescriptor(IMFMediaStream* iface, IMFStreamDescriptor **descriptor)
 {
     struct media_stream *stream = impl_from_IMFMediaStream(iface);
+    HRESULT hr;
 
     TRACE("%p, %p.\n", iface, descriptor);
 
+    EnterCriticalSection(&stream->parent_source->cs);
+
     if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else
+    {
+        IMFStreamDescriptor_AddRef(stream->descriptor);
+        *descriptor = stream->descriptor;
+        hr = S_OK;
+    }
 
-    IMFStreamDescriptor_AddRef(stream->descriptor);
-    *descriptor = stream->descriptor;
+    LeaveCriticalSection(&stream->parent_source->cs);
 
-    return S_OK;
+    return hr;
 }
 
 static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown *token)
@@ -781,21 +801,22 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
 
     TRACE("%p, %p.\n", iface, token);
 
-    if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    EnterCriticalSection(&stream->parent_source->cs);
 
-    if (stream->state == STREAM_INACTIVE)
+    if (stream->state == STREAM_SHUTDOWN)
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else if (stream->state == STREAM_INACTIVE)
     {
         WARN("Stream isn't active\n");
-        return MF_E_MEDIA_SOURCE_WRONGSTATE;
+        hr = MF_E_MEDIA_SOURCE_WRONGSTATE;
     }
-
-    if (stream->eos)
+    else if (stream->eos)
     {
-        return MF_E_END_OF_STREAM;
+        hr = MF_E_END_OF_STREAM;
     }
-
-    if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_REQUEST_SAMPLE, &command)))
+    else if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_REQUEST_SAMPLE, &command)))
     {
         command->u.request_sample.stream = stream;
         if (token)
@@ -805,6 +826,8 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
         hr = MFPutWorkItem(stream->parent_source->async_commands_queue,
                 &stream->parent_source->async_commands_callback, &command->IUnknown_iface);
     }
+
+    LeaveCriticalSection(&stream->parent_source->cs);
 
     return hr;
 }
