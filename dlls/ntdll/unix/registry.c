@@ -696,7 +696,7 @@ NTSTATUS WINAPI NtLoadKey2( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *fi
 /******************************************************************************
  *              NtLoadKeyEx  (NTDLL.@)
  */
-NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *file, ULONG flags, HANDLE trustkey,
+NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *key_attr, OBJECT_ATTRIBUTES *file_attr, ULONG flags, HANDLE trustkey,
                              HANDLE event, ACCESS_MASK access, HANDLE *roothandle, IO_STATUS_BLOCK *iostatus )
 {
     NTSTATUS ret;
@@ -705,42 +705,46 @@ NTSTATUS WINAPI NtLoadKeyEx( const OBJECT_ATTRIBUTES *attr, OBJECT_ATTRIBUTES *f
     struct object_attributes *objattr;
     char *unix_name;
     UNICODE_STRING nt_name;
-    OBJECT_ATTRIBUTES new_attr = *file;
+    OBJECT_ATTRIBUTES new_attr = *file_attr;
 
-    TRACE( "(%p,%p,0x%x,%p,%p,0x%x,%p,%p)\n", attr, file, flags, trustkey, event, access, roothandle, iostatus );
+    TRACE( "(%p,%p,0x%x,%p,%p,0x%x,%p,%p)\n", key_attr, file_attr, flags, trustkey, event, access, roothandle, iostatus );
 
-    if (flags) FIXME( "flags %x not handled\n", flags );
+    if (flags & ~REG_APP_HIVE) FIXME( "flags %x not handled\n", flags );
     if (trustkey) FIXME("trustkey parameter not supported\n");
     if (event) FIXME("event parameter not supported\n");
-    if (access) FIXME("access parameter not supported\n");
-    if (roothandle) FIXME("roothandle is not filled\n");
     if (iostatus) FIXME("iostatus is not filled\n");
 
+    if (roothandle && !(flags & REG_APP_HIVE)) return STATUS_INVALID_PARAMETER_7;
+
     get_redirect( &new_attr, &nt_name );
-    if (!(ret = nt_to_unix_file_name( &new_attr, &unix_name, FILE_OPEN )))
-    {
-        ret = open_unix_file( &key, unix_name, GENERIC_READ | SYNCHRONIZE,
-                              &new_attr, 0, 0, FILE_OPEN, 0, NULL, 0 );
-        free( unix_name );
-    }
+    ret = nt_to_unix_file_name( &new_attr, &unix_name, FILE_OPEN );
     free( nt_name.Buffer );
 
     if (ret) return ret;
 
-    if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
+    if ((ret = alloc_object_attributes( key_attr, &objattr, &len )))
+    {
+        free( unix_name );
+        return ret;
+    }
     objattr->attributes |= OBJ_OPENIF | OBJ_CASE_INSENSITIVE;
 
     SERVER_START_REQ( load_registry )
     {
-        req->file = wine_server_obj_handle( key );
+        req->flags = flags;
+        req->access = access;
         wine_server_add_data( req, objattr, len );
+        wine_server_add_data( req, unix_name, strlen( unix_name ) );
         ret = wine_server_call( req );
+        key = wine_server_ptr_handle( reply->hkey );
         if (ret == STATUS_OBJECT_NAME_EXISTS) ret = STATUS_SUCCESS;
     }
     SERVER_END_REQ;
 
-    NtClose( key );
+    if (roothandle) *roothandle = key;
+    else NtClose( key );
     free( objattr );
+    free( unix_name );
     return ret;
 }
 

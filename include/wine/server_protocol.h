@@ -2378,12 +2378,17 @@ struct delete_key_value_reply
 struct load_registry_request
 {
     struct request_header __header;
-    obj_handle_t file;
+    unsigned int flags;
+    unsigned int access;
     /* VARARG(objattr,object_attributes); */
+    /* VARARG(filename,string); */
+    char __pad_20[4];
 };
 struct load_registry_reply
 {
     struct reply_header __header;
+    obj_handle_t hkey;
+    char __pad_12[4];
 };
 
 

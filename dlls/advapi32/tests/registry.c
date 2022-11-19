@@ -1652,7 +1652,7 @@ static void test_reg_load_app_key(void)
     ok(appkey != NULL, "got a null key\n");
 
     ret = RegSetValueExA(appkey, "testkey", 0, REG_BINARY, test_data, sizeof(test_data));
-    todo_wine ok(ret == ERROR_SUCCESS, "couldn't set key value %lx\n", ret);
+    ok(ret == ERROR_SUCCESS, "couldn't set key value %lx\n", ret);
     RegCloseKey(appkey);
 
     wait_file_available(hivefilepath);
@@ -1665,9 +1665,9 @@ static void test_reg_load_app_key(void)
     size = sizeof(test_data);
     memset(output, 0xff, sizeof(output));
     ret = RegGetValueA(appkey, NULL, "testkey", RRF_RT_REG_BINARY, NULL, output, &size);
-    todo_wine ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
+    ok(ret == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", ret);
     ok(size == sizeof(test_data), "size doesn't match %ld != %ld\n", size, (DWORD)sizeof(test_data));
-    todo_wine ok(!memcmp(test_data, output, sizeof(test_data)), "output is not what expected\n");
+    ok(!memcmp(test_data, output, sizeof(test_data)), "output is not what expected\n");
 
     RegCloseKey(appkey);
 

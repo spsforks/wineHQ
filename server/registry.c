@@ -90,6 +90,7 @@ struct key
     unsigned int      flags;       /* flags */
     timeout_t         modif;       /* last modification time */
     struct list       notify_list; /* list of notifications */
+    char             *filename;    /* loaded file name */
 };
 
 /* key flags */
@@ -120,6 +121,9 @@ struct key_value
 
 /* the root of the registry tree */
 static struct key *root_key;
+
+/* the application hives key */
+static struct key *application_hives;
 
 static const timeout_t ticks_1601_to_1970 = (timeout_t)86400 * (369 * 365 + 89) * TICKS_PER_SEC;
 static const timeout_t save_period = 30 * -TICKS_PER_SEC;  /* delay between periodic saves */
@@ -655,34 +659,6 @@ static int key_close_handle( struct object *obj, struct process *process, obj_ha
     return 1;  /* ok to close */
 }
 
-static void key_destroy( struct object *obj )
-{
-    int i;
-    struct list *ptr;
-    struct key *key = (struct key *)obj;
-    assert( obj->ops == &key_ops );
-
-    free( key->class );
-    for (i = 0; i <= key->last_value; i++)
-    {
-        free( key->values[i].name );
-        free( key->values[i].data );
-    }
-    free( key->values );
-    for (i = 0; i <= key->last_subkey; i++)
-    {
-        key->subkeys[i]->obj.name->parent = NULL;
-        release_object( key->subkeys[i] );
-    }
-    free( key->subkeys );
-    /* unconditionally notify everything waiting on this key */
-    while ((ptr = list_head( &key->notify_list )))
-    {
-        struct notify *notify = LIST_ENTRY( ptr, struct notify, entry );
-        do_notification( key, notify, 1 );
-    }
-}
-
 /* allocate a key object */
 static struct key *create_key_object( struct object *parent, const struct unicode_str *name,
                                       unsigned int attributes, unsigned int options, timeout_t modif,
@@ -708,6 +684,7 @@ static struct key *create_key_object( struct object *parent, const struct unicod
             key->last_value  = -1;
             key->values      = NULL;
             key->modif       = modif;
+            key->filename    = NULL;
             list_init( &key->notify_list );
 
             if (options & REG_OPTION_CREATE_LINK) key->flags |= KEY_SYMLINK;
@@ -1785,24 +1762,47 @@ static void load_keys( struct key *key, const char *filename, FILE *f, int prefi
 }
 
 /* load a part of the registry from a file */
-static void load_registry( struct key *key, obj_handle_t handle )
+static void load_registry( struct key *key, const char *filename )
 {
-    struct file *file;
-    int fd;
+    FILE *f;
 
-    if (!(file = get_file_obj( current->process, handle, FILE_READ_DATA ))) return;
-    fd = dup( get_file_unix_fd( file ) );
-    release_object( file );
-    if (fd != -1)
+    f = fopen( filename, "r" );
+    if (f)
     {
-        FILE *f = fdopen( fd, "r" );
-        if (f)
-        {
-            load_keys( key, NULL, f, -1 );
-            fclose( f );
-        }
-        else file_set_error();
+        load_keys( key, NULL, f, -1 );
+        fclose( f );
     }
+    else file_set_error();
+}
+
+static obj_handle_t load_app_registry( struct key *key, const char *filename, unsigned int access, unsigned int attributes )
+{
+    obj_handle_t handle;
+
+    /* check if we are loading in \REGISTRY\A */
+    if ( key->obj.name->parent != &application_hives->obj )
+    {
+        set_error( STATUS_PRIVILEGE_NOT_HELD );
+        return 0;
+    }
+
+    load_registry( key, filename );
+    if (get_error())
+    {
+        delete_key( key, 1 );
+        return 0;
+    }
+
+    key->filename = strdup( filename );
+    if (!key->filename)
+    {
+        delete_key( key, 1 );
+        set_error( STATUS_NO_MEMORY );
+        return 0;
+    }
+
+    handle = alloc_handle( current->process, key, access, attributes );
+    return handle;
 }
 
 /* load one of the initial registry files */
@@ -1891,10 +1891,13 @@ void init_registry(void)
                                     'C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
                                     'P','e','r','f','l','i','b','\\',
                                     '0','0','9'};
+    static const WCHAR application[] = {'A'};
+
     static const struct unicode_str root_name = { REGISTRY, sizeof(REGISTRY) };
     static const struct unicode_str HKLM_name = { HKLM, sizeof(HKLM) };
     static const struct unicode_str HKU_name = { HKU_default, sizeof(HKU_default) };
     static const struct unicode_str perflib_name = { perflib, sizeof(perflib) };
+    static const struct unicode_str application_name = { application, sizeof(application) };
 
     WCHAR *current_user_path;
     struct unicode_str current_user_str;
@@ -1971,6 +1974,11 @@ void init_registry(void)
         key->flags |= KEY_PREDEF;
         release_object( key );
     }
+
+    /* create application hive */
+    if (!(application_hives = create_key_recursive( root_key, &application_name, current_time )))
+        fatal_error( "could not create \\REGISTRY\\A registry key\n" );
+    release_object( application_hives );
 
     release_object( hklm );
     release_object( hkcu );
@@ -2157,6 +2165,48 @@ void flush_registry(void)
     if (fchdir( server_dir_fd ) == -1) fatal_error( "chdir to server dir: %s\n", strerror( errno ));
 }
 
+static void key_destroy( struct object *obj )
+{
+    int i;
+    FILE *file;
+    struct list *ptr;
+    struct key *key = (struct key *)obj;
+    assert( obj->ops == &key_ops );
+
+    if (key->filename)
+    {
+        file = fopen( key->filename, "w" );
+        if (file)
+        {
+            save_all_subkeys( key, file );
+            fclose( file );
+        }
+
+        delete_key( key, 1 );
+        free( key->filename );
+    }
+
+    free( key->class );
+    for (i = 0; i <= key->last_value; i++)
+    {
+        free( key->values[i].name );
+        free( key->values[i].data );
+    }
+    free( key->values );
+    for (i = 0; i <= key->last_subkey; i++)
+    {
+        key->subkeys[i]->obj.name->parent = NULL;
+        release_object( key->subkeys[i] );
+    }
+    free( key->subkeys );
+    /* unconditionally notify everything waiting on this key */
+    while ((ptr = list_head( &key->notify_list )))
+    {
+        struct notify *notify = LIST_ENTRY( ptr, struct notify, entry );
+        do_notification( key, notify, 1 );
+    }
+}
+
 /* determine if the thread is wow64 (32-bit client running on 64-bit prefix) */
 static int is_wow64_thread( struct thread *thread )
 {
@@ -2318,12 +2368,17 @@ DECL_HANDLER(load_registry)
 {
     struct key *key, *parent = NULL;
     struct unicode_str name;
+    const char *req_data;
+    data_size_t req_data_len;
+    char *filename;
     const struct security_descriptor *sd;
     const struct object_attributes *objattr = get_req_object_attributes( &sd, &name, NULL );
 
     if (!objattr) return;
+    req_data = get_req_data_after_objattr( objattr, &req_data_len );
+    if (!req_data) return;
 
-    if (!thread_single_check_privilege( current, SeRestorePrivilege ))
+    if (!(req->flags & REG_APP_HIVE) && !thread_single_check_privilege( current, SeRestorePrivilege ))
     {
         set_error( STATUS_PRIVILEGE_NOT_HELD );
         return;
@@ -2335,7 +2390,21 @@ DECL_HANDLER(load_registry)
 
     if ((key = create_key( parent, &name, 0, KEY_WOW64_64KEY, 0, sd )))
     {
-        load_registry( key, req->file );
+        if ((filename = malloc( req_data_len + 1 )))
+        {
+            memcpy( filename, req_data, req_data_len );
+            filename[req_data_len] = 0;
+
+            if (req->flags & REG_APP_HIVE)
+                reply->hkey = load_app_registry( key, filename, req->access, objattr->attributes );
+            else
+                load_registry( key, filename );
+
+            free( filename );
+        }
+        else
+            set_error( STATUS_NO_MEMORY );
+
         release_object( key );
     }
     if (parent) release_object( parent );
