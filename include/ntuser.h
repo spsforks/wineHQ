@@ -958,6 +958,7 @@ enum
     NtUserCallOneParam_GetSysColorPen,
     NtUserCallOneParam_GetSystemMetrics,
     NtUserCallOneParam_GetVirtualScreenRect,
+    NtUserCallOneParam_HasVisibleOwnedWindow,
     NtUserCallOneParam_IsWindowRectFullScreen,
     NtUserCallOneParam_MessageBeep,
     NtUserCallOneParam_RealizePalette,
@@ -1055,6 +1056,11 @@ static inline RECT NtUserGetVirtualScreenRect(void)
     RECT virtual;
     NtUserCallOneParam( (UINT_PTR)&virtual, NtUserCallOneParam_GetVirtualScreenRect );
     return virtual;
+}
+
+static inline BOOL NtUserHasVisibleOwnedWindow( HWND owner )
+{
+    return NtUserCallOneParam( HandleToUlong(owner), NtUserCallOneParam_HasVisibleOwnedWindow );
 }
 
 static inline BOOL NtUserIsWindowRectFullScreen( const RECT *rect )

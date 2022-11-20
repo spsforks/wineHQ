@@ -1914,6 +1914,38 @@ static BOOL is_window_rect_full_screen( const RECT *rect )
     return ret;
 }
 
+static BOOL has_visible_owned_window( HWND owner )
+{
+    BOOL ret = FALSE;
+    UINT i, dpi;
+    DWORD style;
+    HWND *list;
+    RECT rect;
+
+    if (!(list = list_window_children( 0, get_desktop_window(), NULL, 0 )))
+        return FALSE;
+
+    dpi = get_thread_dpi();
+    for (i = 0; list[i]; i++)
+    {
+        if (NtUserGetWindowRelative( list[i], GW_OWNER ) != owner)
+            continue;
+
+        style = get_window_long( list[i], GWL_STYLE );
+        if (!(style & WS_VISIBLE))
+            continue;
+
+        get_window_rect( list[i], &rect, dpi );
+        if (!IsRectEmpty( &rect ))
+        {
+            ret = TRUE;
+            break;
+        }
+    }
+    free( list );
+    return ret;
+}
+
 RECT get_display_rect( const WCHAR *display )
 {
     struct monitor *monitor;
@@ -5495,6 +5527,9 @@ ULONG_PTR WINAPI NtUserCallOneParam( ULONG_PTR arg, ULONG code )
 
     case NtUserCallOneParam_GetSysColor:
         return get_sys_color( arg );
+
+    case NtUserCallOneParam_HasVisibleOwnedWindow:
+        return has_visible_owned_window( UlongToHandle(arg) );
 
     case NtUserCallOneParam_IsWindowRectFullScreen:
         return is_window_rect_full_screen( (const RECT *)arg );

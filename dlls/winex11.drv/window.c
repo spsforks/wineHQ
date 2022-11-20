@@ -1011,12 +1011,22 @@ static void update_net_wm_fullscreen_monitors( struct x11drv_win_data *data )
     }
 }
 
+static BOOL is_invisible_owner_window( const struct x11drv_win_data *data, UINT style )
+{
+    if ((style & WS_VISIBLE) && !IsRectEmpty( &data->whole_rect ))
+        return FALSE;
+
+    return NtUserHasVisibleOwnedWindow( data->hwnd );
+}
+
 /***********************************************************************
  *     update_net_wm_states
  */
 void update_net_wm_states( struct x11drv_win_data *data )
 {
     UINT i, style, ex_style, new_state = 0;
+    struct x11drv_win_data *owner_data;
+    HWND owner;
 
     if (!data->managed) return;
     if (data->whole_window == root_window) return;
@@ -1044,6 +1054,19 @@ void update_net_wm_states( struct x11drv_win_data *data )
             new_state |= (1 << NET_WM_STATE_SKIP_TASKBAR) | (1 << NET_WM_STATE_SKIP_PAGER) | (1 << KDE_NET_WM_STATE_SKIP_SWITCHER);
         else if (!(ex_style & WS_EX_APPWINDOW) && NtUserGetWindowRelative( data->hwnd, GW_OWNER ))
             new_state |= (1 << NET_WM_STATE_SKIP_TASKBAR);
+    }
+
+    /* If this window has no WS_EX_APPWINDOW and is invisible and has a visible owned window, then
+     * such a window should not be shown in pager and KDE switcher */
+    if (!(ex_style & WS_EX_APPWINDOW) && is_invisible_owner_window( data, style ))
+        new_state |= (1 << NET_WM_STATE_SKIP_PAGER) | (1 << KDE_NET_WM_STATE_SKIP_SWITCHER);
+
+    /* Update owner as well because a window may be newly owned */
+    owner = NtUserGetWindowRelative( data->hwnd, GW_OWNER );
+    if (owner && owner != data->hwnd && (owner_data = get_win_data( owner )))
+    {
+        update_net_wm_states( owner_data );
+        release_win_data( owner_data );
     }
 
     if (!data->mapped)  /* set the _NET_WM_STATE atom directly */
