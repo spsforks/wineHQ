@@ -2095,9 +2095,13 @@ BOOL WINAPI NtUserUpdateLayeredWindow( HWND hwnd, HDC hdc_dst, const POINT *pts_
                                        const BLENDFUNCTION *blend, DWORD flags, const RECT *dirty )
 {
     DWORD swp_flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW;
+    HBITMAP hbmp = NULL, hbmp_old = NULL;
     RECT window_rect, client_rect;
     UPDATELAYEREDWINDOWINFO info;
+    HDC mem_dc = NULL;
+    BITMAPINFO bmi;
     SIZE offset;
+    BOOL ret;
 
     if (flags & ~(ULW_COLORKEY | ULW_ALPHA | ULW_OPAQUE | ULW_EX_NORESIZE) ||
         !(get_window_long( hwnd, GWL_EXSTYLE ) & WS_EX_LAYERED) ||
@@ -2153,7 +2157,35 @@ BOOL WINAPI NtUserUpdateLayeredWindow( HWND hwnd, HDC hdc_dst, const POINT *pts_
     info.pblend   = blend;
     info.dwFlags  = flags;
     info.prcDirty = dirty;
-    return user_driver->pUpdateLayeredWindow( hwnd, &info, &window_rect );
+
+    /* Do not use source alpha channel if ULW_OPAQUE is set or ULW_ALPHA is set but no AC_SRC_ALPHA */
+    if ((flags & ULW_OPAQUE || (flags & ULW_ALPHA && !(blend->AlphaFormat & AC_SRC_ALPHA)))
+        && NtGdiGetDeviceCaps( hdc_src, BITSPIXEL ) == 32)
+    {
+        mem_dc = NtGdiCreateCompatibleDC( 0 );
+        info.hdcSrc = mem_dc;
+
+        memset( &bmi, 0, sizeof(bmi) );
+        bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+        bmi.bmiHeader.biWidth = NtGdiGetDeviceCaps( hdc_src, HORZRES );
+        bmi.bmiHeader.biHeight = NtGdiGetDeviceCaps( hdc_src, VERTRES );
+        bmi.bmiHeader.biBitCount = 24;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        hbmp = NtGdiCreateDIBSection( mem_dc, NULL, 0, &bmi, DIB_RGB_COLORS, 0, 0, 0, NULL );
+        hbmp_old = NtGdiSelectBitmap( mem_dc, hbmp );
+        NtGdiBitBlt( mem_dc, 0, 0, bmi.bmiHeader.biWidth, bmi.bmiHeader.biHeight, hdc_src, 0, 0,
+                     SRCCOPY, 0, 0 );
+    }
+
+    ret = user_driver->pUpdateLayeredWindow( hwnd, &info, &window_rect );
+    if (info.hdcSrc != hdc_src)
+    {
+        NtGdiSelectBitmap( mem_dc, hbmp_old );
+        NtGdiDeleteObjectApp( hbmp );
+        NtGdiDeleteObjectApp( mem_dc );
+    }
+    return ret;
 }
 
 /***********************************************************************
