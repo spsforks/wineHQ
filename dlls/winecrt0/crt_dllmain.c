@@ -18,16 +18,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifdef __WINE_PE_BUILD
-
 #include <stdarg.h>
 #include <stdio.h>
 #include "windef.h"
 #include "winbase.h"
 
+extern void __wine_finalize_dso(void);
+
 BOOL WINAPI DllMainCRTStartup( HINSTANCE inst, DWORD reason, void *reserved )
 {
-    return DllMain( inst, reason, reserved );
-}
+    BOOL result = DllMain( inst, reason, reserved );
 
+#ifndef __WINE_PE_BUILD
+    if(reason == DLL_PROCESS_DETACH) {
+        __wine_finalize_dso();
+    }
 #endif
+    return result;
+}

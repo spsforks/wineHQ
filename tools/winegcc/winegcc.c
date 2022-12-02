@@ -1263,6 +1263,8 @@ static void build(struct options* opts)
             entry_point = (is_pe && opts->target.cpu == CPU_i386) ? "DriverEntry@8" : "DriverEntry";
         else if (opts->use_msvcrt && !opts->shared && !opts->win16_app)
             entry_point = opts->unicode_app ? "wmainCRTStartup" : "mainCRTStartup";
+        else if (opts->shared && !opts->win16_app)
+            entry_point = opts->target.cpu == CPU_i386 ? "DllMainCRTStartup@12" : "DllMainCRTStartup";
     }
     else entry_point = opts->entry_point;
 
@@ -1299,7 +1301,7 @@ static void build(struct options* opts)
     for ( j = 0; j < lib_dirs.count; j++ )
 	strarray_add(&link_args, strmake("-L%s", lib_dirs.str[j]));
 
-    if (is_pe && opts->use_msvcrt && !entry_point && (opts->shared || opts->win16_app))
+    if (is_pe && opts->use_msvcrt && !entry_point && opts->win16_app)
         entry_point = opts->target.cpu == CPU_i386 ? "DllMainCRTStartup@12" : "DllMainCRTStartup";
 
     if (is_pe && entry_point)
