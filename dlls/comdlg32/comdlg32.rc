@@ -22,6 +22,7 @@
 #include "cdlg.h"
 #include "colordlg.h"
 #include "filedlgbrowser.h"
+#include "navbar.h"
 
 #pragma makedep po
 
@@ -146,6 +147,12 @@ STRINGTABLE
     IDS_OPEN_FILE   "Open File"
     IDS_SELECT_FOLDER "Select Folder"
     IDS_FONT_SIZE_INPUT "Font size has to be a number."
+}
+
+STRINGTABLE
+{
+    IDS_BACK                     "Back"
+    IDS_FORWARD                  "Forward"
 }
 
 /*
@@ -602,6 +609,9 @@ NETWORK ICON network.ico
 
 /* @makedep: fontpics.bmp */
 38 BITMAP fontpics.bmp
+
+/* @makedep: navbar.bmp */
+IDB_NAVBAR BITMAP navbar.bmp
 
 /* @makedep: comdlg32.manifest */
 123 RT_MANIFEST comdlg32.manifest
