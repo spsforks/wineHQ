@@ -28,6 +28,7 @@
 /* navbar notifications */
 #define NBN_NAVBACK WM_USER + 102
 #define NBN_NAVFORWARD WM_USER + 103
+#define NBN_NAVUP WM_USER + 104
 
 /* strings */
 #define IDS_BACK 2000

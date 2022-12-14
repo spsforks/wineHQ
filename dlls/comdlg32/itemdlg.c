@@ -2218,6 +2218,13 @@ static LRESULT on_browse_forward(FileDialogImpl *This)
     return FALSE;
 }
 
+static LRESULT on_browse_up(FileDialogImpl *This)
+{
+    TRACE("%p\n", This);
+    IExplorerBrowser_BrowseToIDList(This->peb, NULL, SBSP_PARENT);
+    return FALSE;
+}
+
 static LRESULT on_command_filetype(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
 {
     if(HIWORD(wparam) == CBN_SELCHANGE)
@@ -2293,6 +2300,7 @@ static INT_PTR CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam,
     case WM_DESTROY:          return on_wm_destroy(This);
     case NBN_NAVBACK:         return on_browse_back(This);
     case NBN_NAVFORWARD:      return on_browse_forward(This);
+    case NBN_NAVUP:           return on_browse_up(This);
     }
 
     return FALSE;

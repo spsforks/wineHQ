@@ -23,10 +23,12 @@
 #include "navbar.h"
 #include "commdlg.h"
 #include "cdlg.h"
+#include "filedlgbrowser.h"
 
 /* private control ids */
 #define IDC_NAVBACK 201
 #define IDC_NAVFORWARD 202
+#define IDC_NAVUP 203
 
 typedef struct {
     HWND parent_hwnd;
@@ -38,6 +40,7 @@ typedef struct {
 
     HWND back_btn_hwnd;
     HWND fwd_btn_hwnd;
+    HWND up_btn_hwnd;
 } NAVBAR_INFO;
 
 static void set_icon(HIMAGELIST icons, INT icon_id, HWND window)
@@ -110,6 +113,15 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     set_icon(info->icons, ILI_FORWARD, info->fwd_btn_hwnd);
     set_title_and_add_tooltip(info, info->fwd_btn_hwnd, IDS_FORWARD);
 
+    x += cs->cy + gap;
+    info->up_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
+                                        WS_CHILD | WS_VISIBLE | BS_ICON | BS_BITMAP,
+                                        x, 0, cs->cy, cs->cy,
+                                        hwnd, (HMENU)IDC_NAVUP, COMDLG32_hInstance, NULL);
+    SendMessageW(info->up_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
+    set_icon(info->icons, ILI_UP, info->up_btn_hwnd);
+    set_title_and_add_tooltip(info, info->up_btn_hwnd, IDS_UPFOLDER);
+
     SetWindowLongPtrW(hwnd, 0, (DWORD_PTR)info);
 
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -134,6 +146,9 @@ static LRESULT NAVBAR_Command(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
             break;
         case IDC_NAVFORWARD:
             SendMessageW(info->parent_hwnd, NBN_NAVFORWARD, 0, 0);
+            break;
+        case IDC_NAVUP:
+            SendMessageW(info->parent_hwnd, NBN_NAVUP, 0, 0);
             break;
     }
 
