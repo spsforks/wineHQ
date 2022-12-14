@@ -511,7 +511,11 @@ static inline void set_queue_bits( struct msg_queue *queue, unsigned int bits )
 {
     if (bits & (QS_KEY | QS_MOUSEBUTTON))
     {
-        if (!queue->keystate_lock) lock_input_keystate( queue->input );
+        if (!queue->keystate_lock)
+        {
+            sync_input_keystate( queue->input );
+            lock_input_keystate( queue->input );
+        }
         queue->keystate_lock = 1;
     }
     queue->wake_bits |= bits;
