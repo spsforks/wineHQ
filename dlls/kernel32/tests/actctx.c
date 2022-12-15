@@ -325,6 +325,24 @@ static const char testdep_manifest3[] =
 "</file>"
 "</assembly>";
 
+static const char application_configuration1[] =
+"<configuration>"
+"<windows>"
+"<assemblyBinding xmlns=\"urn:schemas-microsoft-com:asm.v1\">"
+"<probing privatePath=\"wine eniw\"/>"
+"</assemblyBinding>"
+"</windows>"
+"</configuration>";
+
+static const char wrong_application_configuration1[] =
+"<configuration>"
+"<winaaaaa>" /* Intentionally misspelt */
+"<assemblyBinding xmlns=\"urn:schemas-microsoft-com:asm.v1\">"
+"<probing privatePath=\"wine eniw\"/>"
+"</assemblyBinding>"
+"</windows>"
+"</configuration>";
+
 static const char wrong_manifest1[] =
 "<assembly manifestVersion=\"1.0\">"
 "<assemblyIdentity version=\"1.0.0.0\"  name=\"Wine.Test\" type=\"win32\"></assemblyIdentity>"
@@ -2435,6 +2453,29 @@ static void test_actctx(void)
         test_info_in_assembly(handle, 1, &manifest1_info, __LINE__);
         ReleaseActCtx(handle);
     }
+
+    trace("manifest1 with application configuration");
+
+    create_manifest_file("test.manifest", manifest1, -1, NULL, NULL);
+
+    /* Incorrect .config file */
+    create_manifest_file("test.config", wrong_application_configuration1, -1, NULL, NULL);
+    handle = test_create("test.manifest");
+    DeleteFileA("test.config");
+    ok(handle == INVALID_HANDLE_VALUE &&
+       GetLastError() == ERROR_SXS_CANT_GEN_ACTCTX, "got error %ld\n", GetLastError());
+
+    /* Correct .config file */
+    create_manifest_file("test.config", application_configuration1, -1, NULL, NULL);
+    handle = test_create("test.manifest");
+    DeleteFileA("test.config");
+    ok(handle != INVALID_HANDLE_VALUE, "got error %ld\n", GetLastError());
+    if (handle != INVALID_HANDLE_VALUE) {
+        test_basic_info(handle, __LINE__);
+        ReleaseActCtx(handle);
+    }
+
+    DeleteFileA("test.manifest");
 
     test_wndclass_section();
     test_dllredirect_section();
