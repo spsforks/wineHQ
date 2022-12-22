@@ -1609,6 +1609,318 @@ static void test_HashData(void)
     }
 }
 
+/*
+ * Documentation: https://docs.microsoft.com/en-us/windows/desktop/api/shlwapi/nf-shlwapi-urlfixupw
+*/
+static const struct parse_urlfixupw_test_t {
+    const WCHAR *url;
+    const WCHAR *translated_url;
+    HRESULT res;
+    BOOL todo;
+} parse_urlfixupw_tests[] = {
+    {L"ftp:",              L"ftp://",            S_OK, TRUE},
+    {L"http:",             L"http://",           S_OK, TRUE},
+    {L"gopher:",           L"gopher:",           S_OK},
+    {L"mailto:",           L"mailto:",           S_OK},
+    {L"news:",             L"news:",             S_OK},
+    {L"nntp:",             L"nntp:",             S_OK},
+    {L"telnet:",           L"telnet:",           S_OK},
+    {L"wais:",             L"wais:",             S_OK},
+    {L"file:",             L"file:",             S_OK},
+    {L"mk:",               L"mk:",               S_OK},
+    {L"https:",            L"https://",          S_OK, TRUE},
+    {L"shell:",            L"shell:",            S_OK},
+    {L"snews:",            L"snews:",            S_OK},
+    {L"local:",            L"local:",            S_OK},
+    {L"javascript:",       L"javascript:",       S_OK},
+    {L"vbscript:",         L"vbscript:",         S_OK},
+    {L"about:",            L"about:",            S_OK},
+    {L"res:",              L"res:",              S_OK},
+    {L"ms-shell-rooted:",  L"ms-shell-rooted:",  S_OK},
+    {L"ms-shell-idlist:",  L"ms-shell-idlist:",  S_OK},
+    {L"hcp:",              L"hcp:",              S_OK},
+
+//not in winxp    {L"*:",                L"*://",                S_OK, TRUE},
+//not in winxp    {L"search-ms:",        L"search-ms://",        S_OK, TRUE},
+//not in winxp    {L"search:",           L"search://",           S_OK, TRUE},
+//not in winxp    {L"knownfolder:",      L"knownfolder://",      S_OK, TRUE},
+
+    /* proposed URL is already acceptable */
+    {L"mailto:abc@abc.de",    L"mailto:abc@abc.de",  S_OK},
+    {L"ftp://",               L"ftp://",             S_OK},
+
+    /* typos in front one letter */
+    {L"aftp://",              L"ftp://",             S_OK, TRUE},
+    {L"ahttp://",             L"http://",            S_OK, TRUE},
+    {L"agopher://",           L"gopher://",          S_OK, TRUE},
+    {L"amailto://",           L"mailto://",          S_OK, TRUE},
+    {L"anews://",             L"snews://",           S_OK, TRUE},
+    {L"anntp://",             L"nntp://",            S_OK, TRUE},
+    {L"atelnet://",           L"telnet://",          S_OK, TRUE},
+    {L"awais://",             L"wais://",            S_OK, TRUE},
+    {L"afile://",             L"file://",            S_OK, TRUE},
+    {L"amk://",               L"mk://",              S_OK, TRUE},
+    {L"ahttps://",            L"http://",            S_OK, TRUE},
+    {L"ashell://",            L"shell://",           S_OK, TRUE},
+    {L"asnews://",            L"snews://",           S_OK, TRUE},
+    {L"alocal://",            L"local://",           S_OK, TRUE},
+    {L"ajavascript://",       L"javascript://",      S_OK, TRUE},
+    {L"avbscript://",         L"vbscript://",        S_OK, TRUE},
+    {L"aabout://",            L"about://",           S_OK, TRUE},
+    {L"ares://",              L"res://",             S_OK, TRUE},
+    {L"ams-shell-rooted://",  L"ms-shell-rooted://", S_OK, TRUE},
+    {L"ams-shell-idlist://",  L"ms-shell-idlist://", S_OK, TRUE},
+    {L"ahcp://",              L"hcp://",             S_OK, TRUE},
+
+    /* typos in front two letters */
+    {L"bahttp://",             L"about://",          S_OK, TRUE},
+    {L"banews://",             L"snews://",          S_OK, TRUE},
+    {L"bavbscript://",         L"javascript://",     S_OK, TRUE},
+
+    /* typos in front three letters */
+    {L"cbavbscript://",        L"javascript://",     S_OK, TRUE},
+
+    /* typos mixed up letters */
+    {L"ftt://",     L"ftp://",      S_OK, TRUE},
+    {L"gophsr://",  L"gopher://",   S_OK, TRUE},
+    {L"gophs://",   L"gopher://",   S_OK, TRUE},
+    {L"gophss://",  L"gopher://",   S_OK, TRUE},
+    {L"gophsss://", L"gopher://",   S_OK, TRUE},
+    {L"gophsss://", L"gopher://",   S_OK, TRUE},
+    {L"mkilto://",  L"mailto://",   S_OK, TRUE},
+    {L"mkklto://",  L"mailto://",   S_OK, TRUE},
+    {L"mkikto://",  L"mailto://",   S_OK, TRUE},
+    {L"mkiktoo://", L"mailto://",   S_OK, TRUE},
+    {L"ma://",      L"mk://",       S_OK, TRUE},
+    {L"hftp:",      L"http://",     S_OK, TRUE},
+
+    /* typos missed letters */
+    {L"ft:",       L"ftp://",      S_OK, TRUE},
+    {L"ft://",     L"ftp://",      S_OK, TRUE},
+    {L"htt://",    L"http://",     S_OK, TRUE},
+    {L"gophe://",  L"gopher://",   S_OK, TRUE},
+    {L"goph://",   L"gopher://",   S_OK, TRUE},
+    {L"mailt://",  L"mailto://",   S_OK, TRUE},
+    {L"mail://",   L"mailto://",   S_OK, TRUE},
+
+    {L"new://",      L"news://",   S_OK, TRUE},
+    {L"ne://",       L"news://",   S_OK, TRUE},
+    {L"snews://",    L"snews://",  S_OK},
+    {L"newss://",    L"snews://",  S_OK, TRUE},
+    {L"newsss://",   L"snews://",  S_OK, TRUE},
+    {L"newssss://",  L"snews://",  S_OK, TRUE},
+    {L"newsssss://", L"snews://",  S_OK, TRUE},
+
+    /* typos letters behind*/
+    {L"mks://",        L"mk://",       S_OK, TRUE},
+    {L"mkss://",       L"mk://",       S_OK, TRUE},
+    {L"mailtooo://",   L"mailto://",   S_OK, TRUE},
+    {L"mailtoooo://",  L"mailto://",   S_OK, TRUE},
+    {L"mailtooooo://", L"mailto://",   S_OK, TRUE},
+
+    /* typos fixing two letters */
+    {L"cc:", L"hcp:",      S_OK, TRUE},
+    {L"ee:", L"res:",      S_OK, TRUE},
+    {L"ff:", L"ftp://",    S_OK, TRUE},
+    {L"hh:", L"hcp:",      S_OK, TRUE},
+    {L"kk:", L"mk:",       S_OK, TRUE},
+    {L"mm:", L"mk:",       S_OK, TRUE},
+    {L"nn:", L"nntp:",     S_OK, TRUE},
+    {L"rr:", L"res:",      S_OK, TRUE},
+    {L"tt:", L"ftp://",    S_OK, TRUE},
+
+    /* reporting false */
+    {L"baftp://",             NULL, S_FALSE, TRUE},
+    {L"bagopher://",          NULL, S_FALSE, TRUE},
+    {L"bamailto://",          NULL, S_FALSE, TRUE},
+    {L"banntp://",            NULL, S_FALSE, TRUE},
+    {L"batelnet://",          NULL, S_FALSE, TRUE},
+    {L"bawais://",            NULL, S_FALSE, TRUE},
+    {L"bafile://",            NULL, S_FALSE, TRUE},
+    {L"bamk://",              NULL, S_FALSE, TRUE},
+    {L"bahttps://",           NULL, S_FALSE, TRUE},
+    {L"bashell://",           NULL, S_FALSE, TRUE},
+    {L"basnews://",           NULL, S_FALSE, TRUE},
+    {L"balocal://",           NULL, S_FALSE, TRUE},
+    {L"bajavascript://",      NULL, S_FALSE, TRUE},
+    {L"baabout://",           NULL, S_FALSE, TRUE},
+    {L"bares://",             NULL, S_FALSE, TRUE},
+    {L"bams-shell-rooted://", NULL, S_FALSE, TRUE},
+    {L"bams-shell-idlist://", NULL, S_FALSE, TRUE},
+    {L"bahcp://",             NULL, S_FALSE, TRUE},
+
+    {L"cbaftp://",             NULL, S_FALSE, TRUE},
+    {L"cbahttp://",            NULL, S_FALSE, TRUE},
+    {L"cbanews://",            NULL, S_FALSE, TRUE},
+    {L"cbagopher://",          NULL, S_FALSE, TRUE},
+    {L"cbamailto://",          NULL, S_FALSE, TRUE},
+    {L"cbanntp://",            NULL, S_FALSE, TRUE},
+    {L"cbatelnet://",          NULL, S_FALSE, TRUE},
+    {L"cbawais://",            NULL, S_FALSE, TRUE},
+    {L"cbafile://",            NULL, S_FALSE, TRUE},
+    {L"cbamk://",              NULL, S_FALSE, TRUE},
+    {L"cbahttps://",           NULL, S_FALSE, TRUE},
+    {L"cbashell://",           NULL, S_FALSE, TRUE},
+    {L"cbasnews://",           NULL, S_FALSE, TRUE},
+    {L"cbalocal://",           NULL, S_FALSE, TRUE},
+    {L"cbajavascript://",      NULL, S_FALSE, TRUE},
+    {L"cbaabout://",           NULL, S_FALSE, TRUE},
+    {L"cbares://",             NULL, S_FALSE, TRUE},
+    {L"cbams-shell-rooted://", NULL, S_FALSE, TRUE},
+    {L"cbams-shell-idlist://", NULL, S_FALSE, TRUE},
+    {L"cbahcp://",             NULL, S_FALSE, TRUE},
+
+    /* without ":" never matched in winxp */
+    {L"a",          NULL, S_FALSE, TRUE},
+    {L"mk",         NULL, S_FALSE, TRUE},
+    {L"ftp",        NULL, S_FALSE, TRUE},
+
+    /* one letter never matched in winxp */
+    {L"a:",         NULL, S_FALSE, TRUE},
+    {L"b:",         NULL, S_FALSE, TRUE},
+    {L"c:",         NULL, S_FALSE, TRUE},
+    {L"d:",         NULL, S_FALSE, TRUE},
+    {L"e:",         NULL, S_FALSE, TRUE},
+    {L"f:",         NULL, S_FALSE, TRUE},
+    {L"g:",         NULL, S_FALSE, TRUE},
+    {L"h:",         NULL, S_FALSE, TRUE},
+    {L"i:",         NULL, S_FALSE, TRUE},
+    {L"j:",         NULL, S_FALSE, TRUE},
+    {L"k:",         NULL, S_FALSE, TRUE},
+    {L"l:",         NULL, S_FALSE, TRUE},
+    {L"m:",         NULL, S_FALSE, TRUE},
+    {L"n:",         NULL, S_FALSE, TRUE},
+    {L"o:",         NULL, S_FALSE, TRUE},
+    {L"p:",         NULL, S_FALSE, TRUE},
+    {L"q:",         NULL, S_FALSE, TRUE},
+    {L"r:",         NULL, S_FALSE, TRUE},
+    {L"s:",         NULL, S_FALSE, TRUE},
+    {L"t:",         NULL, S_FALSE, TRUE},
+    {L"u:",         NULL, S_FALSE, TRUE},
+    {L"v:",         NULL, S_FALSE, TRUE},
+    {L"w:",         NULL, S_FALSE, TRUE},
+    {L"x:",         NULL, S_FALSE, TRUE},
+    {L"y:",         NULL, S_FALSE, TRUE},
+    {L"z:",         NULL, S_FALSE, TRUE},
+
+    {L"gophssss://", NULL, S_FALSE, TRUE},
+    {L"gop://",      NULL, S_FALSE, TRUE},
+    {L"go://",       NULL, S_FALSE, TRUE},
+    {L"mai://",      NULL, S_FALSE, TRUE},
+
+    {L"mkkkto://",      NULL, S_FALSE, TRUE},
+    {L"mailtoooooo://", NULL, S_FALSE, TRUE},
+    {L"mailtooooop://", NULL, S_FALSE, TRUE},
+    {L"newssssss://",   NULL, S_FALSE, TRUE},
+    {L"mkikkoo://",     NULL, S_FALSE, TRUE},
+    {L"mksss://",       NULL, S_FALSE, TRUE},
+    {L"ft",             NULL, S_FALSE, TRUE},
+
+    /* mixed tests */
+    {L"aa:",        NULL, S_FALSE, TRUE},
+    {L"bb:",        NULL, S_FALSE, TRUE},
+    {L"dd:",        NULL, S_FALSE, TRUE},
+    {L"gg:",        NULL, S_FALSE, TRUE},
+    {L"ii:",        NULL, S_FALSE, TRUE},
+    {L"jj:",        NULL, S_FALSE, TRUE},
+    {L"ll:",        NULL, S_FALSE, TRUE},
+    {L"oo:",        NULL, S_FALSE, TRUE},
+    {L"pp:",        NULL, S_FALSE, TRUE},
+    {L"qq:",        NULL, S_FALSE, TRUE},
+    {L"ss:",        NULL, S_FALSE, TRUE},
+    {L"uu:",        NULL, S_FALSE, TRUE},
+    {L"vv:",        NULL, S_FALSE, TRUE},
+    {L"ww:",        NULL, S_FALSE, TRUE},
+    {L"xx:",        NULL, S_FALSE, TRUE},
+    {L"yy:",        NULL, S_FALSE, TRUE},
+    {L"zz:",        NULL, S_FALSE, TRUE},
+
+    /* taken from example in documentation */
+    {L"http://www.microsoft.com", L"http://www.microsoft.com",   S_OK},
+    {L"http:www.microsoft.com",   L"http://www.microsoft.com",   S_OK, TRUE},
+    {L"mail:someone@example.com", L"mailto:someone@example.com", S_OK, TRUE},
+    {L"htpp:wwwmicrosoft.com",    L"http://wwwmicrosoft.com",    S_OK, TRUE},
+    {L"htps:\\www.microsoft.com", L"http://www.microsoft.com",   S_OK, TRUE},
+    {L"http:someone@example.com", L"http://someone@example.com", S_OK, TRUE},
+    {L"abc:def",                  NULL,                          S_FALSE, TRUE},
+    {L"someone@example.com",      NULL,                          S_FALSE, TRUE},
+
+    {L"fztzp:",  NULL, S_FALSE, TRUE},
+    {L"zfztzp:", NULL, S_FALSE, TRUE},
+    {L"zfztp:",  NULL, S_FALSE, TRUE},
+    {L"zftzp:",  NULL, S_FALSE, TRUE},
+    {L"zftpz:",  NULL, S_FALSE, TRUE},
+
+    {L"htztps:",                              L"http://", S_OK, TRUE},
+    {L"hzttps:",                              L"http://", S_OK, TRUE},
+    {L"htzztps:",                             NULL, S_FALSE, TRUE},
+    {L"hzzzzzzzzzzzzzztp:",                   NULL, S_FALSE, TRUE},
+    {L"hzzzzzzzzzzzzzztpz:",                  NULL, S_FALSE, TRUE},
+    {L"zhzzzzzzzzzzzzzztp:",                  NULL, S_FALSE, TRUE},
+    {L"zhzzzzzzzzzzzzzztpz:",                 NULL, S_FALSE, TRUE},
+    {L"zzzzzzhzzzzzzzzzzzzzztzzzzzzpzzzzzz:", NULL, S_FALSE, TRUE},
+
+    {L"hfttp:",      L"http://", S_OK,    TRUE},
+    {L"hfttpz:",     L"http://", S_OK,    TRUE},
+    {L"zhftp:",      NULL,       S_FALSE, TRUE},
+    {L"hftftpz:",    NULL,       S_FALSE, TRUE},
+    {L"hftddtpz:",   NULL,       S_FALSE, TRUE},
+    {L"hftddtddpz:", NULL,       S_FALSE, TRUE},
+
+    {L"hfftp:", L"http://", S_OK, TRUE},
+    {L"hftpz:", L"http://", S_OK, TRUE},
+    {L"hztpz:", L"http://", S_OK, TRUE},
+
+    {L"httpz:",     L"http://", S_OK, TRUE},
+    {L"httpsz:",    L"http://", S_OK, TRUE},
+    {L"httpzz:",    L"http://", S_OK, TRUE},
+    {L"httpzzz:",   L"http://", S_OK, TRUE},
+    {L"httpzzzz:",  NULL,       S_FALSE, TRUE},
+    {L"httpzzzzz:", NULL,       S_FALSE, TRUE},
+
+    /* missing colon */
+    {L"http//www.microsoft.com", NULL, S_FALSE, TRUE},
+};
+
+#define MAX_URL 256
+
+static void test_UrlFixupW(void)
+{
+    const struct parse_urlfixupw_test_t *test;
+    WCHAR   translated_url_buf[MAX_URL];
+    WCHAR   *translated_url = translated_url_buf;
+    HRESULT hres;
+
+    trace("test_UrlFixupW\n");
+    for (test = parse_urlfixupw_tests; test < parse_urlfixupw_tests + ARRAY_SIZE(parse_urlfixupw_tests); test++) {
+    trace("test_UrlFixupW, flag %s\n", test->todo ? "todo" : "run");
+        todo_wine_if (test->todo)
+        {
+            translated_url_buf[0] = 0;
+            hres = UrlFixupW(test->url, translated_url,MAX_URL);
+            if (test->res == hres ) {
+                if (S_OK == hres) {
+                    ok(_wcsicmp(translated_url, test->translated_url) == 0,"Expected %s got %s for %s\n",
+                    wine_dbgstr_w(test->translated_url), wine_dbgstr_w(translated_url), wine_dbgstr_w(test->url));
+                } else if (S_FALSE == hres) {
+                    ok(test->res == hres, "Expected %lu got %lu for %s\n",
+                    test->res, hres, wine_dbgstr_w(test->url));
+                    } else {
+                        printf("failed %S with %lu \n", test->url, hres);
+                    }
+            } else {
+                if (S_OK == hres) {
+                    ok(test->res == hres, "Expected %lu got %lu for %s fixed: %s\n",
+                    test->res, hres, wine_dbgstr_w(test->url), wine_dbgstr_w(translated_url));
+                } else {
+                    ok(test->res == hres, "Expected %lu got %lu for %s\n",
+                    test->res, hres, wine_dbgstr_w(test->url));
+                }
+            }
+        }
+    }
+}
+
 /* ########################### */
 
 START_TEST(url)
@@ -1626,4 +1938,5 @@ START_TEST(url)
   test_UrlUnescape();
   test_ParseURL();
   test_HashData();
+  test_UrlFixupW();
 }
