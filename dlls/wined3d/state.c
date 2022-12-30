@@ -1782,22 +1782,19 @@ static void state_localviewer(struct wined3d_context *context, const struct wine
     }
 }
 
-void state_pointsprite_w(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
-{
-    static BOOL warned;
-
-    /* TODO: NV_POINT_SPRITE */
-    if (!warned && state->render_states[WINED3D_RS_POINTSPRITEENABLE])
-    {
-        /* A FIXME, not a WARN because point sprites should be software emulated if not supported by HW */
-        FIXME("Point sprites not supported\n");
-        warned = TRUE;
-    }
-}
-
 void state_pointsprite(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
     const struct wined3d_gl_info *gl_info = wined3d_context_gl(context)->gl_info;
+
+    static bool warned;
+
+    /* TODO: NV_POINT_SPRITE */
+    if (!warned && state->render_states[WINED3D_RS_POINTSPRITEENABLE] && !gl_info->supported[ARB_POINT_SPRITE])
+    {
+        /* A FIXME, not a WARN because point sprites should be software emulated if not supported by HW */
+        FIXME("Point sprites not supported.\n");
+        warned = true;
+    }
 
     if (state->render_states[WINED3D_RS_POINTSPRITEENABLE])
     {
@@ -4947,8 +4944,7 @@ static const struct wined3d_state_entry_template vp_ffp_states[] =
     { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             state_psizemin_arb  }, ARB_POINT_PARAMETERS            },
     { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             state_psizemin_ext  }, EXT_POINT_PARAMETERS            },
     { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             { STATE_RENDER(WINED3D_RS_POINTSIZE_MIN),             state_psizemin_w    }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         state_pointsprite   }, ARB_POINT_SPRITE                },
-    { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         state_pointsprite_w }, WINED3D_GL_EXT_NONE             },
+    { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         { STATE_RENDER(WINED3D_RS_POINTSPRITEENABLE),         state_pointsprite   }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_POINTSCALEENABLE),          { STATE_RENDER(WINED3D_RS_POINTSCALEENABLE),          state_pscale        }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_POINTSCALE_A),              { STATE_RENDER(WINED3D_RS_POINTSCALEENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_POINTSCALE_B),              { STATE_RENDER(WINED3D_RS_POINTSCALEENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
