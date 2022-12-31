@@ -4090,17 +4090,40 @@ INT WINAPI UrlCompareW(const WCHAR *url1, const WCHAR *url2, BOOL ignore_slash)
 
 HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
 {
-    DWORD srcLen;
+    DWORD src_len, dst_len, len;
+    DWORD pos = 0;
+    WCHAR *save_str = translatedUrl;
 
-    FIXME("%s, %p, %ld stub\n", wine_dbgstr_w(url), translatedUrl, maxChars);
+    static const WCHAR *url_scheme[] = { L"", L"ftp", L"https", L"gopher", L"mailto", L"news",
+                                  L"nntp", L"telnet", L"wais", L"file", L"mk",
+                                  L"http", L"shell", L"snews", L"local",
+                                  L"javascript", L"vbscript", L"about", L"res",
+                                  L"ms-shell-rooted", L"ms-shell-idlist", L"hcp"};
+    FIXME("%s, %p, %ld semi-stub\n", wine_dbgstr_w(url), translatedUrl, maxChars);
 
     if (!url)
         return E_FAIL;
 
-    srcLen = lstrlenW(url) + 1;
+    /*
+     * First check for known, valid and typo free scheme
+     */
+    for (pos=1; pos<ARRAY_SIZE(url_scheme); pos++)
+    {
+        len = wcslen(url_scheme[pos]);
+        if ( (len+1 <= wcslen(url)) && (!_wcsnicmp(url, url_scheme[pos], len)) && (L':' == url[len]) )
+        {
+            if (len+2 >= maxChars)
+                return S_FALSE;
 
-    /* For now just copy the URL directly */
-    lstrcpynW(translatedUrl, url, (maxChars < srcLen) ? maxChars : srcLen);
+            lstrcpynW(save_str, url, len+2);
+            url += len+1;
+        }
+    }
+
+    /* Add the URL path */
+    src_len = lstrlenW(url) + 1;
+    dst_len = maxChars - lstrlenW(save_str);
+    lstrcpynW(save_str+lstrlenW(save_str), url, (dst_len < src_len) ? dst_len : src_len);
 
     return S_OK;
 }
