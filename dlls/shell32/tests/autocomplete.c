@@ -828,10 +828,13 @@ START_TEST(autocomplete)
     ok(hMainWnd != NULL, "Failed to create parent window. Tests aborted.\n");
     if (!hMainWnd) return;
 
-    /* Move the cursor away from the dropdown listbox */
+    /* Move the cursor away from the dropdown listbox...
+     * SetCursorPos(0, 0) does not seem to work, and setting it across multiple displays
+     * is bugged (on Windows), but setting it twice seems to work-around that problem */
     GetWindowRect(hMainWnd, &win_rect);
     GetCursorPos(&orig_pos);
-    SetCursorPos(win_rect.left, win_rect.top);
+    SetCursorPos(win_rect.left ? win_rect.left : 1, win_rect.top ? win_rect.top : 1);
+    SetCursorPos(win_rect.left ? win_rect.left : 1, win_rect.top ? win_rect.top : 1);
 
     test_invalid_init();
     ac = test_init();
@@ -850,6 +853,7 @@ START_TEST(autocomplete)
     IAutoComplete_Release(ac);
 
 cleanup:
+    SetCursorPos(orig_pos.x, orig_pos.y);
     SetCursorPos(orig_pos.x, orig_pos.y);
     DestroyWindow(hEdit);
     DestroyWindow(hMainWnd);
