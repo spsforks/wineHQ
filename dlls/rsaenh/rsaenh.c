@@ -2668,6 +2668,9 @@ BOOL WINAPI RSAENH_CPEncrypt(HCRYPTPROV hProv, HCRYPTKEY hKey, HCRYPTHASH hHash,
         if (!block_encrypt(pCryptKey, pbData, pdwDataLen, dwBufLen, Final,
                            &pCryptKey->context, pCryptKey->abChainVector))
             return FALSE;
+        if (pbData == NULL) {
+            return TRUE;
+        }
     } else if (GET_ALG_TYPE(pCryptKey->aiAlgid) == ALG_TYPE_STREAM) {
         if (pbData == NULL) {
             *pdwDataLen = dwBufLen;
