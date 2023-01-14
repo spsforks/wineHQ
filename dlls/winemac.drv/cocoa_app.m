@@ -213,6 +213,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
         [super dealloc];
     }
+    
+    - (void)applicationDidFinishLaunching:(NSNotification *)notification
+    {
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    }
 
     - (void) transformProcessToForeground:(BOOL)activateIfTransformed
     {
