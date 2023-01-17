@@ -50,6 +50,7 @@ static const char ComboExTestClass[] = "ComboExTestClass";
 
 static HBRUSH brush_red;
 
+static LRESULT (WINAPI *pSetPathWordBreakProc)(HWND, BOOL);
 static BOOL (WINAPI *pSetWindowSubclass)(HWND, SUBCLASSPROC, UINT_PTR, DWORD_PTR);
 
 #define MAX_CHARS 100
@@ -545,6 +546,7 @@ static void init_functions(void)
 
 #define X(f) p##f = (void*)GetProcAddress(hComCtl32, #f);
 #define X2(f, ord) p##f = (void*)GetProcAddress(hComCtl32, (const char *)ord);
+    X2(SetPathWordBreakProc, 384);
     X2(SetWindowSubclass, 410);
 #undef X
 #undef X2
@@ -1514,6 +1516,199 @@ static void test_comboex_CBEN_GETDISPINFO(void)
     DestroyWindow(combo);
 }
 
+static BOOL hold_key(int vk)
+{
+  BYTE key_state[256];
+  BOOL result;
+
+  result = GetKeyboardState(key_state);
+  ok(result, "GetKeyboardState failed.\n");
+  if (!result) return FALSE;
+  key_state[vk] |= 0x80;
+  result = SetKeyboardState(key_state);
+  ok(result, "SetKeyboardState failed.\n");
+  return result != 0;
+}
+
+static BOOL release_key(int vk)
+{
+  BYTE key_state[256];
+  BOOL result;
+
+  result = GetKeyboardState(key_state);
+  ok(result, "GetKeyboardState failed.\n");
+  if (!result) return FALSE;
+  key_state[vk] &= ~0x80;
+  result = SetKeyboardState(key_state);
+  ok(result, "SetKeyboardState failed.\n");
+  return result != 0;
+}
+
+static LRESULT send_ctrl_key(HWND hwnd, UINT key)
+{
+    LRESULT result;
+    hold_key(VK_CONTROL);
+    result = SendMessageA(hwnd, WM_KEYDOWN, key, 1);
+    release_key(VK_CONTROL);
+    return result;
+}
+
+static void move_word(INT line, HWND edit, UINT direction, INT expected_caret_position)
+{
+    INT selection_start = -1, selection_end = -1;
+
+    send_ctrl_key(edit, direction);
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&selection_start, (WPARAM)&selection_end);
+    ok_(__FILE__, line)(selection_start == expected_caret_position, "Unexpected caret position %i.\n", selection_start);
+}
+
+static void test_comboex_CBES_EX_PATHWORDBREAKPROC(void)
+{
+    HWND combo, edit;
+    INT start, end;
+    WCHAR some_pathW[] = L"some/path";
+    WCHAR delimitersW[] = L"a .\\/\t";
+    EDITWORDBREAKPROCW word_break_proc, proc2;
+    int ret;
+
+    combo = createComboEx(WS_VISIBLE | WS_CHILD | CBS_DROPDOWN);
+    SendMessageA(combo, CBEM_SETEXTENDEDSTYLE, 0, CBES_EX_PATHWORDBREAKPROC);
+    edit = (HWND)SendMessageA(combo, CBEM_GETEDITCONTROL, 0, 0);
+
+    /* test that proc matches with what SetPathWordBreakProc sets */
+    word_break_proc = (EDITWORDBREAKPROCW)SendMessageA(edit, EM_GETWORDBREAKPROC, 0, 0);
+    ok(word_break_proc != NULL, "proc is NULL.");
+
+    pSetPathWordBreakProc(edit, FALSE);
+    proc2 = (EDITWORDBREAKPROCW)SendMessageA(edit, EM_GETWORDBREAKPROC, 0, 0);
+    ok(proc2 == NULL, "proc is not NULL %p.", proc2);
+
+    pSetPathWordBreakProc(edit, TRUE);
+    proc2 = (EDITWORDBREAKPROCW)SendMessageA(edit, EM_GETWORDBREAKPROC, 0, 0);
+    ok(word_break_proc == proc2, "proc did not match %p %p.", word_break_proc, proc2);
+
+    /* multiple delimiters */
+    /* |C:\|aa |bb\|cc.|dd/|ee↹|ff\|gg/|hh\/ ↹.| */
+    SetWindowTextA(edit, "C:\\aa bb\\cc.dd/ee\tff\\gg/hh\\/ \t.");
+    /* from left to right */
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&start, (WPARAM)&end);
+    ok(start == 0, "Unexpected caret position %i.\n", start); /* |C:\aa bb\cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 3);  /* C:\|aa bb\cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 6);  /* C:\aa |bb\cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 9);  /* C:\aa bb\|cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 12); /* C:\aa bb\cc.|dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 15); /* C:\aa bb\cc.dd/|ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_RIGHT, 18); /* C:\aa bb\cc.dd/ee↹|ff\\gg/hh\/ .↹ */
+    move_word(__LINE__, edit, VK_RIGHT, 21); /* C:\aa bb\cc.dd/ee↹ff\|gg/hh\/ .↹ */
+    move_word(__LINE__, edit, VK_RIGHT, 24); /* C:\aa bb\cc.dd/ee↹ff\\gg/|hh\/ .↹ */
+    move_word(__LINE__, edit, VK_RIGHT, 31); /* C:\aa bb\cc.dd/ee↹ff\gg/hh\/ ↹.| */
+    /* from right to left */
+    SendMessageA(edit, EM_SETSEL, GetWindowTextLengthA(edit), GetWindowTextLengthA(edit));
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&start, (WPARAM)&end);
+    ok(start == 31, "Unexpected caret position %i.\n", start); /* C:\aa bb\cc.dd/ee↹ff\gg/hh\/ ↹.| */
+    move_word(__LINE__, edit, VK_LEFT, 24); /* C:\aa bb\cc.dd/ee↹ff\\gg/|hh\/ .↹ */
+    move_word(__LINE__, edit, VK_LEFT, 21); /* C:\aa bb\cc.dd/ee↹ff\|gg/hh\/ .↹ */
+    move_word(__LINE__, edit, VK_LEFT, 18); /* C:\aa bb\cc.dd/ee↹|ff\\gg/hh\/ .↹ */
+    move_word(__LINE__, edit, VK_LEFT, 15); /* C:\aa bb\cc.dd/|ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_LEFT, 12); /* C:\aa bb\cc.|dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_LEFT, 9);  /* C:\aa bb\|cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_LEFT, 6);  /* C:\aa |bb\cc.dd/ee↹ff\gg/hh\/ ↹. */
+    move_word(__LINE__, edit, VK_LEFT, 3);  /* C:\|aa bb\cc.dd/ee↹ff\gg/hh\/ ↹. */
+
+    /* no trailing delimiter and leading delimiter */
+    SetWindowTextA(edit, "\\\\some\\path");
+    SendMessageA(edit, EM_SETSEL, GetWindowTextLengthA(edit), GetWindowTextLengthA(edit));
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&start, (WPARAM)&end);
+    ok(start == 11, "Unexpected caret position %i.\n", start); /* \\some\path| */
+    move_word(__LINE__, edit, VK_LEFT, 7); /* \\some\|path */
+    move_word(__LINE__, edit, VK_LEFT, 2); /* \\|some\path*/
+    move_word(__LINE__, edit, VK_LEFT, 0); /* |\\some\path*/
+
+    /* single leading delimiter */
+    SetWindowTextA(edit, "/some/path");
+    SendMessageA(edit, EM_SETSEL, GetWindowTextLengthA(edit), GetWindowTextLengthA(edit));
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&start, (WPARAM)&end);
+    ok(start == 10, "Unexpected caret position %i.\n", start); /* /some/path|*/
+    move_word(__LINE__, edit, VK_LEFT, 6); /* /some/|path*/
+    move_word(__LINE__, edit, VK_LEFT, 0); /* |/some/path*/
+
+    /* WB_LEFT */
+    ret = word_break_proc(NULL, 0, 0, WB_LEFT);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 3, -1, WB_LEFT);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 3, 0, WB_LEFT);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 6, -1, WB_LEFT);
+    ok(ret == 4, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 6, 0, WB_LEFT);
+    ok(ret == 4, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 6, 4, WB_LEFT);
+    ok(ret == 4, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, 6, 5, WB_LEFT);
+    ok(ret == 5, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW, lstrlenW(some_pathW), lstrlenW(some_pathW), WB_LEFT);
+    ok(ret == 5, "Unexpected return value %i.\n", ret);
+    if (0)
+    {
+        word_break_proc(NULL, 10, 10, WB_LEFT); /* crashes */
+        word_break_proc(some_pathW, 15, 5, WB_LEFT); /* reads out of bounds */
+        word_break_proc(some_pathW, -10, 0, WB_LEFT); /* hangs with negative index */
+    }
+
+    /* WB_RIGHT */
+    ret = word_break_proc(some_pathW, lstrlenW(some_pathW), lstrlenW(some_pathW), WB_RIGHT);
+    ok(ret == lstrlenW(some_pathW), "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 5, 0, 0, WB_RIGHT);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 5, 0, 1, WB_RIGHT);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 5, 1, 1, WB_RIGHT);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 5, 2, 2, WB_RIGHT);
+    ok(ret == 2, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 5, 0, 3, WB_RIGHT);
+    ok(ret == 3, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 1, 0, -1, WB_RIGHT);
+    ok(ret == 4, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(some_pathW + 6, -6, 0, WB_RIGHT);
+    ok(ret == -1, "Unexpected return value %i.\n", ret);
+    if (0)
+    {
+        word_break_proc(NULL, 0, 0, WB_RIGHT); /* crashes */
+        word_break_proc(NULL, 10, 10, WB_RIGHT); /* crashes */
+        word_break_proc(some_pathW + 5, 0, -1, WB_RIGHT); /* reads out of bounds */
+        word_break_proc(some_pathW + 5, 1, 0, WB_RIGHT); /* reads out of bounds */
+        word_break_proc(some_pathW, 15, 5, WB_RIGHT); /* reads out of bounds */
+        word_break_proc(some_pathW, lstrlenW(some_pathW), 0, WB_RIGHT); /* reads out of bounds */
+    }
+
+    /* WB_ISDELIMITER */
+    ret = word_break_proc(delimitersW, 0, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 1, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 2, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 3, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 4, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 5, lstrlenW(delimitersW), WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    ret = word_break_proc(delimitersW, 3, 0, WB_ISDELIMITER);
+    ok(ret == 1, "Unexpected return value %i.\n", ret);
+    if (0)
+    {
+        word_break_proc(NULL, 0, 0, WB_ISDELIMITER); /* crashes */
+        word_break_proc(NULL, 10, 10, WB_ISDELIMITER); /* crashes */
+    }
+
+    /* invalid action code */
+    ret = word_break_proc(NULL, 5, 5, 0xFFFF);
+    ok(ret == 0, "Unexpected return value %i.\n", ret);
+}
+
 START_TEST(combo)
 {
     ULONG_PTR ctx_cookie;
@@ -1534,6 +1729,7 @@ START_TEST(combo)
     test_comboex_subclass();
     test_comboex_get_set_item();
     test_comboex_CBEN_GETDISPINFO();
+    test_comboex_CBES_EX_PATHWORDBREAKPROC();
 
     if (!load_v6_module(&ctx_cookie, &hCtx))
     {

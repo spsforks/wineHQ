@@ -1621,6 +1621,7 @@ static inline BOOL IsDelimiter(WCHAR c)
 	case '\\':
 	case '.':
 	case ' ':
+        case '\t':
 	    return TRUE;
     }
     return FALSE;
@@ -1628,15 +1629,47 @@ static inline BOOL IsDelimiter(WCHAR c)
 
 static int CALLBACK PathWordBreakProc(LPCWSTR lpch, int ichCurrent, int cch, int code)
 {
-    if (code == WB_ISDELIMITER)
-        return IsDelimiter(lpch[ichCurrent]);
-    else
-    {
-        int dir = (code == WB_LEFT) ? -1 : 1;
-        for(; 0 <= ichCurrent && ichCurrent < cch; ichCurrent += dir)
-            if (IsDelimiter(lpch[ichCurrent])) return ichCurrent;
+    INT ret = 0;
+
+    switch (code) {
+        case WB_LEFT:
+            /* skip trailing delimiters */
+            while (ichCurrent && IsDelimiter(lpch[ichCurrent - 1]))
+                ichCurrent--;
+            /* skip word */
+            while (ichCurrent && !IsDelimiter(lpch[ichCurrent - 1]))
+                ichCurrent--;
+            /* special case: if there's a single leading delimiter, skip it */
+            if (ichCurrent == 1 && IsDelimiter(lpch[ichCurrent - 1]))
+                ichCurrent--;
+
+            if (ichCurrent && ichCurrent > cch)
+                ichCurrent--;
+
+            ret = ichCurrent;
+            break;
+        case WB_RIGHT:
+            if (cch < 0)
+                cch = lstrlenW(lpch);
+
+            /* skip word */
+            while (ichCurrent < cch && !IsDelimiter(lpch[ichCurrent]))
+                ichCurrent++;
+            /* move caret after the delimiters */
+            while (ichCurrent < cch && IsDelimiter(lpch[ichCurrent]))
+                ichCurrent++;
+
+            ret = ichCurrent;
+            break;
+        case WB_ISDELIMITER:
+            ret = IsDelimiter(lpch[ichCurrent]);
+            break;
+        default:
+            ERR("unexpected action code\n");
+            break;
     }
-    return ichCurrent;
+
+    return ret;
 }
 
 /***********************************************************************
