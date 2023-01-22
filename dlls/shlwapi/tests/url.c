@@ -1771,9 +1771,9 @@ static const struct parse_urlfixupw_test_t {
     {L"cbahcp://",             NULL, S_FALSE, TRUE},
 
     /* without ":" never matched in winxp */
-    {L"a",          NULL, S_FALSE, TRUE},
-    {L"mk",         NULL, S_FALSE, TRUE},
-    {L"ftp",        NULL, S_FALSE, TRUE},
+    {L"a",          NULL, S_FALSE},
+    {L"mk",         NULL, S_FALSE},
+    {L"ftp",        NULL, S_FALSE},
 
     /* one letter never matched in winxp */
     {L"a:",         NULL, S_FALSE, TRUE},
@@ -1814,7 +1814,7 @@ static const struct parse_urlfixupw_test_t {
     {L"newssssss://",   NULL, S_FALSE, TRUE},
     {L"mkikkoo://",     NULL, S_FALSE, TRUE},
     {L"mksss://",       NULL, S_FALSE, TRUE},
-    {L"ft",             NULL, S_FALSE, TRUE},
+    {L"ft",             NULL, S_FALSE},
 
     /* mixed tests */
     {L"aa:",        NULL, S_FALSE, TRUE},
@@ -1843,7 +1843,7 @@ static const struct parse_urlfixupw_test_t {
     {L"htps:\\www.microsoft.com", L"http://www.microsoft.com",   S_OK, TRUE},
     {L"http:someone@example.com", L"http://someone@example.com", S_OK, TRUE},
     {L"abc:def",                  NULL,                          S_FALSE, TRUE},
-    {L"someone@example.com",      NULL,                          S_FALSE, TRUE},
+    {L"someone@example.com",      NULL,                          S_FALSE},
 
     {L"fztzp:",  NULL, S_FALSE, TRUE},
     {L"zfztzp:", NULL, S_FALSE, TRUE},
@@ -1879,7 +1879,7 @@ static const struct parse_urlfixupw_test_t {
     {L"httpzzzzz:", NULL,       S_FALSE, TRUE},
 
     /* missing colon */
-    {L"http//www.microsoft.com", NULL, S_FALSE, TRUE},
+    {L"http//www.microsoft.com", NULL, S_FALSE},
 };
 
 #define MAX_URL 256

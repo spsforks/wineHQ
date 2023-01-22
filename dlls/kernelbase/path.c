@@ -4092,6 +4092,7 @@ HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
 {
     DWORD src_len, dst_len, len;
     DWORD pos = 0;
+    WCHAR *helper_str = NULL;
     WCHAR *save_str = translatedUrl;
 
     static const WCHAR *url_scheme[] = { L"", L"ftp", L"https", L"gopher", L"mailto", L"news",
@@ -4117,9 +4118,22 @@ HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
 
             lstrcpynW(save_str, url, len+2);
             url += len+1;
+            goto scheme_done;
         }
     }
 
+    /*
+     * url has to contain at least one colon.
+     * The scheme part length has a minimum of 2 characters.
+     * Output buffer length has to be minimum of 3 characters, scheme + colon.
+     *
+     * Return S_FALSE if url and buffer do not meet this minimum requirements.
+     */
+    helper_str = wcschr(url, L':');
+    if (!helper_str)
+        return S_FALSE;
+
+scheme_done:
     /* Add the URL path */
     src_len = lstrlenW(url) + 1;
     dst_len = maxChars - lstrlenW(save_str);
