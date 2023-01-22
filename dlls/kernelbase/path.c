@@ -4091,7 +4091,7 @@ INT WINAPI UrlCompareW(const WCHAR *url1, const WCHAR *url2, BOOL ignore_slash)
 HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
 {
     DWORD src_len, dst_len, len;
-    DWORD pos = 0;
+    DWORD colon_pos = 0, pos = 0;
     WCHAR *helper_str = NULL;
     WCHAR *save_str = translatedUrl;
 
@@ -4133,7 +4133,80 @@ HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
     if (!helper_str)
         return S_FALSE;
 
+    /*
+     * Colon should not be at the beginning
+     */
+    colon_pos = helper_str-url;
+    if (helper_str && (1 >= colon_pos))
+        return S_FALSE;
+    /*
+     * Check if string fits into maxChars
+     */
+    // TODO: Use own buffer for adjustments, output buffer may not fit before fix
+    if (colon_pos >= maxChars && maxChars < 3)
+        return S_FALSE;
+
+    /*
+     * Set potential scheme
+     */
+    lstrcpynW(save_str, url, pos+2);
+    url = url + colon_pos + 1;
+
+    /*
+     * Find schemes with trailing or leading typos
+     */
+    for (pos=1; pos<ARRAY_SIZE(url_scheme); pos++)
+    {
+        /* http is always prefered before https, if string has typos */
+        len = wcslen(url_scheme[pos]);
+        if (!_wcsnicmp(url_scheme[pos], L"https", len+1))
+        {
+            continue;
+        }
+        if ( (len <= wcslen(save_str)) && (StrStrIW(save_str, url_scheme[pos])) )
+        {
+            /*
+             * check if string fits into maxChars
+             */
+            if (len+1 >= maxChars)
+                return S_FALSE;
+
+            lstrcpynW(save_str, url_scheme[pos], len+1);
+            lstrcatW(save_str, L":");
+            goto scheme_done;
+        }
+    }
+
+    /* Return false in most remaining cases should be safe */
+    return S_FALSE;
+
+    /* Concat scheme + rest */
 scheme_done:
+    /*
+     * Concat L"://"" for ftp, http, https scheme * else ":"
+     */
+    if ( 0 == lstrcmpW(save_str, L"ftp:") ||
+         0 == lstrcmpW(save_str, L"http:") ||
+         0 == lstrcmpW(save_str, L"https:") )
+    {
+        if ( url[0] == L'\\'  || url[0] == L'/' )
+        {
+            url++;
+            if ( url[0] == L'\\'  || url[0] == L'/' )
+                url++;
+        }
+        lstrcatW(save_str, L"//");
+    }
+    /*
+     * Remove leading "/", "\" and ":" from url.
+     * Output already have them if needed
+     */
+    while ( url[0] == L'\\'  || url[0] == L'/' )
+    {
+        lstrcatW(save_str, L"/");
+        url++;
+    }
+
     /* Add the URL path */
     src_len = lstrlenW(url) + 1;
     dst_len = maxChars - lstrlenW(save_str);
