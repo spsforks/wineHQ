@@ -828,15 +828,15 @@ static void register_rawinput_device( const RAWINPUTDEVICE *device )
 /**********************************************************************
  *         NtUserRegisterRawInputDevices   (win32u.@)
  */
-BOOL WINAPI NtUserRegisterRawInputDevices( const RAWINPUTDEVICE *devices, UINT device_count, UINT device_size )
+BOOL WINAPI NtUserRegisterRawInputDevices( const RAWINPUTDEVICE *device_list, UINT device_count, UINT device_size )
 {
     struct rawinput_device *server_devices;
     RAWINPUTDEVICE *new_registered_devices;
     SIZE_T size;
-    BOOL ret;
+    BOOL ret, registering_notifications = FALSE;
     UINT i;
 
-    TRACE( "devices %p, device_count %u, device_size %u.\n", devices, device_count, device_size );
+    TRACE( "devices %p, device_count %u, device_size %u.\n", device_list, device_count, device_size );
 
     if (device_size != sizeof(RAWINPUTDEVICE))
     {
@@ -846,23 +846,23 @@ BOOL WINAPI NtUserRegisterRawInputDevices( const RAWINPUTDEVICE *devices, UINT d
 
     for (i = 0; i < device_count; ++i)
     {
-        TRACE( "device %u: page %#x, usage %#x, flags %#x, target %p.\n", i, devices[i].usUsagePage,
-               devices[i].usUsage, (int)devices[i].dwFlags, devices[i].hwndTarget );
+        TRACE( "device %u: page %#x, usage %#x, flags %#x, target %p.\n", i, device_list[i].usUsagePage,
+               device_list[i].usUsage, (int)device_list[i].dwFlags, device_list[i].hwndTarget );
 
-        if ((devices[i].dwFlags & RIDEV_INPUTSINK) && !devices[i].hwndTarget)
+        if ((device_list[i].dwFlags & RIDEV_INPUTSINK) && !device_list[i].hwndTarget)
         {
             RtlSetLastWin32Error( ERROR_INVALID_PARAMETER );
             return FALSE;
         }
 
-        if ((devices[i].dwFlags & RIDEV_REMOVE) && devices[i].hwndTarget)
+        if ((device_list[i].dwFlags & RIDEV_REMOVE) && device_list[i].hwndTarget)
         {
             RtlSetLastWin32Error( ERROR_INVALID_PARAMETER );
             return FALSE;
         }
 
-        if (devices[i].dwFlags & ~(RIDEV_REMOVE|RIDEV_NOLEGACY|RIDEV_INPUTSINK|RIDEV_DEVNOTIFY))
-            FIXME( "Unhandled flags %#x for device %u.\n", (int)devices[i].dwFlags, i );
+        if (device_list[i].dwFlags & ~(RIDEV_REMOVE|RIDEV_NOLEGACY|RIDEV_INPUTSINK|RIDEV_DEVNOTIFY))
+            FIXME( "Unhandled flags %#x for device %u.\n", (int)device_list[i].dwFlags, i );
     }
 
     pthread_mutex_lock( &rawinput_mutex );
@@ -882,7 +882,7 @@ BOOL WINAPI NtUserRegisterRawInputDevices( const RAWINPUTDEVICE *devices, UINT d
     }
 
     registered_devices = new_registered_devices;
-    for (i = 0; i < device_count; ++i) register_rawinput_device( devices + i );
+    for (i = 0; i < device_count; ++i) register_rawinput_device( device_list + i );
 
     if (!(device_count = registered_device_count)) server_devices = NULL;
     else if (!(server_devices = malloc( device_count * sizeof(*server_devices) )))
@@ -908,6 +908,43 @@ BOOL WINAPI NtUserRegisterRawInputDevices( const RAWINPUTDEVICE *devices, UINT d
     SERVER_END_REQ;
 
     free( server_devices );
+
+    /* Send WM_INPUT_DEVICE_CHANGE for existing devices when registering for notifications */
+    for (i = 0; i < device_count; ++i)
+    {
+        if ((device_list[i].dwFlags & RIDEV_DEVNOTIFY) && device_list[i].hwndTarget)
+        {
+            registering_notifications = TRUE;
+            break;
+        }
+    }
+    if (registering_notifications && ret)
+    {
+        struct device *device;
+        rawinput_update_device_list();
+        LIST_FOR_EACH_ENTRY(device, &devices, struct device, entry)
+        {
+            DWORD type = device->info.dwType;
+            for (i = 0; i < device_count; ++i)
+            {
+                BOOL matches = FALSE;
+                HWND hwnd = device_list[i].hwndTarget;
+                ULONG usage = MAKELONG(device_list[i].usUsagePage, usage = device_list[i].usUsage);
+                if (!(device_list[i].dwFlags & RIDEV_DEVNOTIFY) || !hwnd)
+                    continue;
+
+                if (type == RIM_TYPEMOUSE)
+                    matches = usage == MAKELONG(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE);
+                else if (type == RIM_TYPEKEYBOARD)
+                    matches = usage == MAKELONG(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_KEYBOARD);
+                else if (type == RIM_TYPEHID)
+                    matches = usage == MAKELONG(device->info.hid.usUsagePage, device->info.hid.usUsage);
+
+                if (matches)
+                    NtUserPostMessage(hwnd, WM_INPUT_DEVICE_CHANGE, GIDC_ARRIVAL, (LPARAM)device->handle);
+            }
+        }
+    }
 
     pthread_mutex_unlock( &rawinput_mutex );
 

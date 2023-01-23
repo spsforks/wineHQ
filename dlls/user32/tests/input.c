@@ -2461,7 +2461,7 @@ static void test_GetRawInputBuffer(void)
     mouse_event(MOUSEEVENTF_MOVE, 4, 0, 0, 0);
     empty_message_queue();
     ok(rawinputbuffer_wndproc_wm_input_count == 2, "Spurious WM_INPUT messages\n");
-    todo_wine ok(rawinputbuffer_wndproc_wm_input_device_change_count == num_mice, "Got %d WM_INPUT_DEVICE_CHANGE messages (expected %d)\n", rawinputbuffer_wndproc_wm_input_device_change_count, num_mice);
+    ok(rawinputbuffer_wndproc_wm_input_device_change_count == num_mice, "Got %d WM_INPUT_DEVICE_CHANGE messages (expected %d)\n", rawinputbuffer_wndproc_wm_input_device_change_count, num_mice);
 
     raw_devices[0].dwFlags = RIDEV_REMOVE;
     raw_devices[0].hwndTarget = 0;
