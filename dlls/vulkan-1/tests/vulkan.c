@@ -16,7 +16,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "windows.h"
+#include "windef.h"
+#define COBJMACROS
+#include "initguid.h"
+#include "d3d11_4.h"
 #include "wine/heap.h"
 #include "wine/vulkan.h"
 #include "wine/test.h"
@@ -881,6 +884,391 @@ static void test_external_memory(VkInstance vk_instance, VkPhysicalDevice vk_phy
     vkDestroyDevice(vk_device, NULL);
 }
 
+static const char *test_keyed_mutex_extensions[] =
+{
+    "VK_KHR_external_memory_capabilities",
+    "VK_KHR_get_physical_device_properties2",
+};
+
+struct release_cmd
+{
+    IDXGIKeyedMutex *keyed_mutex;
+    UINT64 key;
+    DWORD delay;
+};
+
+static DWORD WINAPI release_keyed_mutex(void *param)
+{
+    struct release_cmd *cmd = param;
+    HRESULT hr;
+
+    Sleep(cmd->delay);
+
+    hr = IDXGIKeyedMutex_ReleaseSync(cmd->keyed_mutex, cmd->key);
+    ok(hr == S_OK, "Failed to release sync, hr %#lx.\n", hr);
+
+    return 0;
+}
+
+static void test_keyed_mutex(VkInstance vk_instance, VkPhysicalDevice vk_physical_device)
+{
+    PFN_vkGetPhysicalDeviceImageFormatProperties2 pfn_vkGetPhysicalDeviceImageFormatProperties2;
+    PFN_vkGetPhysicalDeviceProperties2 pfn_vkGetPhysicalDeviceProperties2;
+    VkPhysicalDeviceExternalImageFormatInfo external_image_format_info;
+    VkExternalImageFormatProperties external_image_format_properties;
+    VkWin32KeyedMutexAcquireReleaseInfoKHR keyed_mutex_submit_info;
+    VkPhysicalDeviceIDPropertiesKHR device_id_properties;
+    VkExternalMemoryImageCreateInfo external_image_info;
+    VkImportMemoryWin32HandleInfoKHR import_handle_info;
+    VkMemoryDedicatedAllocateInfo dedicated_alloc_info;
+    VkPhysicalDeviceImageFormatInfo2 image_format_info;
+    VkMemoryRequirements vk_image_memory_requirements;
+    VkPhysicalDeviceProperties2KHR device_properties;
+    VkImageFormatProperties2 image_format_properties;
+    uint64_t vk_acquire_keys[2], vk_release_keys[2];
+    VkMemoryAllocateInfo memory_alloc_info;
+    IDXGIKeyedMutex *d3d_keyed_mutexes[2];
+    VkImageCreateInfo image_create_info;
+    VkDeviceMemory vk_keyed_mutexes[2];
+    D3D11_TEXTURE2D_DESC texture_desc;
+    uint32_t vk_acquire_timeouts[2];
+    struct release_cmd release_cmd;
+    DXGI_ADAPTER_DESC adapter_desc;
+    DWORD start_time, elapsed_time;
+    IDXGIResource1 *dxgi_resource;
+    HANDLE keyed_mutex_handle[2];
+    ID3D11Texture2D *d3d_texture;
+    HANDLE release_mutex_thread;
+    uint32_t queue_family_index;
+    ID3D11Device *d3d_device;
+    VkSubmitInfo submit_info;
+    IDXGIFactory *factory;
+    IDXGIAdapter *adapter;
+    VkDevice vk_device;
+    VkImage vk_image;
+    VkQueue vk_queue;
+    unsigned int i;
+    VkResult vr;
+    HRESULT hr;
+
+    static const char *extensions[] =
+    {
+        "VK_KHR_get_memory_requirements2",
+        "VK_KHR_dedicated_allocation",
+        "VK_KHR_external_memory",
+        "VK_KHR_external_memory_win32",
+        "VK_KHR_win32_keyed_mutex",
+    };
+
+    pfn_vkGetPhysicalDeviceProperties2 =
+        (void*) vkGetInstanceProcAddr(vk_instance, "vkGetPhysicalDeviceProperties2KHR");
+
+    ok(!!pfn_vkGetPhysicalDeviceProperties2, "Failed to get vkGetPhysicalDeviceExternalBufferPropertiesKHR proc.\n");
+
+    pfn_vkGetPhysicalDeviceImageFormatProperties2 =
+        (void*) vkGetInstanceProcAddr(vk_instance, "vkGetPhysicalDeviceImageFormatProperties2KHR");
+
+    ok(!!pfn_vkGetPhysicalDeviceImageFormatProperties2, "Failed to get vkGetPhysicalDeviceImageFormatProperties2KHR proc.\n");
+
+    device_id_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR;
+    device_id_properties.pNext = NULL;
+
+    device_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
+    device_properties.pNext = &device_id_properties;
+
+    pfn_vkGetPhysicalDeviceProperties2(vk_physical_device, &device_properties);
+
+    ok(device_id_properties.deviceLUIDValid, "Unexpected deviceLUIDValid VK_FALSE.\n");
+
+    if ((vr = create_device(vk_physical_device, ARRAY_SIZE(extensions), extensions, NULL, &vk_device)))
+    {
+        skip("Failed to create device with keyed mutex extensions, VkResult %d.\n", vr);
+        return;
+    }
+
+    hr = CreateDXGIFactory1(&IID_IDXGIFactory, (void**)&factory);
+    ok(hr == S_OK, "Failed to create factory, hr %#lx.\n", hr);
+
+    for (i = 0;; i++)
+    {
+        if ((hr = IDXGIFactory_EnumAdapters(factory, i, &adapter)) == DXGI_ERROR_NOT_FOUND)
+            break;
+
+        ok(hr == S_OK, "Failed to enumerate adapter, hr %#lx.\n", hr);
+
+        hr = IDXGIAdapter_GetDesc(adapter, &adapter_desc);
+        ok(hr == S_OK, "IDXGIAdapter::GetDesc failed, hr %#lx.\n", hr);
+
+        if (!memcmp(device_id_properties.deviceLUID, &adapter_desc.AdapterLuid, VK_LUID_SIZE))
+            break;
+
+        IDXGIAdapter_Release(adapter);
+        adapter = NULL;
+    }
+
+    IDXGIFactory_Release(factory);
+
+    ok(!!adapter, "Couldn't find DXGI adapter matching LUID of Vulkan physical device.\n");
+    if (!adapter)
+        return;
+
+    hr = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, 0, NULL, 0, D3D11_SDK_VERSION, &d3d_device, NULL, NULL);
+    ok(hr == S_OK, "Failed to create D3D11 device, hr %#lx.\n", hr);
+
+    texture_desc.Width = 256;
+    texture_desc.Height = 256;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.SampleDesc.Quality = 0;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    texture_desc.CPUAccessFlags = 0;
+    texture_desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+
+    hr = ID3D11Device_CreateTexture2D(d3d_device, &texture_desc, NULL, &d3d_texture);
+    ok(hr == S_OK, "CreateTexture2D failed, hr %#lx.\n", hr);
+
+    hr = ID3D11Texture2D_QueryInterface(d3d_texture, &IID_IDXGIKeyedMutex, (void**)&d3d_keyed_mutexes[0]);
+    ok(hr == S_OK, "Failed to query IDXGIKeyedMutex, hr %#lx.\n", hr);
+
+    hr = ID3D11Texture2D_QueryInterface(d3d_texture, &IID_IDXGIResource1, (void**)&dxgi_resource);
+    ok(hr == S_OK, "Failed to query IDXGIResource1, hr %#lx.\n", hr);
+
+    ID3D11Texture2D_Release(d3d_texture);
+
+    hr = IDXGIResource1_CreateSharedHandle(dxgi_resource, NULL, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, NULL, &keyed_mutex_handle[0]);
+    ok(hr == S_OK, "Failed to create keyed mutex shared handle, hr %#lx.\n", hr);
+
+    IDXGIResource1_Release(dxgi_resource);
+
+    hr = IDXGIKeyedMutex_AcquireSync(d3d_keyed_mutexes[0], 0, 0);
+    ok(hr == S_OK, "Failed to acquire keyed mutex, hr %#lx.\n", hr);
+
+    hr = ID3D11Device_CreateTexture2D(d3d_device, &texture_desc, NULL, &d3d_texture);
+    ok(hr == S_OK, "CreateTexture2D failed, hr %#lx.\n", hr);
+
+    hr = ID3D11Texture2D_QueryInterface(d3d_texture, &IID_IDXGIKeyedMutex, (void**)&d3d_keyed_mutexes[1]);
+    ok(hr == S_OK, "Failed to query IDXGIKeyedMutex, hr %#lx.\n", hr);
+
+    hr = ID3D11Texture2D_QueryInterface(d3d_texture, &IID_IDXGIResource1, (void**)&dxgi_resource);
+    ok(hr == S_OK, "Failed to query IDXGIResource1, hr %#lx.\n", hr);
+
+    ID3D11Texture2D_Release(d3d_texture);
+
+    hr = IDXGIResource1_CreateSharedHandle(dxgi_resource, NULL, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, NULL, &keyed_mutex_handle[1]);
+    ok(hr == S_OK, "Failed to create keyed mutex shared handle, hr %#lx.\n", hr);
+
+    IDXGIResource1_Release(dxgi_resource);
+
+    hr = IDXGIKeyedMutex_AcquireSync(d3d_keyed_mutexes[1], 0, 0);
+    ok(hr == S_OK, "Failed to acquire keyed mutex, hr %#lx.\n", hr);
+
+    external_image_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+    external_image_format_info.pNext = NULL;
+    external_image_format_info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+
+    image_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+    image_format_info.pNext = &external_image_format_info;
+    image_format_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_format_info.type = VK_IMAGE_TYPE_2D;
+    image_format_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_format_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    image_format_info.flags = 0;
+
+    external_image_format_properties.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+    external_image_format_properties.pNext = NULL;
+
+    image_format_properties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+    image_format_properties.pNext = &external_image_format_properties;
+
+    vr = pfn_vkGetPhysicalDeviceImageFormatProperties2(vk_physical_device, &image_format_info, &image_format_properties);
+    ok(vr == VK_SUCCESS, "vkGetPhysicalDeviceImageFormatProperties2 failed. VkResult %d.\n", vr);
+
+    ok(external_image_format_properties.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
+        "VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT not importable.\n");
+
+    external_image_info.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+    external_image_info.pNext = NULL;
+    external_image_info.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.pNext = &external_image_info;
+    image_create_info.flags = 0;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.extent.width = 256;
+    image_create_info.extent.height = 256;
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.queueFamilyIndexCount = 0;
+    image_create_info.pQueueFamilyIndices = NULL;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    vr = vkCreateImage(vk_device, &image_create_info, NULL, &vk_image);
+    ok(vr == VK_SUCCESS, "vkCreateImage failed. VkResult %d.\n", vr);
+
+    vkGetImageMemoryRequirements(vk_device, vk_image, &vk_image_memory_requirements);
+
+    dedicated_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+    dedicated_alloc_info.pNext = NULL;
+    dedicated_alloc_info.image = vk_image;
+    dedicated_alloc_info.buffer = VK_NULL_HANDLE;
+
+    import_handle_info.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
+    import_handle_info.pNext = &dedicated_alloc_info;
+    import_handle_info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+    import_handle_info.handle = keyed_mutex_handle[0];
+    import_handle_info.name = NULL;
+
+    memory_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_alloc_info.pNext = &import_handle_info;
+    memory_alloc_info.allocationSize = vk_image_memory_requirements.size;
+    memory_alloc_info.memoryTypeIndex = find_memory_type(vk_physical_device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vk_image_memory_requirements.memoryTypeBits);
+
+    vr = vkAllocateMemory(vk_device, &memory_alloc_info, NULL, &vk_keyed_mutexes[0]);
+    ok(vr == VK_SUCCESS, "vkAllocateMemory failed. VkResult %d.\n", vr);
+
+    CloseHandle(keyed_mutex_handle[0]);
+
+    import_handle_info.handle = keyed_mutex_handle[1];
+
+    vr = vkAllocateMemory(vk_device, &memory_alloc_info, NULL, &vk_keyed_mutexes[1]);
+    ok(vr == VK_SUCCESS, "vkAllocateMemory failed. VkResult %d.\n", vr);
+
+    CloseHandle(keyed_mutex_handle[1]);
+
+    find_queue_family(vk_physical_device, VK_QUEUE_GRAPHICS_BIT, &queue_family_index);
+
+    vkGetDeviceQueue(vk_device, queue_family_index, 0, &vk_queue);
+    ok(!!vk_queue, "Failed to get device queue.\n");
+
+    keyed_mutex_submit_info.sType = VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_KHR;
+    keyed_mutex_submit_info.pNext = NULL;
+    keyed_mutex_submit_info.acquireCount = 0;
+    keyed_mutex_submit_info.pAcquireSyncs = vk_keyed_mutexes;
+    keyed_mutex_submit_info.pAcquireKeys = vk_acquire_keys;
+    keyed_mutex_submit_info.pAcquireTimeouts = vk_acquire_timeouts;
+    keyed_mutex_submit_info.releaseCount = 0;
+    keyed_mutex_submit_info.pReleaseSyncs = vk_keyed_mutexes;
+    keyed_mutex_submit_info.pReleaseKeys = vk_release_keys;
+
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = &keyed_mutex_submit_info;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = 0;
+    submit_info.commandBufferCount = 0;
+    submit_info.pCommandBuffers = NULL;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+
+    keyed_mutex_submit_info.acquireCount = 2;
+
+    vk_acquire_keys[0] = 1;
+    vk_acquire_keys[1] = 1;
+
+    vk_acquire_timeouts[0] = 2000;
+    vk_acquire_timeouts[1] = 1000;
+
+    start_time = GetTickCount();
+
+    vr = vkQueueSubmit(vk_queue, 1, &submit_info, VK_NULL_HANDLE);
+    ok(vr == VK_TIMEOUT, "Unexpected VkResult %d.\n", vr);
+
+    /* NVIDIA Driver seems to exhibit only two behaviors,
+     * to block forever on the mutex is the timeout value is UINT32_MAX,
+     * and to return immediately w/ S_OK or VK_TIMEOUT if the value is anything else.
+     *
+     * https://github.com/KhronosGroup/Vulkan-Docs/issues/1554#issuecomment-1262797551
+     */
+    elapsed_time = GetTickCount() - start_time;
+    ok((elapsed_time > 1800 && elapsed_time < 2200) || broken(elapsed_time < 100),
+       "Unexpected elapsed time %lu ms, expected around 2000 ms.\n", elapsed_time);
+
+    hr = IDXGIKeyedMutex_ReleaseSync(d3d_keyed_mutexes[0], 1);
+    ok(hr == S_OK, "Failed to release keyed mutex, hr %#lx.\n", hr);
+
+    hr = IDXGIKeyedMutex_ReleaseSync(d3d_keyed_mutexes[1], 1);
+    ok(hr == S_OK, "Failed to release keyed mutex, hr %#lx.\n", hr);
+
+    vr = vkQueueSubmit(vk_queue, 1, &submit_info, VK_NULL_HANDLE);
+    ok(vr == S_OK, "Unexpected VkResult %d.\n", vr);
+
+    start_time = GetTickCount();
+
+    hr = IDXGIKeyedMutex_AcquireSync(d3d_keyed_mutexes[0], 2, 1000);
+    ok(hr == WAIT_TIMEOUT, "Unexpcted hr %#lx.\n", hr);
+
+    /* The behavior described above is not present when specifying the timeout for a D3D keyed mutex, even on NVIDIA. */
+    elapsed_time = GetTickCount() - start_time;
+    ok(elapsed_time > 800 && elapsed_time < 1200, "Unexpected elapsed time %lu ms, expected around 1000 ms.\n", elapsed_time);
+
+    keyed_mutex_submit_info.acquireCount = 0;
+    keyed_mutex_submit_info.releaseCount = 2;
+
+    vk_release_keys[0] = 2;
+    vk_release_keys[1] = 2;
+
+    vr = vkQueueSubmit(vk_queue, 1, &submit_info, VK_NULL_HANDLE);
+    ok(vr == VK_SUCCESS, "Unexpected VkResult %d.\n", vr);
+
+    hr = IDXGIKeyedMutex_AcquireSync(d3d_keyed_mutexes[0], 2, 0);
+    ok(hr == S_OK, "Failed to acquire keyed mutex, hr %#lx.\n", hr);
+
+    hr = IDXGIKeyedMutex_AcquireSync(d3d_keyed_mutexes[1], 2, 0);
+    ok(hr == S_OK, "Failed to acquire keyed mutex, hr %#lx.\n", hr);
+
+    keyed_mutex_submit_info.acquireCount = 2;
+    keyed_mutex_submit_info.releaseCount = 0;
+
+    vk_acquire_keys[0] = 3;
+    vk_acquire_keys[1] = 3;
+
+    vk_acquire_timeouts[0] = 2000;
+    vk_acquire_timeouts[1] = 1000;
+
+    release_cmd.keyed_mutex = d3d_keyed_mutexes[0];
+    release_cmd.key = 3;
+    release_cmd.delay = 1500;
+
+    release_mutex_thread = CreateThread(NULL, 0, release_keyed_mutex, &release_cmd, 0, NULL);
+    ok(!!release_mutex_thread, "Failed to create mutex release thread, error %#lx.\n", GetLastError());
+
+    start_time = GetTickCount();
+
+    vr = vkQueueSubmit(vk_queue, 1, &submit_info, VK_NULL_HANDLE);
+    ok(vr == VK_TIMEOUT, "Unexpected VkResult %d.\n", vr);
+
+    /* Each acquire operation is consecutive, each one starting with a new timeout */
+    elapsed_time = GetTickCount() - start_time;
+    ok((elapsed_time > 2300 && elapsed_time < 2700) || broken(elapsed_time < 100),
+        "Unexpected elapsed time %lu ms, expected around 2500 ms.\n", elapsed_time);
+
+    hr = IDXGIKeyedMutex_ReleaseSync(d3d_keyed_mutexes[1], 3);
+    ok(hr == S_OK, "Failed to release keyed mutex, hr %#lx.\n", hr);
+
+    WaitForSingleObject(release_mutex_thread, INFINITE);
+    CloseHandle(release_mutex_thread);
+
+    IDXGIKeyedMutex_Release(d3d_keyed_mutexes[0]);
+    IDXGIKeyedMutex_Release(d3d_keyed_mutexes[1]);
+
+    ID3D11Device_Release(d3d_device);
+
+    vkFreeMemory(vk_device, vk_keyed_mutexes[0], NULL);
+    vkFreeMemory(vk_device, vk_keyed_mutexes[1], NULL);
+
+    vkDestroyImage(vk_device, vk_image, NULL);
+    vkDestroyDevice(vk_device, NULL);
+}
+
 static void for_each_device_instance(uint32_t extension_count, const char * const *enabled_extensions,
         void (*test_func_instance)(VkInstance, VkPhysicalDevice), void (*test_func)(VkPhysicalDevice))
 {
@@ -950,4 +1338,5 @@ START_TEST(vulkan)
     for_each_device(test_private_data);
     for_each_device_instance(ARRAY_SIZE(test_null_hwnd_extensions), test_null_hwnd_extensions, test_null_hwnd, NULL);
     for_each_device_instance(ARRAY_SIZE(test_external_memory_extensions), test_external_memory_extensions, test_external_memory, NULL);
+    for_each_device_instance(ARRAY_SIZE(test_keyed_mutex_extensions), test_keyed_mutex_extensions, test_keyed_mutex, NULL);
 }

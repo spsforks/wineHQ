@@ -102,7 +102,6 @@ UNSUPPORTED_EXTENSIONS = [
     "VK_KHR_external_semaphore_win32",
     # Relates to external_semaphore and needs type conversions in bitflags.
     "VK_KHR_shared_presentable_image", # Needs WSI work.
-    "VK_KHR_win32_keyed_mutex",
     "VK_NV_external_memory_rdma", # Needs shared resources work.
 
     # Extensions for other platforms
@@ -129,6 +128,7 @@ UNSUPPORTED_EXTENSIONS = [
 # but not expose to applications (useful for test commits)
 UNEXPOSED_EXTENSIONS = {
     "VK_KHR_external_memory_win32",
+    "VK_KHR_win32_keyed_mutex",
 }
 
 # The Vulkan loader provides entry-points for core functionality and important
