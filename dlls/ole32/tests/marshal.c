@@ -4598,7 +4598,7 @@ static void test_apartment_oxid(DWORD flags)
     second_oxid = get_apartment_oxid();
     CoUninitialize();
 
-    todo_wine ok(first_oxid != second_oxid, "Re-created apartment with flags %ld has old OXID: %s\n", flags, wine_dbgstr_longlong(first_oxid));
+    ok(first_oxid != second_oxid, "Re-created apartment with flags %ld has old OXID: %s\n", flags, wine_dbgstr_longlong(first_oxid));
 }
 
 START_TEST(marshal)

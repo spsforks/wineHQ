@@ -301,6 +301,13 @@ static RPC_BINDING_HANDLE get_irot_handle(void)
     } \
     return hr;
 
+HRESULT rpcss_get_new_apartment_oxid(OXID *oxid)
+{
+    RPCSS_CALL_START
+    hr = irpcss_get_new_apartment_oxid(get_irpcss_handle(), oxid);
+    RPCSS_CALL_END
+}
+
 HRESULT rpcss_get_next_seqid(DWORD *id)
 {
     RPCSS_CALL_START

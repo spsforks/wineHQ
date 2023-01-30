@@ -47,4 +47,8 @@ interface Irpcss
     HRESULT irpcss_get_thread_seq_id(
         [in] handle_t handle,
         [out] DWORD *sequence_id);
+
+    HRESULT irpcss_get_new_apartment_oxid(
+        [in] handle_t handle,
+        [out] OXID *oxid);
 }

@@ -118,6 +118,7 @@ HRESULT apartment_disconnectproxies(struct apartment *apt) DECLSPEC_HIDDEN;
 
 /* RpcSs interface */
 HRESULT rpcss_get_next_seqid(DWORD *id) DECLSPEC_HIDDEN;
+HRESULT rpcss_get_new_apartment_oxid(OXID *oxid) DECLSPEC_HIDDEN;
 HRESULT rpc_get_local_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 HRESULT rpc_register_local_server(REFCLSID clsid, IStream *stream, DWORD flags, unsigned int *cookie) DECLSPEC_HIDDEN;
 HRESULT rpc_revoke_local_server(unsigned int cookie) DECLSPEC_HIDDEN;

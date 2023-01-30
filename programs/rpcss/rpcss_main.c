@@ -144,6 +144,28 @@ HRESULT __cdecl irpcss_get_thread_seq_id(handle_t h, DWORD *id)
     return S_OK;
 }
 
+/* Generates a new OXID suitable for use by an apartment.
+ * Each call to this function returns a distinct OXID.
+ * This function should not be invoked directly - use rpcss_get_new_apartment_oxid
+ * instead. */
+HRESULT __cdecl irpcss_get_new_apartment_oxid(handle_t h, OXID *oxid)
+{
+    HRESULT status;
+    ULONG oxid_upper_bits;
+    static LONG oxid_lower_bits;
+
+    status = I_RpcBindingInqLocalClientPID(h, &oxid_upper_bits);
+    if (status != S_OK)
+    {
+        ERR("Failed to create apartment oxid: %ld", status);
+        return status;
+    }
+
+    /* Combine the caller PID and an incrementing counter to create a unique OXID */
+    *oxid = (OXID) oxid_upper_bits << 32 | InterlockedIncrement(&oxid_lower_bits);
+    return S_OK;
+}
+
 static RPC_STATUS RPCSS_Initialize(void)
 {
     static unsigned short irot_protseq[] = IROT_PROTSEQ;
