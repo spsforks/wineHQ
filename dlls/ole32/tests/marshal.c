@@ -4546,6 +4546,61 @@ static void test_mta_creation_thread_change_apartment(void)
     CoUninitialize();
 }
 
+static OXID get_apartment_oxid(void)
+{
+    HRESULT hr;
+    OBJREF objref;
+    DWORD size, read;
+    IStream *pStream = NULL;
+
+    hr = CreateStreamOnHGlobal(NULL, TRUE, &pStream);
+    ok_ole_success(hr, CreateStreamOnHGlobal);
+
+    hr = CoMarshalInterface(pStream, &IID_IClassFactory, (IUnknown*)&Test_ClassFactory, MSHCTX_INPROC, NULL, MSHLFLAGS_NORMAL);
+    ok_ole_success(hr, CoMarshalInterface);
+
+    hr = IStream_Seek(pStream, ullZero, STREAM_SEEK_SET, NULL);
+    ok_ole_success(hr, IStream_Seek);
+
+    size = FIELD_OFFSET(OBJREF, u_objref.u_standard.saResAddr);
+    hr = IStream_Read(pStream, &objref, size, &read);
+    ok_ole_success(hr, IStream_Read);
+
+    hr = IStream_Seek(pStream, ullZero, STREAM_SEEK_SET, NULL);
+    ok_ole_success(hr, IStream_Seek);
+
+    hr = CoReleaseMarshalData(pStream);
+    ok_ole_success(hr, CoReleaseMarshalData);
+
+    IStream_Release(pStream);
+
+    return objref.u_objref.u_standard.std.oxid;
+}
+
+/* Tests that re-creating an apartment (via `CoUninitialize` followed by `CoInitializeEx`)
+ * results in an apartment with a different OXID than the previous apartment
+ */
+static void test_apartment_oxid(DWORD flags)
+{
+    OXID first_oxid;
+    OXID second_oxid;
+
+    cLocks = 0;
+    external_connections = 0;
+
+    CoUninitialize();
+
+    CoInitializeEx(NULL, flags);
+    first_oxid = get_apartment_oxid();
+    CoUninitialize();
+
+    CoInitializeEx(NULL, flags);
+    second_oxid = get_apartment_oxid();
+    CoUninitialize();
+
+    todo_wine ok(first_oxid != second_oxid, "Re-created apartment with flags %ld has old OXID: %s\n", flags, wine_dbgstr_longlong(first_oxid));
+}
+
 START_TEST(marshal)
 {
     HMODULE hOle32 = GetModuleHandleA("ole32");
@@ -4567,6 +4622,8 @@ START_TEST(marshal)
     register_test_window();
 
     test_cocreateinstance_proxy();
+    test_apartment_oxid(COINIT_APARTMENTTHREADED);
+    test_apartment_oxid(COINIT_MULTITHREADED);
     test_implicit_mta();
     test_mta_creation_thread_change_apartment();
 
