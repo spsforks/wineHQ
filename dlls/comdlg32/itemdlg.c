@@ -2225,6 +2225,15 @@ static LRESULT on_browse_up(FileDialogImpl *This)
     return FALSE;
 }
 
+static LRESULT on_browse_pidl(FileDialogImpl *This, LPARAM lparam)
+{
+    ITEMIDLIST* pidl = (ITEMIDLIST*)lparam;
+
+    TRACE("%p - pidl %p\n", This, pidl);
+    IExplorerBrowser_BrowseToIDList(This->peb, pidl, SBSP_ABSOLUTE);
+    return FALSE;
+}
+
 static LRESULT on_command_filetype(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
 {
     if(HIWORD(wparam) == CBN_SELCHANGE)
@@ -2301,6 +2310,7 @@ static INT_PTR CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam,
     case NBN_NAVBACK:         return on_browse_back(This);
     case NBN_NAVFORWARD:      return on_browse_forward(This);
     case NBN_NAVUP:           return on_browse_up(This);
+    case NBN_NAVPIDL:         return on_browse_pidl(This, lparam);
     }
 
     return FALSE;
@@ -3440,6 +3450,7 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
 {
     FileDialogImpl *This = impl_from_IExplorerBrowserEvents(iface);
     HRESULT hr;
+    HWND hwnd;
     TRACE("%p (%p)\n", This, pidlFolder);
 
     if(This->psi_folder)
@@ -3450,6 +3461,14 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
     {
         ERR("Failed to get the current folder.\n");
         This->psi_folder = NULL;
+    }
+    else
+    {
+        hwnd = GetDlgItem(This->dlg_hwnd, IDC_NAVBAR);
+        if (!hwnd)
+            ERR("Failed to update navbar.\n");
+        else
+            SendMessageW(hwnd, NBM_SETPIDL, 0, (LPARAM)pidlFolder);
     }
 
     events_OnFolderChange(This);
