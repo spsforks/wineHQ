@@ -185,7 +185,7 @@ static WINE_MODREF *last_failed_modref;
 
 static LDR_DDAG_NODE *node_ntdll, *node_kernel32;
 
-static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD flags, WINE_MODREF** pwm, BOOL system );
+static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD flags, WINE_MODREF** pwm, BOOL system, BOOL *is_child_import_failed );
 static NTSTATUS process_attach( LDR_DDAG_NODE *node, LPVOID lpReserved );
 static FARPROC find_ordinal_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY *exports,
                                     DWORD exp_size, DWORD ordinal, LPCWSTR load_path );
@@ -871,7 +871,7 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
     {
         WINE_MODREF *imp = get_modref( module );
         TRACE( "delay loading %s for '%s'\n", debugstr_w(mod_name), forward );
-        if (load_dll( load_path, mod_name, 0, &wm, imp->system ) == STATUS_SUCCESS &&
+        if (load_dll( load_path, mod_name, 0, &wm, imp->system, NULL ) == STATUS_SUCCESS &&
             !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
         {
             if (!imports_fixup_done && current_modref)
@@ -938,7 +938,7 @@ static FARPROC find_ordinal_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY
     proc = get_rva( module, functions[ordinal] );
 
     /* if the address falls into the export dir, it's a forward */
-    if (((const char *)proc >= (const char *)exports) && 
+    if (((const char *)proc >= (const char *)exports) &&
         ((const char *)proc < (const char *)exports + exp_size))
         return find_forwarded_export( module, (const char *)proc, load_path );
 
@@ -1050,6 +1050,7 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
     PVOID protect_base;
     SIZE_T protect_size = 0;
     DWORD protect_old;
+    BOOL is_child_import_failed;
 
     thunk_list = get_rva( module, (DWORD)descr->FirstThunk );
     if (descr->u.OriginalFirstThunk)
@@ -1065,11 +1066,15 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
     }
 
     status = build_import_name( buffer, name, len );
-    if (!status) status = load_dll( load_path, buffer, 0, &wmImp, system );
+    if (!status) status = load_dll( load_path, buffer, 0, &wmImp, system, &is_child_import_failed );
 
     if (status)
     {
-        if (status == STATUS_DLL_NOT_FOUND)
+        /* If import fail was printed for child DLL, then printing that again for
+         * for parent isn't very useful. Instead just print that it failed to load.
+         * The reason (that child failed to laod) will be in logs anyway.
+         */
+        if (status == STATUS_DLL_NOT_FOUND && !is_child_import_failed)
             ERR("Library %s (which is needed by %s) not found\n",
                 name, debugstr_w(current_modref->ldr.FullDllName.Buffer));
         else
@@ -1341,7 +1346,7 @@ static NTSTATUS fixup_imports_ilonly( WINE_MODREF *wm, LPCWSTR load_path, void *
     prev = current_modref;
     current_modref = wm;
     assert( !wm->ldr.DdagNode->Dependencies.Tail );
-    if (!(status = load_dll( load_path, L"mscoree.dll", 0, &imp, FALSE ))
+    if (!(status = load_dll( load_path, L"mscoree.dll", 0, &imp, FALSE, NULL ))
           && !add_module_dependency_after( wm->ldr.DdagNode, imp->ldr.DdagNode, NULL ))
         status = STATUS_NO_MEMORY;
     current_modref = prev;
@@ -1740,7 +1745,7 @@ static void process_detach(void)
 
             /* Call detach notification */
             mod->Flags &= ~LDR_PROCESS_ATTACHED;
-            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), 
+            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr),
                             DLL_PROCESS_DETACH, ULongToPtr(process_detaching) );
             call_ldr_notifications( LDR_DLL_NOTIFICATION_REASON_UNLOADED, mod );
 
@@ -3108,7 +3113,12 @@ done:
  * Load a PE style module according to the load order.
  * The loader_section must be locked while calling this function.
  */
-static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD flags, WINE_MODREF** pwm, BOOL system )
+static NTSTATUS load_dll( const WCHAR *load_path,
+                          const WCHAR *libname,
+                          DWORD flags,
+                          WINE_MODREF** pwm,
+                          BOOL system,
+                          BOOL *is_child_import_failed )
 {
     UNICODE_STRING nt_name;
     struct file_id id;
@@ -3118,6 +3128,9 @@ static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD fl
     ULONG64 prev;
 
     TRACE( "looking for %s in %s\n", debugstr_w(libname), debugstr_w(load_path) );
+
+    if (is_child_import_failed)
+        *is_child_import_failed = FALSE;
 
     if (system && system_dll_path.Buffer)
         nts = search_dll_file( system_dll_path.Buffer, libname, &nt_name, pwm, &mapping, &image_info, &id );
@@ -3155,11 +3168,18 @@ static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD fl
     switch (nts)
     {
     case STATUS_INVALID_IMAGE_NOT_MZ:  /* not in PE format, maybe it's a .so file */
-        if (ntdll_unix_handle) nts = load_so_dll( load_path, &nt_name, flags, pwm );
+        if (ntdll_unix_handle)
+        {
+            nts = load_so_dll( load_path, &nt_name, flags, pwm );
+            if (nts == STATUS_DLL_NOT_FOUND && is_child_import_failed)
+                *is_child_import_failed = TRUE;
+        }
         break;
 
     case STATUS_SUCCESS:  /* valid PE file */
         nts = load_native_dll( load_path, &nt_name, mapping, &image_info, &id, flags, system, pwm );
+        if (nts == STATUS_DLL_NOT_FOUND && is_child_import_failed)
+            *is_child_import_failed = TRUE;
         break;
     }
 
@@ -3213,7 +3233,7 @@ NTSTATUS WINAPI DECLSPEC_HOTPATCH LdrLoadDll(LPCWSTR path_name, DWORD flags,
 
     RtlEnterCriticalSection( &loader_section );
 
-    nts = load_dll( path_name, dllname ? dllname : libname->Buffer, flags, &wm, FALSE );
+    nts = load_dll( path_name, dllname ? dllname : libname->Buffer, flags, &wm, FALSE, NULL );
 
     if (nts == STATUS_SUCCESS && !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
     {
@@ -3714,7 +3734,7 @@ void WINAPI LdrShutdownThread(void)
         if ( mod->Flags & LDR_NO_DLL_CALLS )
             continue;
 
-        MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), 
+        MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr),
                         DLL_THREAD_DETACH, NULL );
     }
 
@@ -3991,7 +4011,7 @@ static void init_wow64( CONTEXT *context )
         NTSTATUS status;
         static const WCHAR wow64_path[] = L"C:\\windows\\system32\\wow64.dll";
 
-        if ((status = load_dll( NULL, wow64_path, 0, &wm, FALSE )))
+        if ((status = load_dll( NULL, wow64_path, 0, &wm, FALSE, NULL )))
         {
             ERR( "could not load %s, status %lx\n", debugstr_w(wow64_path), status );
             NtTerminateProcess( GetCurrentProcess(), status );
@@ -4148,7 +4168,7 @@ void WINAPI LdrInitializeThunk( CONTEXT *context, ULONG_PTR unknown2, ULONG_PTR 
 
         if (NtCurrentTeb()->WowTebOffset) init_wow64( context );
 
-        if ((status = load_dll( NULL, L"kernel32.dll", 0, &kernel32, FALSE )) != STATUS_SUCCESS)
+        if ((status = load_dll( NULL, L"kernel32.dll", 0, &kernel32, FALSE, NULL )) != STATUS_SUCCESS)
         {
             MESSAGE( "wine: could not load kernel32.dll, status %lx\n", status );
             NtTerminateProcess( GetCurrentProcess(), status );
