@@ -1062,6 +1062,7 @@ C_ASSERT( sizeof(struct send_socket_request) == 64 );
 C_ASSERT( FIELD_OFFSET(struct send_socket_reply, wait) == 8 );
 C_ASSERT( FIELD_OFFSET(struct send_socket_reply, options) == 12 );
 C_ASSERT( FIELD_OFFSET(struct send_socket_reply, nonblocking) == 16 );
+C_ASSERT( FIELD_OFFSET(struct send_socket_reply, protocol) == 20 );
 C_ASSERT( sizeof(struct send_socket_reply) == 24 );
 C_ASSERT( FIELD_OFFSET(struct socket_send_icmp_id_request, handle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct socket_send_icmp_id_request, icmp_id) == 16 );

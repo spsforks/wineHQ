@@ -13678,8 +13678,8 @@ static void test_WSASendto_port0(void)
     ok(s != INVALID_SOCKET, "failed to create socket, error %u\n", WSAGetLastError());
 
     ret = WSASendTo(s, &data_buf, 1, &bytes_sent, 0, (struct sockaddr *)&addr, sizeof(addr), NULL, NULL);
-    todo_wine ok(!ret, "got error %u\n", WSAGetLastError());
-    todo_wine ok(bytes_sent == sizeof(buf), "Failed to send full data(%Iu) only sent(%lu)\n", sizeof(buf), bytes_sent);
+    ok(!ret, "got error %u\n", WSAGetLastError());
+    ok(bytes_sent == sizeof(buf), "Failed to send full data(%Iu) only sent(%lu)\n", sizeof(buf), bytes_sent);
     closesocket(s);
 }
 

@@ -3917,6 +3917,7 @@ DECL_HANDLER(send_socket)
         reply->wait = async_handoff( async, NULL, 0 );
         reply->options = get_fd_options( fd );
         reply->nonblocking = sock->nonblocking;
+        reply->protocol = sock->proto;
         release_object( async );
     }
     release_object( sock );
