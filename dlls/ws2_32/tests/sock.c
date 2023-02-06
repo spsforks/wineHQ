@@ -13659,6 +13659,31 @@ static void test_connect_udp(void)
     closesocket(client);
 }
 
+static void test_WSASendto_port0(void)
+{
+    SOCKET s;
+    struct sockaddr_in addr;
+    char buf[] = "hello world";
+    WSABUF data_buf;
+    DWORD bytes_sent = 0;
+    int ret;
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(0);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    data_buf.len = sizeof(buf);
+    data_buf.buf = buf;
+
+    s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    ok(s != INVALID_SOCKET, "failed to create socket, error %u\n", WSAGetLastError());
+
+    ret = WSASendTo(s, &data_buf, 1, &bytes_sent, 0, (struct sockaddr *)&addr, sizeof(addr), NULL, NULL);
+    todo_wine ok(!ret, "got error %u\n", WSAGetLastError());
+    todo_wine ok(bytes_sent == sizeof(buf), "Failed to send full data(%Iu) only sent(%lu)\n", sizeof(buf), bytes_sent);
+    closesocket(s);
+}
+
+
 START_TEST( sock )
 {
     int i;
@@ -13740,6 +13765,7 @@ START_TEST( sock )
     test_tcp_reset();
     test_icmp();
     test_connect_udp();
+    test_WSASendto_port0();
 
     /* this is an io heavy test, do it at the end so the kernel doesn't start dropping packets */
     test_send();
