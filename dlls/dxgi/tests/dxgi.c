@@ -7629,58 +7629,43 @@ static void test_composition_swapchain(IUnknown *device, BOOL is_d3d12)
         ok(ref_count == !is_d3d12, "Factory has %lu references left.\n", ref_count);
         return;
     }
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
 
     /* NULL swapchain description */
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, NULL, NULL, &swapchain1);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
 
     /* Invalid width */
     swapchain_desc.Width = 0;
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, &swapchain1);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
     swapchain_desc.Width = 640;
 
     /* Invalid height */
     swapchain_desc.Height = 0;
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, &swapchain1);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
     swapchain_desc.Height = 480;
 
     /* Invalid scaling */
     swapchain_desc.Scaling = DXGI_SCALING_NONE;
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, &swapchain1);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
     swapchain_desc.Scaling = DXGI_SCALING_STRETCH;
 
     /* Invalid swap effect */
     swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_SEQUENTIAL;
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, &swapchain1);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
     swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 
     /* NULL swapchain pointer */
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, NULL);
-    todo_wine
     ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
 
     /* Normal call*/
     hr = IDXGIFactory2_CreateSwapChainForComposition(factory2, device, &swapchain_desc, NULL, &swapchain1);
-    todo_wine
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
-    if (FAILED(hr))
-    {
-        skip("CreateSwapChainForComposition() is unsupported.\n");
-        ref_count = IDXGIFactory2_Release(factory2);
-        ok(ref_count == !is_d3d12, "Factory has %lu references left.\n", ref_count);
-        return;
-    }
 
     output = (void *)0xdeadbeef;
     hr = IDXGISwapChain1_GetFullscreenState(swapchain1, &ret, &output);
