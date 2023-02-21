@@ -4156,7 +4156,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CheckFeatureSupport(ID3D11Device2 
 
             FIXME("Returning fake Options1 support data.\n");
             options->TiledResourcesTier = D3D11_TILED_RESOURCES_NOT_SUPPORTED;
-            options->MinMaxFiltering = FALSE;
+            options->MinMaxFiltering = TRUE;
             options->ClearViewAlsoSupportsDepthOnlyFormats = FALSE;
             options->MapOnDefaultBuffers = FALSE;
             return S_OK;

@@ -1316,6 +1316,7 @@ void wined3d_texture_gl_bind(struct wined3d_texture_gl *texture_gl,
         gl_tex->sampler_desc.srgb_decode = TRUE;
     else
         gl_tex->sampler_desc.srgb_decode = srgb;
+    gl_tex->sampler_desc.reduction_mode = WINED3D_TEXRM_AVERAGE;
     gl_tex->base_level = 0;
     wined3d_texture_set_dirty(&texture_gl->t);
 
@@ -1495,6 +1496,26 @@ void wined3d_texture_gl_apply_sampler_desc(struct wined3d_texture_gl *texture_gl
         else
             gl_info->gl_ops.gl.p_glTexParameteri(target, GL_TEXTURE_COMPARE_MODE_ARB, GL_NONE);
         gl_tex->sampler_desc.compare = sampler_desc->compare;
+    }
+
+    if (sampler_desc->reduction_mode != gl_tex->sampler_desc.reduction_mode)
+    {
+        if (gl_info->supported[ARB_TEXTURE_FILTER_MINMAX])
+        {
+            if (sampler_desc->reduction_mode == WINED3D_TEXRM_AVERAGE)
+                gl_info->gl_ops.gl.p_glTexParameteri(target, GL_TEXTURE_REDUCTION_MODE_EXT, GL_WEIGHTED_AVERAGE_ARB);
+            else if (sampler_desc->reduction_mode == WINED3D_TEXRM_MIN)
+                gl_info->gl_ops.gl.p_glTexParameteri(target, GL_TEXTURE_REDUCTION_MODE_EXT, GL_MIN);
+            else if (sampler_desc->reduction_mode == WINED3D_TEXRM_MAX)
+               gl_info->gl_ops.gl.p_glTexParameteri(target, GL_TEXTURE_REDUCTION_MODE_EXT, GL_MAX);
+            else
+                WARN("Unsupported texture reduction mode 0x%x\n", sampler_desc->reduction_mode);
+        }
+        else if (sampler_desc->reduction_mode != WINED3D_TEXRM_AVERAGE)
+        {
+            WARN("Unsupported texture reduction mode 0x%x. You need GL_ARB_texture_filter_minmax.\n");
+        }
+        gl_tex->sampler_desc.reduction_mode = sampler_desc->reduction_mode;
     }
 
     checkGLcall("Texture parameter application");

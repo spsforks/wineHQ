@@ -1558,6 +1558,20 @@ static enum wined3d_texture_filter_type wined3d_texture_filter_min_from_d3d11(en
     return WINED3D_TEXF_POINT;
 }
 
+static enum wined3d_texture_reduction_mode wined3d_texture_reduction_mode_from_d3d11(enum D3D11_FILTER f)
+{
+    if ((f & 0x180) == 0x100) {
+        WARN("Min tex red mode");
+        return WINED3D_TEXRM_MIN;
+    }
+    else if ((f & 0x180) == 0x100)
+    {
+        WARN("Max tex red mode");
+        return WINED3D_TEXRM_MAX;
+    }
+    return WINED3D_TEXRM_AVERAGE;
+}
+
 static BOOL wined3d_texture_compare_from_d3d11(enum D3D11_FILTER f)
 {
     return D3D11_DECODE_IS_COMPARISON_FILTER(f);
@@ -1595,6 +1609,7 @@ static HRESULT d3d_sampler_state_init(struct d3d_sampler_state *state, struct d3
     wined3d_desc.compare = wined3d_texture_compare_from_d3d11(desc->Filter);
     wined3d_desc.comparison_func = wined3d_cmp_func_from_d3d11(desc->ComparisonFunc);
     wined3d_desc.srgb_decode = TRUE;
+    wined3d_desc.reduction_mode = wined3d_texture_reduction_mode_from_d3d11(desc->Filter);
 
     if (wine_rb_put(&device->sampler_states, desc, &state->entry) == -1)
     {

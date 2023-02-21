@@ -704,6 +704,13 @@ enum wined3d_texture_filter_type
     WINED3D_TEXF_GAUSSIAN_QUAD              = 7,
 };
 
+enum wined3d_texture_reduction_mode
+{
+    WINED3D_TEXRM_AVERAGE                   = 0,
+    WINED3D_TEXRM_MIN                       = 1,
+    WINED3D_TEXRM_MAX                       = 2,
+};
+
 enum wined3d_resource_type
 {
     WINED3D_RTYPE_NONE                      = 0,
@@ -2085,6 +2092,7 @@ struct wined3d_sampler_desc
     BOOL compare;
     enum wined3d_cmp_func comparison_func;
     BOOL srgb_decode;
+    enum wined3d_texture_reduction_mode reduction_mode;
 };
 
 struct wined3d_shader_desc
