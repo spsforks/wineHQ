@@ -1,0 +1,4 @@
+STATICLIB = libwinewinrt.a
+
+C_SRCS = \
+	debug.c

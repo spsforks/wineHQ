@@ -1,5 +1,5 @@
 MODULE = windows.media.speech.dll
-IMPORTS = combase uuid
+IMPORTS = winewinrt combase uuid
 
 C_SRCS = \
 	async.c \

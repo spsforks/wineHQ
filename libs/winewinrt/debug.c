@@ -1,6 +1,5 @@
-/* WinRT Windows.Gaming.UI.GameBar implementation
- *
- * Copyright 2022 Paul Gofman for CodeWeavers
+/*
+ * Copyright 2022 Rémi Bernon for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -17,17 +16,13 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include <stdarg.h>
-#include <stddef.h>
+#include "private.h"
 
-#define COBJMACROS
-#include "windef.h"
-#include "winbase.h"
-#include "winstring.h"
-
-#define WIDL_using_Windows_Foundation
-#define WIDL_using_Windows_Gaming_UI
-#include "activation.h"
-#include "windows.gaming.ui.h"
-
-#include "wine/winrt.h"
+const char *debugstr_hstring( HSTRING hstr )
+{
+    const WCHAR *str;
+    UINT32 len;
+    if (hstr && !((ULONG_PTR)hstr >> 16)) return "(invalid)";
+    str = WindowsGetStringRawBuffer( hstr, &len );
+    return wine_dbgstr_wn( str, len );
+}

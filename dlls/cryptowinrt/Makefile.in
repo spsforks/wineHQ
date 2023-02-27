@@ -1,5 +1,5 @@
 MODULE = cryptowinrt.dll
-IMPORTS = combase bcrypt uuid
+IMPORTS = winewinrt combase bcrypt uuid
 
 C_SRCS = \
 	async.c \
