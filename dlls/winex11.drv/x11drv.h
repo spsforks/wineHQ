@@ -386,6 +386,8 @@ struct x11drv_thread_data
     Window   clip_window;          /* window used for cursor clipping */
     HWND     clip_hwnd;            /* message window stored in desktop while clipping is active */
     DWORD    clip_reset;           /* time when clipping was last reset */
+    DWORD    clip_seq;             /* clipping configuration sequence number */
+    BOOL     clipping;             /* clipping is active */
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
     enum { xi_unavailable = -1, xi_unknown, xi_disabled, xi_enabled } xi2_state; /* XInput2 state */
     void    *xi2_devices;          /* list of XInput2 devices (valid when state is enabled) */
@@ -443,6 +445,7 @@ extern BOOL use_system_cursors DECLSPEC_HIDDEN;
 extern BOOL show_systray DECLSPEC_HIDDEN;
 extern BOOL grab_pointer DECLSPEC_HIDDEN;
 extern BOOL grab_fullscreen DECLSPEC_HIDDEN;
+extern BOOL grab_retry DECLSPEC_HIDDEN;
 extern BOOL usexcomposite DECLSPEC_HIDDEN;
 extern BOOL managed_mode DECLSPEC_HIDDEN;
 extern BOOL decorated_mode DECLSPEC_HIDDEN;
@@ -683,7 +686,7 @@ extern XContext cursor_context DECLSPEC_HIDDEN;
 extern void X11DRV_SetFocus( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void set_window_cursor( Window window, HCURSOR handle ) DECLSPEC_HIDDEN;
 extern void sync_window_cursor( Window window ) DECLSPEC_HIDDEN;
-extern LRESULT clip_cursor_notify( HWND hwnd, HWND prev_clip_hwnd, HWND new_clip_hwnd ) DECLSPEC_HIDDEN;
+extern LRESULT clip_cursor_notify( HWND hwnd, DWORD new_clip_seq, HWND new_clip_hwnd ) DECLSPEC_HIDDEN;
 extern LRESULT clip_cursor_request( HWND hwnd, BOOL fullscreen, BOOL reset ) DECLSPEC_HIDDEN;
 extern void ungrab_clipping_window(void) DECLSPEC_HIDDEN;
 extern void reset_clipping_window(void) DECLSPEC_HIDDEN;

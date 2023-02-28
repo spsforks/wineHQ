@@ -376,20 +376,26 @@ static BOOL grab_clipping_window( const RECT *clip )
     struct x11drv_thread_data *data = x11drv_thread_data();
     UNICODE_STRING class_name;
     Window clip_window;
-    HWND msg_hwnd = 0;
     POINT pos;
 
     if (NtUserGetWindowThread( NtUserGetDesktopWindow(), NULL ) == GetCurrentThreadId())
         return TRUE;  /* don't clip in the desktop process */
 
     if (!data) return FALSE;
+
+    if (data->clipping && EqualRect( clip, &clip_rect ) && !grab_retry)
+        return TRUE;
+
     if (!(clip_window = init_clip_window())) return TRUE;
 
-    RtlInitUnicodeString( &class_name, messageW );
-    if (!(msg_hwnd = NtUserCreateWindowEx( 0, &class_name, &class_name, NULL, 0, 0, 0, 0, 0,
-                                           HWND_MESSAGE, 0, NtCurrentTeb()->Peb->ImageBaseAddress,
-                                           NULL, 0, NULL, 0, FALSE )))
-        return TRUE;
+    if (!data->clip_hwnd)
+    {
+        RtlInitUnicodeString( &class_name, messageW );
+        if (!(data->clip_hwnd = NtUserCreateWindowEx( 0, &class_name, &class_name, NULL, 0, 0, 0, 0, 0,
+                                                      HWND_MESSAGE, 0, NtCurrentTeb()->Peb->ImageBaseAddress,
+                                                      NULL, 0, NULL, 0, FALSE )))
+            return TRUE;
+    }
 
     if (keyboard_grabbed)
     {
@@ -405,26 +411,25 @@ static BOOL grab_clipping_window( const RECT *clip )
     }
 
     /* enable XInput2 unless we are already clipping */
-    if (!data->clip_hwnd) enable_xinput2();
+    if (!data->clipping) enable_xinput2();
 
     if (data->xi2_state != xi_enabled)
     {
         WARN( "XInput2 not supported, refusing to clip to %s\n", wine_dbgstr_rect(clip) );
-        NtUserDestroyWindow( msg_hwnd );
         NtUserClipCursor( NULL );
         return TRUE;
     }
 
     TRACE( "clipping to %s win %lx\n", wine_dbgstr_rect(clip), clip_window );
 
-    if (!data->clip_hwnd) XUnmapWindow( data->display, clip_window );
+    if (!data->clipping) XUnmapWindow( data->display, clip_window );
     pos = virtual_screen_to_root( clip->left, clip->top );
     XMoveResizeWindow( data->display, clip_window, pos.x, pos.y,
                        max( 1, clip->right - clip->left ), max( 1, clip->bottom - clip->top ) );
     XMapWindow( data->display, clip_window );
 
     /* if the rectangle is shrinking we may get a pointer warp */
-    if (!data->clip_hwnd || clip->left > clip_rect.left || clip->top > clip_rect.top ||
+    if (!data->clipping || clip->left > clip_rect.left || clip->top > clip_rect.top ||
         clip->right < clip_rect.right || clip->bottom < clip_rect.bottom)
         data->warp_serial = NextRequest( data->display );
 
@@ -436,14 +441,16 @@ static BOOL grab_clipping_window( const RECT *clip )
     if (!clipping_cursor)
     {
         disable_xinput2();
-        NtUserDestroyWindow( msg_hwnd );
         return FALSE;
     }
     clip_rect = *clip;
-    if (!data->clip_hwnd) sync_window_cursor( clip_window );
-    InterlockedExchangePointer( (void **)&cursor_window, msg_hwnd );
-    data->clip_hwnd = msg_hwnd;
-    send_notify_message( NtUserGetDesktopWindow(), WM_X11DRV_CLIP_CURSOR_NOTIFY, 0, (LPARAM)msg_hwnd );
+    grab_retry = FALSE;
+    if (!data->clipping) sync_window_cursor( clip_window );
+    InterlockedExchangePointer( (void **)&cursor_window, data->clip_hwnd );
+    data->clipping = TRUE;
+    data->clip_seq++;
+    send_notify_message( NtUserGetDesktopWindow(), WM_X11DRV_CLIP_CURSOR_NOTIFY,
+                         (WPARAM)data->clip_seq, (LPARAM)data->clip_hwnd );
     return TRUE;
 #else
     WARN( "XInput2 was not available at compile time\n" );
@@ -489,6 +496,7 @@ void reset_clipping_window(void)
  */
 void retry_grab_clipping_window(void)
 {
+    grab_retry = TRUE;
     if (clipping_cursor)
         NtUserClipCursor( &clip_rect );
     else if (last_clip_refused && NtUserGetForegroundWindow() == last_clip_foreground_window)
@@ -500,34 +508,32 @@ void retry_grab_clipping_window(void)
  *
  * Notification function called upon receiving a WM_X11DRV_CLIP_CURSOR_NOTIFY.
  */
-LRESULT clip_cursor_notify( HWND hwnd, HWND prev_clip_hwnd, HWND new_clip_hwnd )
+LRESULT clip_cursor_notify( HWND hwnd, DWORD new_clip_seq, HWND new_clip_hwnd )
 {
     struct x11drv_thread_data *data = x11drv_init_thread_data();
 
     if (hwnd == NtUserGetDesktopWindow())  /* change the clip window stored in the desktop process */
     {
         static HWND clip_hwnd;
+        static DWORD clip_seq;
 
-        HWND prev = clip_hwnd;
+        HWND prev_hwnd = clip_hwnd;
+        DWORD prev_seq = clip_seq;
         clip_hwnd = new_clip_hwnd;
-        if (prev || new_clip_hwnd) TRACE( "clip hwnd changed from %p to %p\n", prev, new_clip_hwnd );
-        if (prev) send_notify_message( prev, WM_X11DRV_CLIP_CURSOR_NOTIFY, (WPARAM)prev, 0 );
+        clip_seq = new_clip_seq;
+
+        if (prev_hwnd != new_clip_hwnd)
+        {
+            TRACE( "clip hwnd changed from %p@%u to %p@%u\n", prev_hwnd, prev_seq, new_clip_hwnd, new_clip_seq );
+            if (prev_hwnd) send_notify_message( prev_hwnd, WM_X11DRV_CLIP_CURSOR_NOTIFY, (WPARAM)prev_seq, 0 );
+        }
     }
-    else if (hwnd == data->clip_hwnd)  /* this is a notification that clipping has been reset */
+    else if (data->clipping && data->clip_seq == new_clip_seq)  /* this is a notification that clipping has been reset */
     {
         TRACE( "clip hwnd reset from %p\n", hwnd );
-        data->clip_hwnd = 0;
+        data->clipping = FALSE;
         data->clip_reset = NtGetTickCount();
         disable_xinput2();
-        NtUserDestroyWindow( hwnd );
-    }
-    else if (prev_clip_hwnd)
-    {
-        /* This is a notification send by the desktop window to an old
-         * dangling clip window.
-         */
-        TRACE( "destroying old clip hwnd %p\n", prev_clip_hwnd );
-        NtUserDestroyWindow( prev_clip_hwnd );
     }
     return 0;
 }
@@ -558,7 +564,7 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
     if (!fullscreen) return FALSE;
     if (!(thread_data = x11drv_thread_data())) return FALSE;
     if (NtGetTickCount() - thread_data->clip_reset < 1000) return FALSE;
-    if (!reset && clipping_cursor && thread_data->clip_hwnd) return FALSE;  /* already clipping */
+    if (!reset && clipping_cursor && thread_data->clipping) return FALSE;  /* already clipping */
 
     monitor = NtUserMonitorFromWindow( hwnd, MONITOR_DEFAULTTONEAREST );
     if (!monitor) return FALSE;
@@ -606,7 +612,7 @@ static void map_event_coords( HWND hwnd, Window window, Window event_root, int x
     if (!hwnd)
     {
         thread_data = x11drv_thread_data();
-        if (!thread_data->clip_hwnd) return;
+        if (!thread_data->clipping) return;
         if (thread_data->clip_window != window) return;
         pt.x += clip_rect.left;
         pt.y += clip_rect.top;
@@ -653,7 +659,7 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
         struct x11drv_thread_data *thread_data = x11drv_thread_data();
         HWND clip_hwnd = thread_data->clip_hwnd;
 
-        if (!clip_hwnd) return;
+        if (!thread_data->clipping) return;
         if (thread_data->clip_window != window) return;
         if (InterlockedExchangePointer( (void **)&cursor_window, clip_hwnd ) != clip_hwnd ||
             input->u.mi.time - last_cursor_change > 100)
@@ -1598,7 +1604,7 @@ BOOL X11DRV_ClipCursor( LPCRECT clip )
         else /* if currently clipping, check if we should switch to fullscreen clipping */
         {
             struct x11drv_thread_data *data = x11drv_thread_data();
-            if (data && data->clip_hwnd)
+            if (data && data->clipping)
             {
                 if (EqualRect( clip, &clip_rect ) || clip_fullscreen_window( foreground, TRUE ))
                     return TRUE;
