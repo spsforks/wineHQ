@@ -212,6 +212,7 @@ extern UINT X11DRV_ImeToAsciiEx( UINT vkey, UINT vsc, const BYTE *state,
                                  COMPOSITIONSTRING *compstr, HIMC himc ) DECLSPEC_HIDDEN;
 extern SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status ) DECLSPEC_HIDDEN;
+extern KBDTABLES *X11DRV_KbdLayerDescriptor( HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_DestroyCursorIcon( HCURSOR handle ) DECLSPEC_HIDDEN;
 extern void X11DRV_SetCursor( HWND hwnd, HCURSOR handle ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_SetCursorPos( INT x, INT y ) DECLSPEC_HIDDEN;

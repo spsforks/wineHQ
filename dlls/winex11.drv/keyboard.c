@@ -1628,3 +1628,12 @@ void X11DRV_Beep(void)
 {
     XBell(gdi_display, 0);
 }
+
+
+/***********************************************************************
+ *    KbdLayerDescriptor (X11DRV.@)
+ */
+KBDTABLES *X11DRV_KbdLayerDescriptor( HKL hkl )
+{
+    return NULL;
+}
