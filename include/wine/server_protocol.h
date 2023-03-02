@@ -1810,7 +1810,8 @@ struct send_socket_reply
     obj_handle_t wait;
     unsigned int options;
     int          nonblocking;
-    char __pad_20[4];
+    unsigned short protocol;
+    char __pad_22[2];
 };
 
 

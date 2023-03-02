@@ -295,6 +295,21 @@ static socklen_t sockaddr_to_unix( const struct WS_sockaddr *wsaddr, int wsaddrl
     }
 }
 
+static BOOL sockaddr_is_port0( const struct WS_sockaddr *wsaddr, int wsaddrlen )
+{
+    switch (wsaddr->sa_family)
+    {
+        case WS_AF_INET:
+            return wsaddrlen >= sizeof(struct WS_sockaddr_in) && ((struct WS_sockaddr_in*)(wsaddr))->sin_port == 0;
+
+        case WS_AF_INET6:
+            return wsaddrlen >= sizeof(struct WS_sockaddr_in6) && ((struct WS_sockaddr_in6*)(wsaddr))->sin6_port == 0;
+
+        default:
+            return FALSE;
+    }
+}
+
 static int sockaddr_from_unix( const union unix_sockaddr *uaddr, struct WS_sockaddr *wsaddr, socklen_t wsaddrlen )
 {
     memset( wsaddr, 0, wsaddrlen );
@@ -1102,6 +1117,7 @@ static NTSTATUS sock_send( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
     BOOL nonblocking;
     unsigned int status;
     ULONG options;
+    unsigned short protocol;
 
     SERVER_START_REQ( send_socket )
     {
@@ -1111,6 +1127,7 @@ static NTSTATUS sock_send( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
         wait_handle = wine_server_ptr_handle( reply->wait );
         options     = reply->options;
         nonblocking = reply->nonblocking;
+        protocol    = reply->protocol;
     }
     SERVER_END_REQ;
 
@@ -1124,7 +1141,24 @@ static NTSTATUS sock_send( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, voi
     {
         ULONG_PTR information;
 
-        status = try_send( fd, async );
+        if (protocol == WS_IPPROTO_UDP && async->addr && sockaddr_is_port0(async->addr, async->addr_len))
+        {
+            /* Spellforce 3 is known to send to port 0.
+             * This causes 'sendmsg' to throw a EINVAL error, on Windows this does nothing but consume the data.
+             */
+            ssize_t i;
+            for(i = async->iov_cursor; i < async->count; i++)
+                async->sent_len += async->iov[i].iov_len;
+
+            WARN("Attempting to send to port 0, skipping over data.\n");
+
+            status = STATUS_SUCCESS;
+        }
+        else
+        {
+            status = try_send( fd, async );
+        }
+
         if (status == STATUS_DEVICE_NOT_READY && (force_async || !nonblocking))
             status = STATUS_PENDING;
 

@@ -2060,6 +2060,7 @@ static void dump_send_socket_reply( const struct send_socket_reply *req )
     fprintf( stderr, " wait=%04x", req->wait );
     fprintf( stderr, ", options=%08x", req->options );
     fprintf( stderr, ", nonblocking=%d", req->nonblocking );
+    fprintf( stderr, ", protocol=%04x", req->protocol );
 }
 
 static void dump_socket_send_icmp_id_request( const struct socket_send_icmp_id_request *req )
