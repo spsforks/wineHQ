@@ -208,7 +208,6 @@ extern INT X11DRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeySta
                                LPWSTR bufW, int bufW_size, UINT flags, HKL hkl ) DECLSPEC_HIDDEN;
 extern UINT X11DRV_ImeToAsciiEx( UINT vkey, UINT vsc, const BYTE *state,
                                  COMPOSITIONSTRING *compstr, HIMC himc ) DECLSPEC_HIDDEN;
-extern SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status ) DECLSPEC_HIDDEN;
 extern KBDTABLES *X11DRV_KbdLayerDescriptor( HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_DestroyCursorIcon( HCURSOR handle ) DECLSPEC_HIDDEN;
