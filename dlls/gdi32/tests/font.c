@@ -7861,6 +7861,8 @@ START_TEST(font)
             test_EnumFontFamiliesW(L"SimSun", DEFAULT_CHARSET);
             test_EnumFontFamiliesW(L"MS Shell Dlg", DEFAULT_CHARSET);
         }
+        else
+            skip("SimSun is not installed\n");
     }
 
     /* On Windows Arial has a lot of default charset aliases such as Arial Cyr,
