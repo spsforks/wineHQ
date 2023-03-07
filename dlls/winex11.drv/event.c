@@ -539,6 +539,34 @@ static inline BOOL can_activate_window( HWND hwnd )
 }
 
 
+/***********************************************************************
+ *              restack_owned_popups
+ *
+ * Restack a window's owned popups above it.
+ */
+static void restack_owned_popups( struct x11drv_win_data *data )
+{
+    HWND *list;
+    UINT i;
+    struct x11drv_win_data *owned_data;
+    XWindowChanges changes = {.stack_mode = Above, .sibling = data->whole_window};
+
+    if (!(list = build_hwnd_list())) return;
+
+    for (i = 0; list[i] != HWND_BOTTOM; i++)
+    {
+        if (NtUserGetWindowRelative( list[i], GW_OWNER ) != data->hwnd) continue;
+        owned_data = get_win_data( list[i] );
+        if (owned_data && !owned_data->managed)
+            XConfigureWindow( data->display, owned_data->whole_window, CWSibling | CWStackMode, &changes );
+        release_win_data( owned_data );
+    }
+
+    free( list );
+    return;
+}
+
+
 /**********************************************************************
  *              set_input_focus
  *
@@ -561,6 +589,7 @@ static void set_input_focus( struct x11drv_win_data *data )
     /* Set X focus and install colormap */
     changes.stack_mode = Above;
     XConfigureWindow( data->display, data->whole_window, CWStackMode, &changes );
+    restack_owned_popups( data );
 
     if (data->embedder)
         xembed_request_focus( data->display, data->embedder, timestamp );
