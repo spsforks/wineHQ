@@ -248,6 +248,8 @@ static BOOL is_window_managed( HWND hwnd, UINT swp_flags, const RECT *window_rec
     /* child windows are not managed */
     style = NtUserGetWindowLongW( hwnd, GWL_STYLE );
     if ((style & (WS_CHILD|WS_POPUP)) == WS_CHILD) return FALSE;
+    /* captionless popups are not managed */
+    if ((style & (WS_CAPTION|WS_POPUP)) == WS_POPUP) return FALSE;
     /* activated windows are managed */
     if (!(swp_flags & (SWP_NOACTIVATE|SWP_HIDEWINDOW))) return TRUE;
     if (hwnd == get_active_window()) return TRUE;
