@@ -1301,9 +1301,6 @@ static void handle_wm_state_notify( HWND hwnd, XPropertyEvent *event, BOOL updat
                 TRACE( "%p/%lx: new WM_STATE %d from %d\n",
                        data->hwnd, data->whole_window, new_state, old_state );
                 data->wm_state = new_state;
-                /* ignore the initial state transition out of withdrawn state */
-                /* metacity does Withdrawn->NormalState->IconicState when mapping an iconic window */
-                if (!old_state) goto done;
             }
         }
         break;
@@ -1342,7 +1339,7 @@ static void handle_wm_state_notify( HWND hwnd, XPropertyEvent *event, BOOL updat
             TRACE( "not restoring win %p/%lx style %08x\n", data->hwnd, data->whole_window, style );
         }
     }
-    else if (!data->iconic && data->wm_state == IconicState)
+    else if (!data->iconic && (data->wm_state == IconicState || data->wm_state == WithdrawnState))
     {
         data->iconic = TRUE;
         if ((style & WS_MINIMIZEBOX) && !(style & WS_DISABLED))

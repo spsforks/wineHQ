@@ -2721,7 +2721,10 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
             data->iconic = (new_style & WS_MINIMIZE) != 0;
             TRACE( "changing win %p iconic state to %u\n", data->hwnd, data->iconic );
             if (data->iconic)
-                XIconifyWindow( data->display, data->whole_window, data->vis.screen );
+            {
+                if (data->wm_state != WithdrawnState)
+                    XIconifyWindow( data->display, data->whole_window, data->vis.screen );
+            }
             else if (is_window_rect_mapped( rectWindow ))
                 XMapWindow( data->display, data->whole_window );
             update_net_wm_states( data );
