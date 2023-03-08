@@ -55,15 +55,6 @@ extern IInspectable *ramp_effect_factory;
 extern IInspectable *periodic_effect_factory;
 extern IInspectable *condition_effect_factory;
 
-struct vector_iids
-{
-    const GUID *vector;
-    const GUID *view;
-    const GUID *iterable;
-    const GUID *iterator;
-};
-extern HRESULT vector_create( const struct vector_iids *iids, void **out );
-
 extern void provider_create( const WCHAR *device_path );
 extern void provider_remove( const WCHAR *device_path );
 

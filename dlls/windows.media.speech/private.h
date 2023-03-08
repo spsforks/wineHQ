@@ -62,15 +62,6 @@ extern IActivationFactory *recognizer_factory;
 extern IActivationFactory *synthesizer_factory;
 
 
-
-struct vector_iids
-{
-    const GUID *iterable;
-    const GUID *iterator;
-    const GUID *vector;
-    const GUID *view;
-};
-
 typedef HRESULT (*async_action_callback)( IInspectable *invoker );
 typedef HRESULT (*async_operation_inspectable_callback)( IInspectable *invoker, IInspectable **result );
 
@@ -85,6 +76,5 @@ HRESULT typed_event_handlers_clear( struct list* list );
 
 HRESULT vector_hstring_create( IVector_HSTRING **out );
 HRESULT vector_hstring_create_copy( IIterable_HSTRING *iterable, IVector_HSTRING **out );
-HRESULT vector_inspectable_create( const struct vector_iids *iids, IVector_IInspectable **out );
 
 #endif
