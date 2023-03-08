@@ -35,6 +35,9 @@ struct vector_iids
     const GUID *iterator;
 };
 
+extern HRESULT vector_hstring_create( Windows.Foundation.Collections.IVector<HSTRING> **out );
+extern HRESULT vector_hstring_copy( Windows.Foundation.Collections.IIterable<HSTRING> *iterable,
+                                    Windows.Foundation.Collections.IVector<HSTRING> **out );
 extern HRESULT vector_inspectable_create( const struct vector_iids *iids, void **out );
 
 extern const char *debugstr_hstring( HSTRING hstr );

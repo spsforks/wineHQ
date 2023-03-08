@@ -74,7 +74,4 @@ HRESULT typed_event_handlers_remove( struct list *list, EventRegistrationToken *
 HRESULT typed_event_handlers_notify( struct list *list, IInspectable *sender, IInspectable *args );
 HRESULT typed_event_handlers_clear( struct list* list );
 
-HRESULT vector_hstring_create( IVector_HSTRING **out );
-HRESULT vector_hstring_create_copy( IIterable_HSTRING *iterable, IVector_HSTRING **out );
-
 #endif

@@ -2,4 +2,5 @@ STATICLIB = libwinewinrt.a
 
 C_SRCS = \
 	debug.c \
+	vector_hstring.c \
 	vector_inspectable.c
