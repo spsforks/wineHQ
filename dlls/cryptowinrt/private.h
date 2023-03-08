@@ -39,12 +39,9 @@
 
 #include "wine/winrt.h"
 
-#include "provider.h"
-
 extern IActivationFactory *credentials_activation_factory;
 
-typedef HRESULT (WINAPI *async_operation_callback)( IUnknown *invoker, IUnknown *param, PROPVARIANT *result );
-extern HRESULT async_operation_boolean_create( IUnknown *invoker, IUnknown *param, async_operation_callback callback,
+extern HRESULT async_operation_boolean_create( IUnknown *invoker, IUnknown *param, async_callback callback,
                                                IAsyncOperation_boolean **out );
 
 #endif

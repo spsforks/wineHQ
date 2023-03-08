@@ -7,5 +7,4 @@ C_SRCS = \
 	main.c
 
 IDL_SRCS = \
-	classes.idl \
-	provider.idl
+	classes.idl
