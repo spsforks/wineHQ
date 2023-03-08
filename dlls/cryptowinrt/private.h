@@ -41,7 +41,4 @@
 
 extern IActivationFactory *credentials_activation_factory;
 
-extern HRESULT async_operation_boolean_create( IUnknown *invoker, IUnknown *param, async_callback callback,
-                                               IAsyncOperation_boolean **out );
-
 #endif

@@ -1,6 +1,7 @@
 STATICLIB = libwinewinrt.a
 
 C_SRCS = \
+	async_bool.c \
 	async_info.c \
 	debug.c \
 	vector_hstring.c \

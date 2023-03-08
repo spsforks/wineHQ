@@ -66,6 +66,8 @@ namespace Windows.Foundation {
 typedef HRESULT (*async_callback)( IUnknown *invoker, IUnknown *param, PROPVARIANT *result );
 extern HRESULT async_info_create( IUnknown *invoker, IUnknown *param, async_callback callback,
                                   IInspectable *outer, Windows.Foundation.IWineAsyncInfoImpl **out );
+extern HRESULT async_bool_create( IUnknown *invoker, IUnknown *param, async_callback callback,
+                                  Windows.Foundation.IAsyncOperation<boolean> **out );
 
 extern const char *debugstr_hstring( HSTRING hstr );
 

@@ -128,7 +128,7 @@ static HRESULT is_supported_async( IUnknown *invoker, IUnknown *param, PROPVARIA
 static HRESULT WINAPI credentials_statics_IsSupportedAsync( IKeyCredentialManagerStatics *iface, IAsyncOperation_boolean **value )
 {
     TRACE( "iface %p, value %p.\n", iface, value );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, is_supported_async, value );
+    return async_bool_create( (IUnknown *)iface, NULL, is_supported_async, value );
 }
 
 static HRESULT WINAPI credentials_statics_RenewAttestationAsync( IKeyCredentialManagerStatics *iface, IAsyncAction **operation )

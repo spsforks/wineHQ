@@ -708,7 +708,7 @@ static HRESULT motor_try_disable_async( IUnknown *invoker, IUnknown *param, PROP
 static HRESULT WINAPI motor_TryDisableAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_disable_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_disable_async, async_op );
 }
 
 static HRESULT motor_try_enable_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
@@ -726,7 +726,7 @@ static HRESULT motor_try_enable_async( IUnknown *invoker, IUnknown *param, PROPV
 static HRESULT WINAPI motor_TryEnableAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_enable_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_enable_async, async_op );
 }
 
 static HRESULT motor_try_reset_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
@@ -744,7 +744,7 @@ static HRESULT motor_try_reset_async( IUnknown *invoker, IUnknown *param, PROPVA
 static HRESULT WINAPI motor_TryResetAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_reset_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_reset_async, async_op );
 }
 
 static HRESULT motor_unload_effect_async( IUnknown *iface, IUnknown *param, PROPVARIANT *result )
@@ -783,7 +783,7 @@ static HRESULT WINAPI motor_TryUnloadEffectAsync( IForceFeedbackMotor *iface, IF
     LeaveCriticalSection( &impl->cs );
     if (FAILED(hr)) return hr;
 
-    return async_operation_boolean_create( (IUnknown *)iface, (IUnknown *)effect, motor_unload_effect_async, async_op );
+    return async_bool_create( (IUnknown *)iface, (IUnknown *)effect, motor_unload_effect_async, async_op );
 }
 
 static const struct IForceFeedbackMotorVtbl motor_vtbl =

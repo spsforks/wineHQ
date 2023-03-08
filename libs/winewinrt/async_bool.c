@@ -1,5 +1,4 @@
-/* CryptoWinRT Implementation
- *
+/* 
  * Copyright 2022 Bernhard Kölbl for CodeWeavers
  * Copyright 2022 Rémi Bernon for CodeWeavers
  *
@@ -22,7 +21,7 @@
 
 #include "wine/debug.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(crypto);
+WINE_DEFAULT_DEBUG_CHANNEL(winrt);
 
 struct async_bool
 {
@@ -145,8 +144,8 @@ static const struct IAsyncOperation_booleanVtbl async_bool_vtbl =
     async_bool_GetResults,
 };
 
-HRESULT async_operation_boolean_create( IUnknown *invoker, IUnknown *param, async_callback callback,
-                                        IAsyncOperation_boolean **out )
+HRESULT async_bool_create( IUnknown *invoker, IUnknown *param, async_callback callback,
+                           IAsyncOperation_boolean **out )
 {
     struct async_bool *impl;
     HRESULT hr;
