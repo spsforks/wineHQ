@@ -30,6 +30,7 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
                        libopenal-dev:amd64 libopenal-dev:i386 \
                        libosmesa6-dev:amd64 libosmesa6-dev:i386 \
                        libpcap-dev:amd64 libpcap-dev:i386 \
+                       libpcsclite-dev:amd64 \
                        libpulse-dev:amd64 libpulse-dev:i386 \
                        libsane-dev:amd64 libsane-dev:i386 \
                        libsdl2-dev:amd64 libsdl2-dev:i386 \
@@ -52,11 +53,13 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
                        samba-dev:amd64 \
                        unixodbc-dev:amd64 unixodbc-dev:i386 \
                        x11proto-dev && \
+    apt-get install -y --no-install-recommends libpcsclite-dev:i386 && \
     apt-get install -y ccache netbase curl ca-certificates xserver-xorg-video-dummy xserver-xorg xfonts-base xinit fvwm \
                        winbind fonts-liberation2 fonts-noto-core fonts-noto-cjk pulseaudio libasound2-plugins:amd64 libasound2-plugins:i386 \
                        libmjpegutils-2.1-0:amd64 libmjpegutils-2.1-0:i386 gstreamer1.0-libav:amd64 gstreamer1.0-libav:i386 \
                        gstreamer1.0-plugins-base:amd64 gstreamer1.0-plugins-good:amd64 gstreamer1.0-plugins-bad:amd64 gstreamer1.0-plugins-ugly:amd64 \
-                       gstreamer1.0-plugins-base:i386 gstreamer1.0-plugins-good:i386 gstreamer1.0-plugins-bad:i386 gstreamer1.0-plugins-ugly:i386 && \
+                       gstreamer1.0-plugins-base:i386 gstreamer1.0-plugins-good:i386 gstreamer1.0-plugins-bad:i386 gstreamer1.0-plugins-ugly:i386 \
+                       pcscd && \
     apt-get clean && \
     useradd -m gitlab
 
