@@ -171,6 +171,12 @@ HRESULT dxgi_adapter_create(struct dxgi_factory *factory, UINT ordinal,
 struct dxgi_adapter *unsafe_impl_from_IDXGIAdapter(IDXGIAdapter *iface) DECLSPEC_HIDDEN;
 
 /* IDXGISwapChain */
+enum dxgi_swapchain_type
+{
+    DXGI_SWAPCHAIN_TYPE_HWND,
+    DXGI_SWAPCHAIN_TYPE_COMPOSITION,
+};
+
 struct d3d11_swapchain
 {
     IDXGISwapChain1 IDXGISwapChain1_iface;
@@ -181,6 +187,8 @@ struct d3d11_swapchain
     IWineDXGIDevice *device;
     IWineDXGIFactory *factory;
 
+    enum dxgi_swapchain_type type;
+    HWND window;
     IDXGIOutput *target;
     LONG present_count;
 };

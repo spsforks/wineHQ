@@ -387,6 +387,12 @@ static HRESULT STDMETHODCALLTYPE DECLSPEC_HOTPATCH d3d11_swapchain_SetFullscreen
 
     TRACE("iface %p, fullscreen %#x, target %p.\n", iface, fullscreen, target);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!fullscreen && target)
     {
         WARN("Invalid call.\n");
@@ -520,6 +526,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_ResizeBuffers(IDXGISwapChain1 *
     TRACE("iface %p, buffer_count %u, width %u, height %u, format %s, flags %#x.\n",
             iface, buffer_count, width, height, debug_dxgi_format(format), flags);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION && (!width || !height))
+    {
+        WARN("Invalid size for composition swapchains.\n");
+        return E_INVALIDARG;
+    }
+
     if (flags)
         FIXME("Ignoring flags %#x.\n", flags);
 
@@ -553,6 +565,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_ResizeTarget(IDXGISwapChain1 *i
 
     TRACE("iface %p, target_mode_desc %p.\n", iface, target_mode_desc);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     state = wined3d_swapchain_get_state(swapchain->wined3d_swapchain);
 
     return dxgi_swapchain_resize_target(state, target_mode_desc);
@@ -564,6 +582,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetContainingOutput(IDXGISwapCh
     HWND window;
 
     TRACE("iface %p, output %p.\n", iface, output);
+
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_UNSUPPORTED;
+    }
 
     if (swapchain->target)
     {
@@ -646,6 +670,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetFullscreenDesc(IDXGISwapChai
 
     TRACE("iface %p, desc %p.\n", iface, desc);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!desc)
     {
         WARN("Invalid pointer.\n");
@@ -673,6 +703,12 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetHwnd(IDXGISwapChain1 *iface,
 
     TRACE("iface %p, hwnd %p.\n", iface, hwnd);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!hwnd)
     {
         WARN("Invalid pointer.\n");
@@ -686,7 +722,15 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetHwnd(IDXGISwapChain1 *iface,
 static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetCoreWindow(IDXGISwapChain1 *iface,
         REFIID iid, void **core_window)
 {
+    struct d3d11_swapchain *swapchain = d3d11_swapchain_from_IDXGISwapChain1(iface);
+
     FIXME("iface %p, iid %s, core_window %p stub!\n", iface, debugstr_guid(iid), core_window);
+
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
 
     if (core_window)
         *core_window = NULL;
@@ -799,6 +843,8 @@ static void STDMETHODCALLTYPE d3d11_swapchain_wined3d_object_released(void *pare
 {
     struct d3d11_swapchain *swapchain = parent;
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+        DestroyWindow(swapchain->window);
     wined3d_private_store_cleanup(&swapchain->private_store);
     heap_free(parent);
 }
@@ -865,6 +911,18 @@ HRESULT d3d11_swapchain_init(struct d3d11_swapchain *swapchain, struct dxgi_devi
     swapchain->refcount = 1;
     wined3d_mutex_lock();
     wined3d_private_store_init(&swapchain->private_store);
+
+    if (!desc->device_window)
+    {
+        swapchain->type = DXGI_SWAPCHAIN_TYPE_COMPOSITION;
+        desc->device_window = CreateWindowW(L"static", L"dxgi_dummy_window", WS_POPUP, 0, 0, 1, 1,
+                0, 0, 0, 0);
+    }
+    else
+    {
+        swapchain->type = DXGI_SWAPCHAIN_TYPE_HWND;
+    }
+    swapchain->window = desc->device_window;
 
     if (!desc->windowed && (!desc->backbuffer_width || !desc->backbuffer_height))
         FIXME("Fullscreen swapchain with back buffer width/height equal to 0 not supported properly.\n");
@@ -1011,6 +1069,7 @@ struct d3d12_swapchain
     ID3D12Device *device;
     IWineDXGIFactory *factory;
 
+    enum dxgi_swapchain_type type;
     HWND window;
     IDXGIOutput *target;
     DXGI_SWAP_CHAIN_DESC1 desc;
@@ -1776,6 +1835,9 @@ static void d3d12_swapchain_destroy(struct d3d12_swapchain *swapchain)
     if (swapchain->vk_instance)
         vk_funcs->p_vkDestroySurfaceKHR(swapchain->vk_instance, swapchain->vk_surface, NULL);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+        DestroyWindow(swapchain->window);
+
     if (swapchain->target)
     {
         WARN("Destroying fullscreen swapchain.\n");
@@ -2080,6 +2142,12 @@ static HRESULT STDMETHODCALLTYPE DECLSPEC_HOTPATCH d3d12_swapchain_SetFullscreen
 
     TRACE("iface %p, fullscreen %#x, target %p.\n", iface, fullscreen, target);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!fullscreen && target)
     {
         WARN("Invalid call.\n");
@@ -2268,6 +2336,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_ResizeBuffers(IDXGISwapChain4 *
     TRACE("iface %p, buffer_count %u, width %u, height %u, format %s, flags %#x.\n",
             iface, buffer_count, width, height, debug_dxgi_format(format), flags);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION && (!width || !height))
+    {
+        WARN("Invalid size for composition swapchains.\n");
+        return E_INVALIDARG;
+    }
+
     return d3d12_swapchain_resize_buffers(swapchain, buffer_count, width, height, format, flags);
 }
 
@@ -2277,6 +2351,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_ResizeTarget(IDXGISwapChain4 *i
     struct d3d12_swapchain *swapchain = d3d12_swapchain_from_IDXGISwapChain4(iface);
 
     TRACE("iface %p, target_mode_desc %p.\n", iface, target_mode_desc);
+
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
 
     return dxgi_swapchain_resize_target(swapchain->state, target_mode_desc);
 }
@@ -2291,6 +2371,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_GetContainingOutput(IDXGISwapCh
     HRESULT hr;
 
     TRACE("iface %p, output %p.\n", iface, output);
+
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_UNSUPPORTED;
+    }
 
     if (swapchain->target)
     {
@@ -2365,6 +2451,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_GetFullscreenDesc(IDXGISwapChai
 
     TRACE("iface %p, desc %p.\n", iface, desc);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!desc)
     {
         WARN("Invalid pointer.\n");
@@ -2386,6 +2478,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_GetHwnd(IDXGISwapChain4 *iface,
 
     TRACE("iface %p, hwnd %p.\n", iface, hwnd);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
     if (!hwnd)
     {
         WARN("Invalid pointer.\n");
@@ -2399,7 +2497,15 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_GetHwnd(IDXGISwapChain4 *iface,
 static HRESULT STDMETHODCALLTYPE d3d12_swapchain_GetCoreWindow(IDXGISwapChain4 *iface,
         REFIID iid, void **core_window)
 {
+    struct d3d12_swapchain *swapchain = d3d12_swapchain_from_IDXGISwapChain4(iface);
+
     FIXME("iface %p, iid %s, core_window %p stub!\n", iface, debugstr_guid(iid), core_window);
+
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION)
+    {
+        WARN("Invalid swapchain type.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
 
     if (core_window)
         *core_window = NULL;
@@ -2605,6 +2711,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_ResizeBuffers1(IDXGISwapChain4 
             "node_mask %p, present_queue %p.\n",
             iface, buffer_count, width, height, debug_dxgi_format(format), flags, node_mask, present_queue);
 
+    if (swapchain->type == DXGI_SWAPCHAIN_TYPE_COMPOSITION && (!width || !height))
+    {
+        WARN("Invalid size for composition swapchains.\n");
+        return E_INVALIDARG;
+    }
+
     if (!node_mask || !present_queue)
         return DXGI_ERROR_INVALID_CALL;
 
@@ -2807,6 +2919,15 @@ static HRESULT d3d12_swapchain_init(struct d3d12_swapchain *swapchain, IWineDXGI
     swapchain->state_parent.ops = &d3d12_swapchain_state_parent_ops;
     swapchain->refcount = 1;
 
+    if (!window)
+    {
+        swapchain->type = DXGI_SWAPCHAIN_TYPE_COMPOSITION;
+        window = CreateWindowW(L"static", L"dxgi_dummy_window", WS_POPUP, 0, 0, 1, 1, 0, 0, 0, 0);
+    }
+    else
+    {
+        swapchain->type = DXGI_SWAPCHAIN_TYPE_HWND;
+    }
     swapchain->window = window;
     swapchain->desc = *swapchain_desc;
     swapchain->fullscreen_desc = *fullscreen_desc;
