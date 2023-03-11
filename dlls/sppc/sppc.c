@@ -49,6 +49,18 @@ HRESULT WINAPI SLGetSLIDList(HSLC handle, UINT queryType, const SLID *query, UIN
     return S_OK;
 }
 
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT count, const BYTE *data, SLID *file)
+{
+    UINT i;
+    FIXME("(%p %u %p %p) stub\n", handle, count, data, file);
+
+    for (i = 0; i < count; i++) {
+        memset(&file[i], 0, sizeof(SLID));
+    }
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );
