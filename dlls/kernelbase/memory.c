@@ -472,13 +472,37 @@ BOOL WINAPI DECLSPEC_HOTPATCH  VirtualLock( void *addr, SIZE_T size )
     return set_ntstatus( NtLockVirtualMemory( GetCurrentProcess(), &addr, &size, 1 ));
 }
 
+static BOOL IsMSOffice(void)
+{
+    char filename[255];
+    return GetModuleFileNameA(NULL, filename, sizeof(filename)) && strstr(filename, "Microsoft Office");
+}
 
 /***********************************************************************
  *             VirtualProtect   (kernelbase.@)
  */
 BOOL WINAPI DECLSPEC_HOTPATCH VirtualProtect( void *addr, SIZE_T size, DWORD new_prot, DWORD *old_prot )
 {
-    return VirtualProtectEx( GetCurrentProcess(), addr, size, new_prot, old_prot );
+    BOOL result;
+    static INT is_ms_office = 2;
+
+    result = VirtualProtectEx( GetCurrentProcess(), addr, size, new_prot, old_prot );
+
+    // Required until MS Office updates their V8 to include df1eaa2bd84bf9cc8ff2d6b5e7ca53290546e4ab
+    if (result && *old_prot == PAGE_WRITECOPY) {
+        switch (is_ms_office) {
+            case 2:
+                is_ms_office = IsMSOffice();
+                if (!is_ms_office) break;
+            case 1:
+                *old_prot = PAGE_READWRITE;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return result;
 }
 
 
