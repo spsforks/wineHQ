@@ -1,5 +1,5 @@
 @ stub ClearEventData
-@ stub CreateBlob
+@ cdecl CreateBlob(ptr)
 @ stub CreateNPPInterface
 @ stub DestroyBlob
 @ stub DestroyNPPBlobTable
