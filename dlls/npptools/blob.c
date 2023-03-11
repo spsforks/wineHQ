@@ -26,3 +26,9 @@ DWORD CDECL CreateBlob(HBLOB *blob)
     FIXME("(%p) stub\n", blob);
     return ERROR_CALL_NOT_IMPLEMENTED;
 }
+
+DWORD CDECL DestroyBlob(HBLOB blob)
+{
+    FIXME("(%p) stub\n", blob);
+    return ERROR_CALL_NOT_IMPLEMENTED;
+}
