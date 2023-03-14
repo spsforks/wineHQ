@@ -58,6 +58,14 @@ HRESULT WINAPI SLOpen(HSLC *handle)
 
     *handle = (HSLC)0xdeadbeef;
 
+    /*
+     * Microsoft office stops crashing and just adds to the title a suffix of
+     * "(Non-Commercial Use) (Unlicensed Product)" if we make the thread sleep forever
+     */
+    for (;;) {
+        Sleep(1000);
+    }
+
     return S_OK;
 }
 
