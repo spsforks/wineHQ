@@ -39,6 +39,16 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLGetApplicationPolicy(HSLP handle, const WCHAR *name, UINT *type, UINT *count, BYTE **data)
+{
+    FIXME("(%p %s %p %p %p) stub\n", handle, debugstr_w(name), type, count, data );
+
+    *count = 0;
+    *data = NULL;
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );

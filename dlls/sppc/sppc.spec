@@ -30,7 +30,7 @@
 @ stub SLGenerateOfflineInstallationIdEx
 @ stub SLGetActiveLicenseInfo
 @ stub SLGetApplicationInformation
-@ stub SLGetApplicationPolicy
+@ stdcall SLGetApplicationPolicy(ptr wstr ptr ptr ptr)
 @ stub SLGetAuthenticationResult
 @ stub SLGetEncryptedPIDEx
 @ stub SLGetGenuineInformation
