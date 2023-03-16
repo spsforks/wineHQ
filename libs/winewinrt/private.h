@@ -1,6 +1,5 @@
-/* CryptoWinRT Implementation
- *
- * Copyright (C) 2022 Mohamad Al-Jaf
+/*
+ * Copyright 2022 Rémi Bernon for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -17,28 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef __WINE_CRYPTOWINRT_PRIVATE_H
-#define __WINE_CRYPTOWINRT_PRIVATE_H
-
 #include <stdarg.h>
+#include <stddef.h>
 
 #define COBJMACROS
 #include "windef.h"
 #include "winbase.h"
 #include "winstring.h"
-
 #include "activation.h"
 
 #define WIDL_using_Windows_Foundation
 #define WIDL_using_Windows_Foundation_Collections
+#define WIDL_using_Windows_Foundation_Numerics
 #include "windows.foundation.h"
-#define WIDL_using_Windows_Storage_Streams
-#include "windows.storage.streams.h"
-#define WIDL_using_Windows_Security_Credentials
-#include "windows.security.credentials.h"
 
+#include "wine/debug.h"
+#include "wine/list.h"
 #include "wine/winrt.h"
-
-extern IActivationFactory *credentials_activation_factory;
-
-#endif

@@ -1,5 +1,5 @@
 MODULE = windows.devices.enumeration.dll
-IMPORTS = combase uuid
+IMPORTS = winewinrt combase uuid
 
 C_SRCS = \
 	access.c \

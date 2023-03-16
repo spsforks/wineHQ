@@ -882,6 +882,7 @@ SOURCES = \
 	wine/winedxgi.idl \
 	wine/wingdi16.h \
 	wine/winnet16.h \
+	wine/winrt.idl \
 	wine/winuser16.h \
 	winerror.h \
 	winevt.h \

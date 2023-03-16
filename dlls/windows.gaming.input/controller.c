@@ -50,7 +50,7 @@ static HRESULT init_controllers(void)
 
     EnterCriticalSection( &controller_cs );
     if (controllers) hr = S_OK;
-    else hr = vector_create( &iids, (void **)&controllers );
+    else hr = vector_inspectable_create( &iids, (void **)&controllers );
     LeaveCriticalSection( &controller_cs );
 
     return hr;
@@ -243,7 +243,7 @@ static HRESULT WINAPI raw_controller_get_ForceFeedbackMotors( IRawGameController
 
     TRACE( "iface %p, value %p\n", iface, value );
 
-    if (FAILED(hr = vector_create( &iids, (void **)&vector ))) return hr;
+    if (FAILED(hr = vector_inspectable_create( &iids, (void **)&vector ))) return hr;
 
     if (SUCCEEDED(IWineGameControllerProvider_get_ForceFeedbackMotor( impl->wine_provider, &motor )) && motor)
     {

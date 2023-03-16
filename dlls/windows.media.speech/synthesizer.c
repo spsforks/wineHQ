@@ -268,7 +268,7 @@ static HRESULT synthesis_stream_create( ISpeechSynthesisStream **out )
 
     impl->ISpeechSynthesisStream_iface.lpVtbl = &synthesis_stream_vtbl;
     impl->ref = 1;
-    if (FAILED(hr = vector_inspectable_create(&markers_iids, (IVector_IInspectable**)&impl->markers)))
+    if (FAILED(hr = vector_inspectable_create(&markers_iids, (void **)&impl->markers)))
         goto error;
 
     TRACE("created ISpeechSynthesisStream %p.\n", impl);

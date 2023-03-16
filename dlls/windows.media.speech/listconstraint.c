@@ -129,7 +129,7 @@ static HRESULT WINAPI list_constraint_get_Commands(  ISpeechRecognitionListConst
     hr = IVector_HSTRING_QueryInterface(impl->commands, &IID_IIterable_HSTRING, (void **)&iterable);
     if (FAILED(hr)) return hr;
 
-    hr = vector_hstring_create_copy(iterable, value);
+    hr = vector_hstring_copy(iterable, value);
     IIterable_HSTRING_Release(iterable);
 
     return hr;
@@ -359,7 +359,7 @@ static HRESULT WINAPI constraint_factory_CreateWithTag( ISpeechRecognitionListCo
         return E_POINTER;
 
     if (!(impl = calloc(1, sizeof(*impl)))) return E_OUTOFMEMORY;
-    if (FAILED(hr = vector_hstring_create_copy(commands, &impl->commands))) goto error;
+    if (FAILED(hr = vector_hstring_copy(commands, &impl->commands))) goto error;
 
     impl->ISpeechRecognitionListConstraint_iface.lpVtbl = &speech_recognition_list_constraint_vtbl;
     impl->ISpeechRecognitionConstraint_iface.lpVtbl = &speech_recognition_constraint_vtbl;

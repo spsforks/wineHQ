@@ -41,6 +41,7 @@
 
 #include "wine/debug.h"
 #include "wine/list.h"
+#include "wine/winrt.h"
 
 #include "provider.h"
 
@@ -53,15 +54,6 @@ extern IInspectable *constant_effect_factory;
 extern IInspectable *ramp_effect_factory;
 extern IInspectable *periodic_effect_factory;
 extern IInspectable *condition_effect_factory;
-
-struct vector_iids
-{
-    const GUID *vector;
-    const GUID *view;
-    const GUID *iterable;
-    const GUID *iterator;
-};
-extern HRESULT vector_create( const struct vector_iids *iids, void **out );
 
 extern void provider_create( const WCHAR *device_path );
 extern void provider_remove( const WCHAR *device_path );
@@ -76,51 +68,8 @@ extern void event_handlers_notify( struct list *list, IInspectable *element );
 extern HRESULT force_feedback_motor_create( IDirectInputDevice8W *device, IForceFeedbackMotor **out );
 extern HRESULT force_feedback_effect_create( enum WineForceFeedbackEffectType type, IInspectable *outer, IWineForceFeedbackEffectImpl **out );
 
-typedef HRESULT (WINAPI *async_operation_callback)( IUnknown *invoker, IUnknown *param, PROPVARIANT *result );
-extern HRESULT async_operation_boolean_create( IUnknown *invoker, IUnknown *param, async_operation_callback callback,
-                                               IAsyncOperation_boolean **out );
-extern HRESULT async_operation_effect_result_create( IUnknown *invoker, IUnknown *param, async_operation_callback callback,
+extern HRESULT async_operation_effect_result_create( IUnknown *invoker, IUnknown *param, async_callback callback,
                                                      IAsyncOperation_ForceFeedbackLoadEffectResult **out );
-
-#define DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from, iface_mem, expr )             \
-    static inline impl_type *impl_from( iface_type *iface )                                        \
-    {                                                                                              \
-        return CONTAINING_RECORD( iface, impl_type, iface_mem );                                   \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_QueryInterface( iface_type *iface, REFIID iid, void **out )        \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_QueryInterface( (IInspectable *)(expr), iid, out );                    \
-    }                                                                                              \
-    static ULONG WINAPI pfx##_AddRef( iface_type *iface )                                          \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_AddRef( (IInspectable *)(expr) );                                      \
-    }                                                                                              \
-    static ULONG WINAPI pfx##_Release( iface_type *iface )                                         \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_Release( (IInspectable *)(expr) );                                     \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetIids( iface_type *iface, ULONG *iid_count, IID **iids )         \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_GetIids( (IInspectable *)(expr), iid_count, iids );                    \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetRuntimeClassName( iface_type *iface, HSTRING *class_name )      \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_GetRuntimeClassName( (IInspectable *)(expr), class_name );             \
-    }                                                                                              \
-    static HRESULT WINAPI pfx##_GetTrustLevel( iface_type *iface, TrustLevel *trust_level )        \
-    {                                                                                              \
-        impl_type *impl = impl_from( iface );                                                      \
-        return IInspectable_GetTrustLevel( (IInspectable *)(expr), trust_level );                  \
-    }
-#define DEFINE_IINSPECTABLE( pfx, iface_type, impl_type, base_iface )                              \
-    DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from_##iface_type, iface_type##_iface, &impl->base_iface )
-#define DEFINE_IINSPECTABLE_OUTER( pfx, iface_type, impl_type, outer_iface )                       \
-    DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from_##iface_type, iface_type##_iface, impl->outer_iface )
 
 static inline const char *debugstr_vector3( const Vector3 *vector )
 {

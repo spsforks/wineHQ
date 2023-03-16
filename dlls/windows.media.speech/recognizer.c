@@ -1119,7 +1119,7 @@ static HRESULT WINAPI recognizer_factory_Create( ISpeechRecognizerFactory *iface
         goto error;
     }
 
-    if (FAILED(hr = vector_inspectable_create(&constraints_iids, (IVector_IInspectable**)&session->constraints)))
+    if (FAILED(hr = vector_inspectable_create(&constraints_iids, (void **)&session->constraints)))
         goto error;
 
     if (FAILED(hr = recognizer_factory_create_audio_capture(session)))

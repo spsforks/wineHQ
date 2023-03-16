@@ -601,7 +601,7 @@ static HRESULT WINAPI motor_get_SupportedAxes( IForceFeedbackMotor *iface, enum 
     return hr;
 }
 
-static HRESULT WINAPI motor_load_effect_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
+static HRESULT motor_load_effect_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
 {
     struct effect *effect = impl_from_IForceFeedbackEffect( (IForceFeedbackEffect *)param );
     IForceFeedbackMotor *motor = (IForceFeedbackMotor *)invoker;
@@ -693,7 +693,7 @@ static HRESULT WINAPI motor_StopAllEffects( IForceFeedbackMotor *iface )
     return IDirectInputDevice8_SendForceFeedbackCommand( impl->device, DISFFC_STOPALL );
 }
 
-static HRESULT WINAPI motor_try_disable_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
+static HRESULT motor_try_disable_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
 {
     struct motor *impl = impl_from_IForceFeedbackMotor( (IForceFeedbackMotor *)invoker );
     HRESULT hr;
@@ -708,10 +708,10 @@ static HRESULT WINAPI motor_try_disable_async( IUnknown *invoker, IUnknown *para
 static HRESULT WINAPI motor_TryDisableAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_disable_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_disable_async, async_op );
 }
 
-static HRESULT WINAPI motor_try_enable_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
+static HRESULT motor_try_enable_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
 {
     struct motor *impl = impl_from_IForceFeedbackMotor( (IForceFeedbackMotor *)invoker );
     HRESULT hr;
@@ -726,10 +726,10 @@ static HRESULT WINAPI motor_try_enable_async( IUnknown *invoker, IUnknown *param
 static HRESULT WINAPI motor_TryEnableAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_enable_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_enable_async, async_op );
 }
 
-static HRESULT WINAPI motor_try_reset_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
+static HRESULT motor_try_reset_async( IUnknown *invoker, IUnknown *param, PROPVARIANT *result )
 {
     struct motor *impl = impl_from_IForceFeedbackMotor( (IForceFeedbackMotor *)invoker );
     HRESULT hr;
@@ -744,10 +744,10 @@ static HRESULT WINAPI motor_try_reset_async( IUnknown *invoker, IUnknown *param,
 static HRESULT WINAPI motor_TryResetAsync( IForceFeedbackMotor *iface, IAsyncOperation_boolean **async_op )
 {
     TRACE( "iface %p, async_op %p.\n", iface, async_op );
-    return async_operation_boolean_create( (IUnknown *)iface, NULL, motor_try_reset_async, async_op );
+    return async_bool_create( (IUnknown *)iface, NULL, motor_try_reset_async, async_op );
 }
 
-static HRESULT WINAPI motor_unload_effect_async( IUnknown *iface, IUnknown *param, PROPVARIANT *result )
+static HRESULT motor_unload_effect_async( IUnknown *iface, IUnknown *param, PROPVARIANT *result )
 {
     struct effect *effect = impl_from_IForceFeedbackEffect( (IForceFeedbackEffect *)param );
     IDirectInputEffect *dinput_effect;
@@ -783,7 +783,7 @@ static HRESULT WINAPI motor_TryUnloadEffectAsync( IForceFeedbackMotor *iface, IF
     LeaveCriticalSection( &impl->cs );
     if (FAILED(hr)) return hr;
 
-    return async_operation_boolean_create( (IUnknown *)iface, (IUnknown *)effect, motor_unload_effect_async, async_op );
+    return async_bool_create( (IUnknown *)iface, (IUnknown *)effect, motor_unload_effect_async, async_op );
 }
 
 static const struct IForceFeedbackMotorVtbl motor_vtbl =

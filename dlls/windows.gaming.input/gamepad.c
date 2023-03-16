@@ -50,7 +50,7 @@ static HRESULT init_gamepads(void)
 
     EnterCriticalSection( &gamepad_cs );
     if (gamepads) hr = S_OK;
-    else hr = vector_create( &iids, (void **)&gamepads );
+    else hr = vector_inspectable_create( &iids, (void **)&gamepads );
     LeaveCriticalSection( &gamepad_cs );
 
     return hr;

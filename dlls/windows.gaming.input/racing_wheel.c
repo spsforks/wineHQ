@@ -50,7 +50,7 @@ static HRESULT init_racing_wheels(void)
 
     EnterCriticalSection( &racing_wheel_cs );
     if (racing_wheels) hr = S_OK;
-    else hr = vector_create( &iids, (void **)&racing_wheels );
+    else hr = vector_inspectable_create( &iids, (void **)&racing_wheels );
     LeaveCriticalSection( &racing_wheel_cs );
 
     return hr;

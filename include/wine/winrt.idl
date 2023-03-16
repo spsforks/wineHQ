@@ -1,0 +1,112 @@
+/* WinRT implementation
+ *
+ * Copyright 2022 Rémi Bernon for CodeWeavers
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ */
+
+#if 0
+#pragma makedep header
+#endif
+
+#ifdef __WIDL__
+#pragma winrt ns_prefix
+#endif
+
+import "propidl.idl";
+import "inspectable.idl";
+import "asyncinfo.idl";
+import "eventtoken.idl";
+import "windowscontracts.idl";
+import "windows.foundation.idl";
+
+struct vector_iids
+{
+    const GUID *vector;
+    const GUID *view;
+    const GUID *iterable;
+    const GUID *iterator;
+};
+
+extern HRESULT vector_hstring_create( Windows.Foundation.Collections.IVector<HSTRING> **out );
+extern HRESULT vector_hstring_copy( Windows.Foundation.Collections.IIterable<HSTRING> *iterable,
+                                    Windows.Foundation.Collections.IVector<HSTRING> **out );
+extern HRESULT vector_inspectable_create( const struct vector_iids *iids, void **out );
+
+namespace Windows.Foundation {
+
+    /* type-pruning version of AsyncOperationCompletedHandler<T> */
+    delegate HRESULT WineAsyncOperationCompletedHandler([in] IInspectable *async, [in] AsyncStatus status);
+
+    [
+        uuid(83f377ee-c799-11ec-9d64-0242ac120002)
+    ]
+    interface IWineAsyncInfoImpl : IUnknown
+    {
+        [propput] HRESULT Completed([in] WineAsyncOperationCompletedHandler *handler);
+        [propget] HRESULT Completed([out, retval] WineAsyncOperationCompletedHandler **handler);
+        [propget] HRESULT Result([out, retval] PROPVARIANT *result);
+        HRESULT Start();
+    }
+
+}
+
+typedef HRESULT (*async_callback)( IUnknown *invoker, IUnknown *param, PROPVARIANT *result );
+extern HRESULT async_info_create( IUnknown *invoker, IUnknown *param, async_callback callback,
+                                  IInspectable *outer, Windows.Foundation.IWineAsyncInfoImpl **out );
+extern HRESULT async_bool_create( IUnknown *invoker, IUnknown *param, async_callback callback,
+                                  Windows.Foundation.IAsyncOperation<boolean> **out );
+
+extern const char *debugstr_hstring( HSTRING hstr );
+
+cpp_quote("#define DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from, iface_mem, expr )             \\")
+cpp_quote("    static inline impl_type *impl_from( iface_type *iface )                                        \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        return CONTAINING_RECORD( iface, impl_type, iface_mem );                                   \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static HRESULT WINAPI pfx##_QueryInterface( iface_type *iface, REFIID iid, void **out )        \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_QueryInterface( (IInspectable *)(expr), iid, out );                    \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static ULONG WINAPI pfx##_AddRef( iface_type *iface )                                          \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_AddRef( (IInspectable *)(expr) );                                      \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static ULONG WINAPI pfx##_Release( iface_type *iface )                                         \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_Release( (IInspectable *)(expr) );                                     \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static HRESULT WINAPI pfx##_GetIids( iface_type *iface, ULONG *iid_count, IID **iids )         \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_GetIids( (IInspectable *)(expr), iid_count, iids );                    \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static HRESULT WINAPI pfx##_GetRuntimeClassName( iface_type *iface, HSTRING *class_name )      \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_GetRuntimeClassName( (IInspectable *)(expr), class_name );             \\")
+cpp_quote("    }                                                                                              \\")
+cpp_quote("    static HRESULT WINAPI pfx##_GetTrustLevel( iface_type *iface, TrustLevel *trust_level )        \\")
+cpp_quote("    {                                                                                              \\")
+cpp_quote("        impl_type *impl = impl_from( iface );                                                      \\")
+cpp_quote("        return IInspectable_GetTrustLevel( (IInspectable *)(expr), trust_level );                  \\")
+cpp_quote("    }")
+cpp_quote("#define DEFINE_IINSPECTABLE( pfx, iface_type, impl_type, base_iface )                              \\")
+cpp_quote("    DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from_##iface_type, iface_type##_iface, &impl->base_iface )")
+cpp_quote("#define DEFINE_IINSPECTABLE_OUTER( pfx, iface_type, impl_type, outer_iface )                       \\")
+cpp_quote("    DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from_##iface_type, iface_type##_iface, impl->outer_iface )")

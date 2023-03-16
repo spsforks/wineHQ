@@ -563,7 +563,7 @@ void write_type_right(FILE *h, type_t *t, int is_field)
   {
     const var_list_t *args = type_function_get_args(t);
     fputc('(', h);
-    if (args) write_args(h, args, NULL, 0, FALSE, NAME_DEFAULT);
+    if (args) write_args(h, args, NULL, 0, FALSE, NAME_C);
     else
       fprintf(h, "void");
     fputc(')', h);

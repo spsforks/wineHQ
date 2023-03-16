@@ -389,6 +389,10 @@ M:	Alexandre Julliard <julliard@winehq.org>
 P:	Erich E. Hoover <erich.e.hoover@wine-staging.com>
 F:	server/
 
+Wine WinRT
+M:	Rémi Bernon <rbernon@codeweavers.com>
+F:	libs/winewinrt/
+
 Winemaker
 M:	André Zwing <nerv@dawncrow.de>
 F:	tools/winemaker/
