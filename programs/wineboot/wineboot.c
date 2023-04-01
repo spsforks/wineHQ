@@ -1341,7 +1341,7 @@ static HWND show_wait_window(void)
 {
     HWND hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
                                     wait_dlgproc, (LPARAM)prettyprint_configdir() );
-    WCHAR *hide = _wgetenv( L"WINEHIDEWAIT" );
+    WCHAR *hide = _wgetenv( L"WINEBOOT_HIDE_DIALOG" );
     if (hide == NULL) {
         ShowWindow( hwnd, SW_SHOWNORMAL );
     }
