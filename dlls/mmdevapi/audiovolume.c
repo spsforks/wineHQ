@@ -44,6 +44,7 @@ typedef struct AEVImpl {
     LONG ref;
     float master_vol;
     BOOL mute;
+    IMMDevice *parent;
 } AEVImpl;
 
 static inline AEVImpl *impl_from_IAudioEndpointVolumeEx(IAudioEndpointVolumeEx *iface)
@@ -53,6 +54,7 @@ static inline AEVImpl *impl_from_IAudioEndpointVolumeEx(IAudioEndpointVolumeEx *
 
 static void AudioEndpointVolume_Destroy(AEVImpl *This)
 {
+    IMMDevice_Release(This->parent);
     HeapFree(GetProcessHeap(), 0, This);
 }
 
@@ -135,9 +137,35 @@ static HRESULT WINAPI AEV_SetMasterVolumeLevel(IAudioEndpointVolumeEx *iface, fl
 
 static HRESULT WINAPI AEV_SetMasterVolumeLevelScalar(IAudioEndpointVolumeEx *iface, float level, const GUID *ctx)
 {
+    AEVImpl *This = impl_from_IAudioEndpointVolumeEx(iface);
+    IAudioSessionManager *sesman;
+    ISimpleAudioVolume *volume;
+    HRESULT hr;
+
     TRACE("(%p)->(%f,%s)\n", iface, level, debugstr_guid(ctx));
-    FIXME("stub\n");
-    return E_NOTIMPL;
+    if(level < 0.f || level > 1.f)
+        return E_INVALIDARG;
+
+    This->master_vol = level * 100.f - 100.f;
+    hr = IMMDevice_Activate(This->parent, &IID_IAudioSessionManager, CLSCTX_INPROC_SERVER, 0, (void**)&sesman);
+    if(FAILED(hr)){
+        WARN("Activate failed: %08lx\n", hr);
+        return E_FAIL;
+    }
+    hr = IAudioSessionManager_GetSimpleAudioVolume(sesman, 0, FALSE, &volume);
+    IAudioSessionManager_Release(sesman);
+    if(FAILED(hr)){
+        WARN("GetSimpleAudioVolume failed: %08lx\n", hr);
+        return E_FAIL;
+    }
+    hr = ISimpleAudioVolume_SetMasterVolume(volume, level, NULL);
+    ISimpleAudioVolume_Release(volume);
+    if(FAILED(hr)){
+        WARN("SetMasterVolume failed: %08lx\n", hr);
+        return E_FAIL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI AEV_GetMasterVolumeLevel(IAudioEndpointVolumeEx *iface, float *leveldb)
@@ -156,11 +184,12 @@ static HRESULT WINAPI AEV_GetMasterVolumeLevel(IAudioEndpointVolumeEx *iface, fl
 
 static HRESULT WINAPI AEV_GetMasterVolumeLevelScalar(IAudioEndpointVolumeEx *iface, float *level)
 {
+    AEVImpl *This = impl_from_IAudioEndpointVolumeEx(iface);
     TRACE("(%p)->(%p)\n", iface, level);
     if (!level)
         return E_POINTER;
-    FIXME("stub\n");
-    *level = 1.0;
+
+    *level = (This->master_vol + 100.0f) / 100.0f;
     return S_OK;
 }
 
@@ -307,6 +336,7 @@ static const IAudioEndpointVolumeExVtbl AEVImpl_Vtbl = {
 HRESULT AudioEndpointVolume_Create(MMDevice *parent, IAudioEndpointVolumeEx **ppv)
 {
     AEVImpl *This;
+    TRACE("%s\n", debugstr_guid(&parent->devguid));
 
     *ppv = NULL;
     This = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*This));
@@ -314,6 +344,9 @@ HRESULT AudioEndpointVolume_Create(MMDevice *parent, IAudioEndpointVolumeEx **pp
         return E_OUTOFMEMORY;
     This->IAudioEndpointVolumeEx_iface.lpVtbl = &AEVImpl_Vtbl;
     This->ref = 1;
+
+    This->parent = &parent->IMMDevice_iface;
+    IMMDevice_AddRef(This->parent);
 
     *ppv = &This->IAudioEndpointVolumeEx_iface;
     return S_OK;

@@ -619,15 +619,22 @@ static HRESULT get_audio_session(const GUID *sessionguid,
 {
     AudioSession *session;
 
-    if(!sessionguid || IsEqualGUID(sessionguid, &GUID_NULL)){
-        *out = create_session(&GUID_NULL, device, channels);
-        if(!*out)
+   *out = NULL;
+    if (!sessionguid || IsEqualGUID(sessionguid, &GUID_NULL)) {
+        LIST_FOR_EACH_ENTRY(session, &g_sessions, AudioSession, entry) {
+            if (session->device == device) {
+                session_init_vols(session, channels);
+                *out = session;
+                break;
+            }
+        }
+        if (!*out) *out = create_session(&GUID_NULL, device, channels);
+        if (!*out)
             return E_OUTOFMEMORY;
 
         return S_OK;
     }
 
-    *out = NULL;
     LIST_FOR_EACH_ENTRY(session, &g_sessions, AudioSession, entry){
         if(session->device == device &&
                 IsEqualGUID(sessionguid, &session->guid)){
