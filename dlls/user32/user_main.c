@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "user_private.h"
 #include "controls.h"
 #include "imm.h"
@@ -199,6 +201,11 @@ static NTSTATUS WINAPI User32UnpackDDEMessage( const struct unpack_dde_message_p
     return TRUE;
 }
 
+static NTSTATUS WINAPI User32DispatchCallback( const struct user32_callback_params *params, ULONG size )
+{
+    return ((user32_callback_func)(ULONG_PTR)params->func)( (void*)params, size );
+}
+
 static void WINAPI User32CallFreeIcon( ULONG *param, ULONG size )
 {
     if (wow_handlers.call_free_icon)
@@ -231,6 +238,7 @@ static const void *kernel_callback_table[NtUserCallCount] =
     User32PostDDEMessage,
     User32RenderSsynthesizedFormat,
     User32UnpackDDEMessage,
+    User32DispatchCallback,
     User32CallFreeIcon,
     User32ThunkLock,
 };

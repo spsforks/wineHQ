@@ -47,6 +47,7 @@ enum
     NtUserPostDDEMessage,
     NtUserRenderSynthesizedFormat,
     NtUserUnpackDDEMessage,
+    NtUserDispatchCallback,
     /* win16 hooks */
     NtUserCallFreeIcon,
     NtUserThunkLock,
@@ -268,6 +269,13 @@ struct unpack_dde_message_params
     WPARAM wparam;
     LPARAM lparam;
     char data[1];
+};
+
+typedef NTSTATUS (WINAPI *user32_callback_func)( void *args, ULONG len );
+
+struct user32_callback_params
+{
+    UINT64 func;
 };
 
 /* process DPI awareness contexts */
