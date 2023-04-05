@@ -127,6 +127,11 @@ struct dnd_position_event_params
     DWORD effect;
 };
 
+struct dnd_post_drop_params
+{
+    char drop_files[1];
+};
+
 struct systray_change_owner_params
 {
     UINT64 event_handle;

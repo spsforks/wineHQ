@@ -29,7 +29,7 @@
 
 extern NTSTATUS WINAPI x11drv_dnd_enter_event( void *params, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS WINAPI x11drv_dnd_position_event( void *params, ULONG size ) DECLSPEC_HIDDEN;
-extern NTSTATUS WINAPI x11drv_dnd_post_drop( void *data, ULONG size ) DECLSPEC_HIDDEN;
+extern NTSTATUS WINAPI x11drv_dnd_post_drop( void *params, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS WINAPI x11drv_ime_set_composition_string( void *params, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS WINAPI x11drv_ime_set_result( void *params, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS WINAPI x11drv_systray_change_owner( void *params, ULONG size ) DECLSPEC_HIDDEN;

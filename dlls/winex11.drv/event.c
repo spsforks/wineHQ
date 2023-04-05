@@ -1469,8 +1469,9 @@ static HWND find_drop_window( HWND hQueryWnd, LPPOINT lpPt )
     return hQueryWnd;
 }
 
-static void post_drop( HWND hwnd, DROPFILES *drop, ULONG size )
+static void post_drop( HWND hwnd, struct dnd_post_drop_params *params, ULONG size )
 {
+    DROPFILES *drop = (void*)params->drop_files;
     drop->fWide = HandleToUlong( hwnd ); /* abuse fWide to pass window handle */
     x11drv_client_func( client_func_dnd_post_drop, drop, size );
 }
@@ -1519,14 +1520,14 @@ static void EVENT_DropFromOffiX( HWND hWnd, XClientMessageEvent *event )
 
     if (!aux_long && p_data)  /* don't bother if > 64K */
     {
-        DROPFILES *drop;
-        size_t drop_size;
+        struct dnd_post_drop_params *params;
+        size_t params_size;
 
-        drop = file_list_to_drop_files( p_data, get_property_size( format, data_length ), &drop_size );
-        if (drop)
+        params = file_list_to_post_drop_params( p_data, get_property_size( format, data_length ), &params_size );
+        if (params)
         {
-            post_drop( hWnd, drop, drop_size );
-            free( drop );
+            post_drop( hWnd, params, params_size );
+            free( params );
         }
     }
 
@@ -1548,7 +1549,6 @@ static void EVENT_DropURLs( HWND hWnd, XClientMessageEvent *event )
   unsigned long	aux_long;
   unsigned char	*p_data = NULL; /* property data */
   int		x, y;
-  DROPFILES *drop;
   int format;
   union {
     Atom	atom_aux;
@@ -1569,11 +1569,13 @@ static void EVENT_DropURLs( HWND hWnd, XClientMessageEvent *event )
 
   if (!aux_long && p_data) /* don't bother if > 64K */
   {
-      size_t drop_size;
-      drop = uri_list_to_drop_files( p_data, get_property_size( format, data_length ), &drop_size );
+      struct dnd_post_drop_params *params;
+      size_t params_size;
+      params = uri_list_to_post_drop_params( p_data, get_property_size( format, data_length ), &params_size );
 
-      if (drop)
+      if (params)
       {
+          DROPFILES *drop = (void*)params->drop_files;
           XQueryPointer( event->display, root_window, &u.w_aux, &u.w_aux,
                          &x, &y, &u.i, &u.i, &u.u);
           drop->pt = root_to_virtual_screen( x, y );
@@ -1588,8 +1590,8 @@ static void EVENT_DropURLs( HWND hWnd, XClientMessageEvent *event )
               release_win_data( win_data );
           }
 
-          post_drop( hWnd, drop, drop_size );
-          free( drop );
+          post_drop( hWnd, params, params_size );
+          free( params );
       }
   }
   if (p_data) XFree( p_data );

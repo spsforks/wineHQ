@@ -663,8 +663,10 @@ extern void change_systray_owner( Display *display, Window systray_window ) DECL
 extern HWND create_foreign_window( Display *display, Window window ) DECLSPEC_HIDDEN;
 extern BOOL update_clipboard( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void init_win_context(void) DECLSPEC_HIDDEN;
-extern void *file_list_to_drop_files( const void *data, size_t size, size_t *ret_size ) DECLSPEC_HIDDEN;
-extern void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size ) DECLSPEC_HIDDEN;
+extern struct dnd_post_drop_params *file_list_to_post_drop_params( const void *data, size_t size,
+                                                                   size_t *ret_size ) DECLSPEC_HIDDEN;
+extern struct dnd_post_drop_params *uri_list_to_post_drop_params( const void *data, size_t size,
+                                                                  size_t *ret_size ) DECLSPEC_HIDDEN;
 
 static inline void mirror_rect( const RECT *window_rect, RECT *rect )
 {
