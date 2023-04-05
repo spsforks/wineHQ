@@ -199,6 +199,17 @@ static NTSTATUS WINAPI User32UnpackDDEMessage( const struct unpack_dde_message_p
     return TRUE;
 }
 
+static void WINAPI User32CallFreeIcon( ULONG *param, ULONG size )
+{
+    if (wow_handlers.call_free_icon)
+        wow_handlers.call_free_icon( LOWORD(*param) );
+}
+
+static DWORD WINAPI User32ThunkLock( DWORD *param, ULONG size )
+{
+    return wow_handlers.thunk_lock( param ? *param : 0, size == sizeof(DWORD) );
+}
+
 static const void *kernel_callback_table[NtUserCallCount] =
 {
     User32CallEnumDisplayMonitor,
@@ -220,6 +231,8 @@ static const void *kernel_callback_table[NtUserCallCount] =
     User32PostDDEMessage,
     User32RenderSsynthesizedFormat,
     User32UnpackDDEMessage,
+    User32CallFreeIcon,
+    User32ThunkLock,
 };
 
 

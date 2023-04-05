@@ -44,6 +44,8 @@ struct wow_handlers16
     HWND    (*create_window)(CREATESTRUCTW*,LPCWSTR,HINSTANCE,BOOL);
     LRESULT (*call_window_proc)(HWND,UINT,WPARAM,LPARAM,LRESULT*,void*);
     LRESULT (*call_dialog_proc)(HWND,UINT,WPARAM,LPARAM,LRESULT*,void*);
+    void    (*call_free_icon)(HICON16);
+    DWORD   (*thunk_lock)(DWORD,BOOL);
 };
 
 struct wow_handlers32
