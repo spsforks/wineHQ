@@ -994,9 +994,17 @@ print OUT "#define WIN32_NO_STATUS\n";
 print OUT "#include \"windef.h\"\n";
 print OUT "#include \"winbase.h\"\n";
 print OUT "#include \"winternl.h\"\n";
-print OUT "#include \"wingdi.h\"\n\n";
+print OUT "#include \"wingdi.h\"\n";
+print OUT "#include \"ntuser.h\"\n\n";
 print OUT "#include \"wine/wgl.h\"\n";
 print OUT "#include \"wine/unixlib.h\"\n\n";
+
+print OUT "struct wine_gl_debug_message_params;\n\n";
+
+print OUT "struct wglInit_params\n";
+print OUT "{\n";
+print OUT "    BOOL (*WINAPI call_opengl_debug_message_callback)( void *args, ULONG len );\n";
+print OUT "};\n\n";
 
 foreach (sort keys %wgl_functions)
 {
@@ -1016,6 +1024,7 @@ foreach (sort keys %ext_functions)
 
 print OUT "enum unix_funcs\n";
 print OUT "{\n";
+print OUT "    unix_wglInit,\n";
 print OUT "    unix_thread_attach,\n";
 print OUT "    unix_process_detach,\n";
 foreach (sort keys %wgl_functions)
@@ -1038,6 +1047,7 @@ print OUT "};\n\n";
 print OUT "typedef void (WINAPI *gl_debug_cb)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *, const void *);\n";
 print OUT "struct wine_gl_debug_message_params\n";
 print OUT "{\n";
+print OUT "    struct user32_callback_params cbparams;\n";
 print OUT "    gl_debug_cb user_callback;\n";
 print OUT "    const void *user_data;\n";
 print OUT "\n";
@@ -1139,6 +1149,7 @@ print OUT "#ifdef _WIN64\n";
 print OUT "WINE_DEFAULT_DEBUG_CHANNEL(opengl);\n";
 print OUT "#endif\n\n";
 
+print OUT "extern NTSTATUS wgl_wglInit( void *args ) DECLSPEC_HIDDEN;\n";
 print OUT "extern NTSTATUS thread_attach( void *args ) DECLSPEC_HIDDEN;\n";
 print OUT "extern NTSTATUS process_detach( void *args ) DECLSPEC_HIDDEN;\n";
 foreach (sort keys %wgl_functions)
@@ -1185,6 +1196,7 @@ foreach (sort keys %ext_functions)
 
 print OUT "const unixlib_entry_t __wine_unix_call_funcs[] =\n";
 print OUT "{\n";
+print OUT "    &wgl_wglInit,\n";
 print OUT "    &thread_attach,\n";
 print OUT "    &process_detach,\n";
 foreach (sort keys %wgl_functions)

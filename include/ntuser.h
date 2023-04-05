@@ -51,8 +51,6 @@ enum
     /* win16 hooks */
     NtUserCallFreeIcon,
     NtUserThunkLock,
-    /* OpenGL support */
-    NtUserCallOpenGLDebugMessageCallback,
     /* Driver-specific callbacks */
     NtUserDriverCallbackFirst,
     NtUserDriverCallbackLast = NtUserDriverCallbackFirst + 9,

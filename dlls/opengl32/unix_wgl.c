@@ -43,6 +43,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(opengl);
 
+static BOOL (*WINAPI call_opengl_debug_message_callback)( void *args, ULONG len );
+
 static pthread_mutex_t wgl_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* handle management */
@@ -814,6 +816,7 @@ static void gl_debug_message_callback( GLenum source, GLenum type, GLuint id, GL
 {
     struct wine_gl_debug_message_params params =
     {
+        .cbparams = { .func = (ULONG_PTR)call_opengl_debug_message_callback, },
         .source = source,
         .type = type,
         .id = id,
@@ -828,8 +831,7 @@ static void gl_debug_message_callback( GLenum source, GLenum type, GLuint id, GL
     if (!(params.user_callback = ptr->u.context->debug_callback)) return;
     params.user_data = ptr->u.context->debug_user;
 
-    KeUserModeCallback( NtUserCallOpenGLDebugMessageCallback, &params, sizeof(params),
-                        &ret_ptr, &ret_len );
+    KeUserModeCallback( NtUserDispatchCallback, &params.cbparams, sizeof(params), &ret_ptr, &ret_len );
 }
 
 static void wrap_glDebugMessageCallback( TEB *teb, GLDEBUGPROC callback, const void *userParam )
@@ -866,6 +868,13 @@ static void wrap_glDebugMessageCallbackARB( TEB *teb, GLDEBUGPROCARB callback, c
     ptr->u.context->debug_callback = callback;
     ptr->u.context->debug_user     = userParam;
     funcs->ext.p_glDebugMessageCallbackARB( gl_debug_message_callback, ptr );
+}
+
+NTSTATUS wgl_wglInit( void *args )
+{
+    struct wglInit_params *params = args;
+    call_opengl_debug_message_callback = params->call_opengl_debug_message_callback;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS wgl_wglCopyContext( void *args )

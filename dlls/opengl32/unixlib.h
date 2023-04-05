@@ -12,9 +12,17 @@
 #include "winbase.h"
 #include "winternl.h"
 #include "wingdi.h"
+#include "ntuser.h"
 
 #include "wine/wgl.h"
 #include "wine/unixlib.h"
+
+struct wine_gl_debug_message_params;
+
+struct wglInit_params
+{
+    BOOL (*WINAPI call_opengl_debug_message_callback)( void *args, ULONG len );
+};
 
 struct wglCopyContext_params
 {
@@ -25333,6 +25341,7 @@ struct wglSwapIntervalEXT_params
 
 enum unix_funcs
 {
+    unix_wglInit,
     unix_thread_attach,
     unix_process_detach,
     unix_wglCopyContext,
@@ -28380,6 +28389,7 @@ enum unix_funcs
 typedef void (WINAPI *gl_debug_cb)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *, const void *);
 struct wine_gl_debug_message_params
 {
+    struct user32_callback_params cbparams;
     gl_debug_cb user_callback;
     const void *user_data;
 

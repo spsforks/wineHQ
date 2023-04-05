@@ -1270,8 +1270,10 @@ GLboolean WINAPI glUnmapNamedBufferEXT( GLuint buffer )
     return gl_unmap_named_buffer( unix_glUnmapNamedBufferEXT, buffer );
 }
 
-static BOOL WINAPI call_opengl_debug_message_callback( struct wine_gl_debug_message_params *params, ULONG size )
+static BOOL WINAPI call_opengl_debug_message_callback( void *args, ULONG len )
 {
+    struct wine_gl_debug_message_params *params =
+        CONTAINING_RECORD( args, struct wine_gl_debug_message_params, cbparams );
     params->user_callback( params->source, params->type, params->id, params->severity,
                            params->length, params->message, params->user_data );
     return TRUE;
@@ -1282,21 +1284,22 @@ static BOOL WINAPI call_opengl_debug_message_callback( struct wine_gl_debug_mess
  */
 BOOL WINAPI DllMain( HINSTANCE hinst, DWORD reason, LPVOID reserved )
 {
-    void **kernel_callback_table;
     NTSTATUS status;
 
     switch(reason)
     {
     case DLL_PROCESS_ATTACH:
+    {
+        struct wglInit_params args = { (void*)call_opengl_debug_message_callback };
+
         if ((status = __wine_init_unix_call()))
         {
             ERR( "Failed to load unixlib, status %#lx\n", status );
             return FALSE;
         }
 
-        kernel_callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-        kernel_callback_table[NtUserCallOpenGLDebugMessageCallback] = call_opengl_debug_message_callback;
-        /* fallthrough */
+        return !UNIX_CALL( wglInit, &args );
+    }
     case DLL_THREAD_ATTACH:
         if ((status = UNIX_CALL( thread_attach, NtCurrentTeb() )))
         {
