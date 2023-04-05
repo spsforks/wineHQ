@@ -425,6 +425,7 @@ static inline size_t get_property_size( int format, unsigned long count )
     return count * (format / 8);
 }
 
+extern struct x11drv_client_funcs client_funcs DECLSPEC_HIDDEN;
 extern XVisualInfo default_visual DECLSPEC_HIDDEN;
 extern XVisualInfo argb_visual DECLSPEC_HIDDEN;
 extern Colormap default_colormap DECLSPEC_HIDDEN;
@@ -851,8 +852,7 @@ extern NTSTATUS x11drv_tablet_info( void *arg ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_xim_preedit_state( void *arg ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_xim_reset( void *arg ) DECLSPEC_HIDDEN;
 
-extern NTSTATUS x11drv_client_func( enum x11drv_client_funcs func, const void *params,
-                                    ULONG size ) DECLSPEC_HIDDEN;
+extern NTSTATUS x11drv_client_func( const struct user32_callback_params *cbparams, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_client_call( enum client_callback func, UINT arg ) DECLSPEC_HIDDEN;
 
 /* GDI helpers */

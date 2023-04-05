@@ -45,11 +45,24 @@ struct create_desktop_params
     UINT height;
 };
 
+/* driver client callbacks called through NtUserDispatchCallback interface */
+struct x11drv_client_funcs
+{
+    user32_callback_func callback;
+    user32_callback_func dnd_enter_event;
+    user32_callback_func dnd_position_event;
+    user32_callback_func dnd_post_drop;
+    user32_callback_func ime_set_composition_string;
+    user32_callback_func ime_set_result;
+    user32_callback_func systray_change_owner;
+};
+
 /* x11drv_init params */
 struct init_params
 {
     WNDPROC foreign_window_proc;
     BOOL *show_systray;
+    const struct x11drv_client_funcs *client_funcs;
 };
 
 struct systray_dock_params
@@ -76,21 +89,6 @@ struct xim_preedit_state_params
     BOOL open;
 };
 
-/* driver client callbacks exposed with KernelCallbackTable interface */
-enum x11drv_client_funcs
-{
-    client_func_callback = NtUserDriverCallbackFirst,
-    client_func_dnd_enter_event,
-    client_func_dnd_position_event,
-    client_func_dnd_post_drop,
-    client_func_ime_set_composition_string,
-    client_func_ime_set_result,
-    client_func_systray_change_owner,
-    client_func_last
-};
-
-C_ASSERT( client_func_last <= NtUserDriverCallbackLast + 1 );
-
 /* simplified interface for client callbacks requiring only a single UINT parameter */
 enum client_callback
 {
@@ -107,6 +105,7 @@ enum client_callback
 /* x11drv_callback params */
 struct client_callback_params
 {
+    struct user32_callback_params cbparams;
     UINT id;
     UINT arg;
 };
@@ -114,6 +113,7 @@ struct client_callback_params
 /* x11drv_dnd_enter_event and x11drv_dnd_post_drop params */
 struct format_entry
 {
+    struct user32_callback_params cbparams;
     UINT format;
     UINT size;
     char data[1];
@@ -122,6 +122,7 @@ struct format_entry
 /* x11drv_dnd_position_event params */
 struct dnd_position_event_params
 {
+    struct user32_callback_params cbparams;
     ULONG hwnd;
     POINT point;
     DWORD effect;
@@ -129,15 +130,18 @@ struct dnd_position_event_params
 
 struct dnd_post_drop_params
 {
+    struct user32_callback_params cbparams;
     char drop_files[1];
 };
 
 struct systray_change_owner_params
 {
+    struct user32_callback_params cbparams;
     UINT64 event_handle;
 };
 
 struct ime_set_result_params
 {
+    struct user32_callback_params cbparams;
     WCHAR data[1];
 };

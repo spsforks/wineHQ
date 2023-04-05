@@ -44,9 +44,15 @@ WINE_DEFAULT_DEBUG_CHANNEL(xim);
 
 BOOL ximInComposeMode=FALSE;
 
+struct CompStringType
+{
+    struct user32_callback_params cbparams;
+    BYTE data[1];
+};
+
 /* moved here from imm32 for dll separation */
 static DWORD dwCompStringLength = 0;
-static LPBYTE CompositionString = NULL;
+static struct CompStringType *CompositionString = NULL;
 static DWORD dwCompStringSize = 0;
 
 #define STYLE_OFFTHESPOT (XIMPreeditArea | XIMStatusArea)
@@ -88,13 +94,15 @@ static void X11DRV_ImmSetInternalString(UINT offset, UINT selLength, LPWSTR lpCo
     unsigned int byte_offset = offset * sizeof(WCHAR);
     unsigned int byte_selection = selLength * sizeof(WCHAR);
     int byte_expansion = byte_length - byte_selection;
-    LPBYTE ptr_new;
+    size_t new_size = FIELD_OFFSET( struct CompStringType, data[dwCompStringSize + byte_expansion] );
+    struct CompStringType *ptr_new;
+    BYTE *data_ptr;
 
     TRACE("( %i, %i, %p, %d):\n", offset, selLength, lpComp, len );
 
     if (byte_expansion + dwCompStringLength >= dwCompStringSize)
     {
-        ptr_new = realloc( CompositionString, dwCompStringSize + byte_expansion );
+        ptr_new = realloc( CompositionString, new_size );
         if (ptr_new == NULL)
         {
             ERR("Couldn't expand composition string buffer\n");
@@ -105,14 +113,14 @@ static void X11DRV_ImmSetInternalString(UINT offset, UINT selLength, LPWSTR lpCo
         dwCompStringSize += byte_expansion;
     }
 
-    ptr_new = CompositionString + byte_offset;
-    memmove(ptr_new + byte_length, ptr_new + byte_selection,
+    CompositionString->cbparams.func = (ULONG_PTR)client_funcs.ime_set_composition_string;
+    data_ptr = &CompositionString->data[byte_offset];
+    memmove(data_ptr + byte_length, data_ptr + byte_selection,
             dwCompStringLength - byte_offset - byte_selection);
-    if (lpComp) memcpy(ptr_new, lpComp, byte_length);
+    if (lpComp) memcpy(data_ptr, lpComp, byte_length);
     dwCompStringLength += byte_expansion;
 
-    x11drv_client_func( client_func_ime_set_composition_string,
-                        CompositionString, dwCompStringLength );
+    x11drv_client_func( &CompositionString->cbparams, new_size );
 }
 
 void X11DRV_XIMLookupChars( const char *str, UINT count )
@@ -123,9 +131,10 @@ void X11DRV_XIMLookupChars( const char *str, UINT count )
     TRACE("%p %u\n", str, count);
 
     if (!(params = malloc( FIELD_OFFSET( struct ime_set_result_params, data[count] ) ))) return;
+    params->cbparams.func = (ULONG_PTR)client_funcs.ime_set_result;
     len = ntdll_umbstowcs( str, count, params->data, count );
 
-    x11drv_client_func( client_func_ime_set_result, params, FIELD_OFFSET( struct ime_set_result_params, data[len] ) );
+    x11drv_client_func( &params->cbparams, FIELD_OFFSET( struct ime_set_result_params, data[len] ) );
     free( params );
 }
 
@@ -170,8 +179,7 @@ static int xic_preedit_done( XIC xic, XPointer user, XPointer arg )
     TRACE( "xic %p, hwnd %p, arg %p\n", xic, hwnd, arg );
 
     ximInComposeMode = FALSE;
-    if (dwCompStringSize)
-        free( CompositionString );
+    free( CompositionString );
     dwCompStringSize = 0;
     dwCompStringLength = 0;
     CompositionString = NULL;

@@ -503,7 +503,7 @@ DWORD EVENT_x11_time_to_win32_time(Time time)
   }
   else
   {
-      /* If we got an event in the 'future', then our clock is clearly wrong. 
+      /* If we got an event in the 'future', then our clock is clearly wrong.
          If we got it more than 10000 ms in the future, then it's most likely
          that the clock has wrapped.  */
 
@@ -609,8 +609,9 @@ static void handle_manager_message( HWND hwnd, XClientMessageEvent *event )
 
         TRACE( "new owner %lx\n", event->data.l[2] );
 
+        params.cbparams.func = (ULONG_PTR)client_funcs.systray_change_owner;
         params.event_handle = (UINT_PTR)event;
-        x11drv_client_func( client_func_systray_change_owner, &params, sizeof(params) );
+        x11drv_client_func( &params.cbparams, sizeof(params) );
     }
 }
 
@@ -720,7 +721,7 @@ static void handle_wm_protocols( HWND hwnd, XClientMessageEvent *event )
     {
       XClientMessageEvent xev;
       xev = *event;
-      
+
       TRACE("NET_WM Ping\n");
       xev.window = DefaultRootWindow(xev.display);
       XSendEvent(xev.display, xev.window, False, SubstructureRedirectMask | SubstructureNotifyMask, (XEvent*)&xev);
@@ -1439,7 +1440,7 @@ static HWND find_drop_window( HWND hQueryWnd, LPPOINT lpPt )
     RECT tempRect;
 
     if (!NtUserIsWindowEnabled(hQueryWnd)) return 0;
-    
+
     NtUserGetWindowRect(hQueryWnd, &tempRect);
 
     if(!PtInRect(&tempRect, *lpPt)) return 0;
@@ -1463,7 +1464,7 @@ static HWND find_drop_window( HWND hQueryWnd, LPPOINT lpPt )
     }
 
     if(!(NtUserGetWindowLongW( hQueryWnd, GWL_EXSTYLE ) & WS_EX_ACCEPTFILES)) return 0;
-    
+
     NtUserScreenToClient( hQueryWnd, lpPt );
 
     return hQueryWnd;
@@ -1472,8 +1473,9 @@ static HWND find_drop_window( HWND hQueryWnd, LPPOINT lpPt )
 static void post_drop( HWND hwnd, struct dnd_post_drop_params *params, ULONG size )
 {
     DROPFILES *drop = (void*)params->drop_files;
+    params->cbparams.func = (ULONG_PTR)client_funcs.dnd_post_drop;
     drop->fWide = HandleToUlong( hwnd ); /* abuse fWide to pass window handle */
-    x11drv_client_func( client_func_dnd_post_drop, drop, size );
+    x11drv_client_func( &params->cbparams, size );
 }
 
 /**********************************************************************
@@ -1739,7 +1741,8 @@ static void handle_xdnd_enter_event( HWND hWnd, XClientMessageEvent *event )
                                   xdndtypes, count, &size );
     if (data)
     {
-        x11drv_client_func( client_func_dnd_enter_event, data, size );
+        data->cbparams.func = (ULONG_PTR)client_funcs.dnd_enter_event;
+        x11drv_client_func( &data->cbparams, size );
         free( data );
     }
 
@@ -1790,11 +1793,12 @@ static void handle_xdnd_position_event( HWND hwnd, XClientMessageEvent *event )
     XClientMessageEvent e;
     UINT effect;
 
+    params.cbparams.func = (ULONG_PTR)client_funcs.dnd_position_event;
     params.hwnd = HandleToUlong( hwnd );
     params.point = root_to_virtual_screen( event->data.l[2] >> 16, event->data.l[2] & 0xFFFF );
     params.effect = effect = xdnd_action_to_drop_effect( event->data.l[4] );
 
-    effect = x11drv_client_func( client_func_dnd_position_event, &params, sizeof(params) );
+    effect = x11drv_client_func( &params.cbparams, sizeof(params) );
 
     TRACE( "actionRequested(%ld) chosen(0x%x) at x(%d),y(%d)\n",
            event->data.l[4], effect, (int)params.point.x, (int)params.point.y );
