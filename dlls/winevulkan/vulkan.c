@@ -134,6 +134,7 @@ static VkBool32 debug_utils_callback_conversion(VkDebugUtilsMessageSeverityFlagB
     }
 
     /* FIXME: we should pack all referenced structs instead of passing pointers */
+    params.cbparams.func = callback_funcs.call_vulkan_debug_utils_callback;
     params.user_callback = object->user_callback;
     params.user_data = object->user_data;
     params.severity = severity;
@@ -168,8 +169,7 @@ static VkBool32 debug_utils_callback_conversion(VkDebugUtilsMessageSeverityFlagB
     params.data.pObjects = object_name_infos;
 
     /* applications should always return VK_FALSE */
-    result = KeUserModeCallback( NtUserCallVulkanDebugUtilsCallback, &params, sizeof(params),
-                                 &ret_ptr, &ret_len );
+    result = KeUserModeCallback( NtUserDispatchCallback, &params.cbparams, sizeof(params), &ret_ptr, &ret_len );
 
     free(object_name_infos);
 
@@ -196,6 +196,7 @@ static VkBool32 debug_report_callback_conversion(VkDebugReportFlagsEXT flags, Vk
     }
 
     /* FIXME: we should pack all referenced structs instead of passing pointers */
+    params.cbparams.func = callback_funcs.call_vulkan_debug_report_callback;
     params.user_callback = object->user_callback;
     params.user_data = object->user_data;
     params.flags = flags;
@@ -209,8 +210,7 @@ static VkBool32 debug_report_callback_conversion(VkDebugReportFlagsEXT flags, Vk
     if (!params.object_handle)
         params.object_type = VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT;
 
-    return KeUserModeCallback( NtUserCallVulkanDebugReportCallback, &params, sizeof(params),
-                               &ret_ptr, &ret_len );
+    return KeUserModeCallback( NtUserDispatchCallback, &params.cbparams, sizeof(params), &ret_ptr, &ret_len );
 }
 
 static void wine_vk_physical_device_free(struct wine_phys_dev *phys_dev)
@@ -462,8 +462,12 @@ static void wine_vk_device_free(struct wine_device *device)
     free(device);
 }
 
-NTSTATUS init_vulkan(void *args)
+struct vk_callback_funcs callback_funcs;
+
+NTSTATUS init_vulkan(void *arg)
 {
+    const struct vk_callback_funcs *funcs = arg;
+
     vk_funcs = __wine_get_vulkan_driver(WINE_VULKAN_DRIVER_VERSION);
     if (!vk_funcs)
     {
@@ -471,6 +475,7 @@ NTSTATUS init_vulkan(void *args)
         return STATUS_UNSUCCESSFUL;
     }
 
+    callback_funcs = *funcs;
     return STATUS_SUCCESS;
 }
 

@@ -230,9 +230,30 @@ VkResult WINAPI vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t *supported_ver
     return VK_SUCCESS;
 }
 
+static NTSTATUS WINAPI call_vulkan_debug_report_callback( void *args, ULONG len )
+{
+    struct wine_vk_debug_report_params *params =
+        CONTAINING_RECORD( args, struct wine_vk_debug_report_params, cbparams );
+    return params->user_callback(params->flags, params->object_type, params->object_handle, params->location,
+                                 params->code, params->layer_prefix, params->message, params->user_data);
+}
+
+static NTSTATUS WINAPI call_vulkan_debug_utils_callback( void *args, ULONG len )
+{
+    struct wine_vk_debug_utils_params *params =
+        CONTAINING_RECORD( args, struct wine_vk_debug_utils_params, cbparams );
+    return params->user_callback(params->severity, params->message_types, &params->data, params->user_data);
+}
+
 static BOOL WINAPI wine_vk_init(INIT_ONCE *once, void *param, void **context)
 {
-    return !__wine_init_unix_call() && !UNIX_CALL(init, NULL);
+    struct vk_callback_funcs callback_funcs =
+    {
+        (ULONG_PTR)call_vulkan_debug_report_callback,
+        (ULONG_PTR)call_vulkan_debug_utils_callback,
+    };
+
+    return !__wine_init_unix_call() && !UNIX_CALL(init, &callback_funcs);
 }
 
 static BOOL  wine_vk_init_once(void)
@@ -602,21 +623,8 @@ void WINAPI vkFreeCommandBuffers(VkDevice device, VkCommandPool cmd_pool, uint32
     }
 }
 
-static BOOL WINAPI call_vulkan_debug_report_callback( struct wine_vk_debug_report_params *params, ULONG size )
-{
-    return params->user_callback(params->flags, params->object_type, params->object_handle, params->location,
-                                 params->code, params->layer_prefix, params->message, params->user_data);
-}
-
-static BOOL WINAPI call_vulkan_debug_utils_callback( struct wine_vk_debug_utils_params *params, ULONG size )
-{
-    return params->user_callback(params->severity, params->message_types, &params->data, params->user_data);
-}
-
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved)
 {
-    void **kernel_callback_table;
-
     TRACE("%p, %lu, %p\n", hinst, reason, reserved);
 
     switch (reason)
@@ -624,10 +632,6 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved)
         case DLL_PROCESS_ATTACH:
             hinstance = hinst;
             DisableThreadLibraryCalls(hinst);
-
-            kernel_callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-            kernel_callback_table[NtUserCallVulkanDebugReportCallback] = call_vulkan_debug_report_callback;
-            kernel_callback_table[NtUserCallVulkanDebugUtilsCallback]  = call_vulkan_debug_utils_callback;
             break;
     }
     return TRUE;

@@ -51,9 +51,6 @@ enum
     /* win16 hooks */
     NtUserCallFreeIcon,
     NtUserThunkLock,
-    /* Vulkan support */
-    NtUserCallVulkanDebugReportCallback,
-    NtUserCallVulkanDebugUtilsCallback,
     /* OpenGL support */
     NtUserCallOpenGLDebugMessageCallback,
     /* Driver-specific callbacks */

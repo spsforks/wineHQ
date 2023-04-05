@@ -1023,18 +1023,6 @@ static NTSTATUS WINAPI wow64_NtUserThunkLock( void *arg, ULONG size )
     return dispatch_callback( NtUserThunkLock, arg, size );
 }
 
-static NTSTATUS WINAPI wow64_NtUserCallVulkanDebugReportCallback( void *arg, ULONG size )
-{
-    FIXME( "\n" );
-    return 0;
-}
-
-static NTSTATUS WINAPI wow64_NtUserCallVulkanDebugUtilsCallback( void *arg, ULONG size )
-{
-    FIXME( "\n" );
-    return 0;
-}
-
 static NTSTATUS WINAPI wow64_NtUserCallOpenGLDebugMessageCallback( void *arg, ULONG size )
 {
     FIXME( "\n" );
@@ -1117,9 +1105,6 @@ user_callback user_callbacks[] =
     /* win16 hooks */
     wow64_NtUserCallFreeIcon,
     wow64_NtUserThunkLock,
-    /* Vulkan support */
-    wow64_NtUserCallVulkanDebugReportCallback,
-    wow64_NtUserCallVulkanDebugUtilsCallback,
     /* OpenGL support */
     wow64_NtUserCallOpenGLDebugMessageCallback,
     /* Driver-specific callbacks */
