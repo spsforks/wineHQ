@@ -924,9 +924,10 @@ NTSTATUS WINAPI x11drv_ime_set_composition_string( void *param, ULONG size )
     return ImeSetCompositionString(FROM_X11, SCS_SETSTR, param, size, NULL, 0);
 }
 
-NTSTATUS WINAPI x11drv_ime_set_result( void *params, ULONG len )
+NTSTATUS WINAPI x11drv_ime_set_result( void *arg, ULONG len )
 {
-    WCHAR *lpResult = params;
+    struct ime_set_result_params *params = arg;
+    WCHAR *lpResult = params->data;
     HIMC imc;
     LPINPUTCONTEXT lpIMC;
     HIMCC newCompStr;
@@ -934,6 +935,7 @@ NTSTATUS WINAPI x11drv_ime_set_result( void *params, ULONG len )
     BOOL inComp;
     HWND focus;
 
+    len -= FIELD_OFFSET( struct ime_set_result_params, data[0] );
     len /= sizeof(WCHAR);
     if ((focus = GetFocus()))
         x11drv_ime_update_association( HandleToUlong( focus ));

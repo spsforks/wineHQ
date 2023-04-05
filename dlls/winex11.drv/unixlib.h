@@ -136,3 +136,8 @@ struct systray_change_owner_params
 {
     UINT64 event_handle;
 };
+
+struct ime_set_result_params
+{
+    WCHAR data[1];
+};

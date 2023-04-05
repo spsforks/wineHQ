@@ -117,16 +117,16 @@ static void X11DRV_ImmSetInternalString(UINT offset, UINT selLength, LPWSTR lpCo
 
 void X11DRV_XIMLookupChars( const char *str, UINT count )
 {
-    WCHAR *output;
+    struct ime_set_result_params *params;
     DWORD len;
 
     TRACE("%p %u\n", str, count);
 
-    if (!(output = malloc( count * sizeof(WCHAR) ))) return;
-    len = ntdll_umbstowcs( str, count, output, count );
+    if (!(params = malloc( FIELD_OFFSET( struct ime_set_result_params, data[count] ) ))) return;
+    len = ntdll_umbstowcs( str, count, params->data, count );
 
-    x11drv_client_func( client_func_ime_set_result, output, len * sizeof(WCHAR) );
-    free( output );
+    x11drv_client_func( client_func_ime_set_result, params, FIELD_OFFSET( struct ime_set_result_params, data[len] ) );
+    free( params );
 }
 
 static BOOL xic_preedit_state_notify( XIC xic, XPointer user, XPointer arg )
