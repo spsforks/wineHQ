@@ -24,7 +24,10 @@
 #include <imm.h>
 #include <winternl.h>
 
-/* KernelCallbackTable codes, not compatible with Windows */
+/* KernelCallbackTable codes, not compatible with Windows.
+   All of these functions must live inside user32.dll. Overwatch 2's
+   KiUserCallbackDispatcher hook verifies this and prevents the callback from
+   running if that check fails. */
 enum
 {
     /* user32 callbacks */
