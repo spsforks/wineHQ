@@ -51,9 +51,6 @@ enum
     /* win16 hooks */
     NtUserCallFreeIcon,
     NtUserThunkLock,
-    /* Driver-specific callbacks */
-    NtUserDriverCallbackFirst,
-    NtUserDriverCallbackLast = NtUserDriverCallbackFirst + 9,
     NtUserCallCount
 };
 
