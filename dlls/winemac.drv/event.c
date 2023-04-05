@@ -162,6 +162,7 @@ static void macdrv_im_set_text(const macdrv_event *event)
 
     size = offsetof(struct ime_set_text_params, text[length]);
     if (!(params = malloc(size))) return;
+    params->cbparams.func = (ULONG_PTR)client_funcs.ime_set_text;
     params->hwnd = HandleToUlong(hwnd);
     params->data = (UINT_PTR)event->im_set_text.data;
     params->cursor_pos = event->im_set_text.cursor_pos;
@@ -170,7 +171,7 @@ static void macdrv_im_set_text(const macdrv_event *event)
     if (length)
         CFStringGetCharacters(event->im_set_text.text, CFRangeMake(0, length), params->text);
 
-    macdrv_client_func(client_func_ime_set_text, params, size);
+    macdrv_client_func(&params->cbparams, sizeof(params));
 }
 
 /***********************************************************************
@@ -229,13 +230,14 @@ static BOOL query_drag_drop(macdrv_query *query)
         return FALSE;
     }
 
+    params.cbparams.func = (ULONG_PTR)client_funcs.dnd_query_drop;
     params.hwnd = HandleToUlong(hwnd);
     params.effect = drag_operations_to_dropeffects(query->drag_drop.op);
     params.x = query->drag_drop.x + data->whole_rect.left;
     params.y = query->drag_drop.y + data->whole_rect.top;
     params.handle = (UINT_PTR)query->drag_drop.pasteboard;
     release_win_data(data);
-    return macdrv_client_func(client_func_dnd_query_drop, &params, sizeof(params));
+    return macdrv_client_func(&params.cbparams, sizeof(params));
 }
 
 /**************************************************************************
@@ -244,8 +246,9 @@ static BOOL query_drag_drop(macdrv_query *query)
 static BOOL query_drag_exited(macdrv_query *query)
 {
     struct dnd_query_exited_params params;
+    params.cbparams.func = (ULONG_PTR)client_funcs.dnd_query_exited;
     params.hwnd = HandleToUlong(macdrv_get_window_hwnd(query->window));
-    return macdrv_client_func(client_func_dnd_query_exited, &params, sizeof(params));
+    return macdrv_client_func(&params.cbparams, sizeof(params));
 }
 
 
@@ -265,6 +268,7 @@ static BOOL query_drag_operation(macdrv_query *query)
         return FALSE;
     }
 
+    params.cbparams.func = (ULONG_PTR)client_funcs.dnd_query_drag;
     params.hwnd = HandleToUlong(hwnd);
     params.effect = drag_operations_to_dropeffects(query->drag_operation.offered_ops);
     params.x = query->drag_operation.x + data->whole_rect.left;
@@ -272,7 +276,7 @@ static BOOL query_drag_operation(macdrv_query *query)
     params.handle = (UINT_PTR)query->drag_operation.pasteboard;
     release_win_data(data);
 
-    effect = macdrv_client_func(client_func_dnd_query_drag, &params, sizeof(params));
+    effect = macdrv_client_func(&params.cbparams, sizeof(params));
     if (!effect) return FALSE;
 
     query->drag_operation.accepted_op = dropeffect_to_drag_operation(effect,
@@ -297,12 +301,13 @@ BOOL query_ime_char_rect(macdrv_query* query)
     TRACE_(imm)("win %p/%p himc %p range %ld-%ld\n", hwnd, query->window, himc, range->location,
                 range->length);
 
+    params.cbparams.func = (ULONG_PTR)client_funcs.ime_query_char_rect;
     params.hwnd = HandleToUlong(hwnd);
     params.data = (UINT_PTR)himc;
     params.result = (UINT_PTR)&result;
     params.location = range->location;
     params.length = range->length;
-    ret = macdrv_client_func(client_func_ime_query_char_rect, &params, sizeof(params));
+    ret = macdrv_client_func(&params.cbparams, sizeof(params));
     *range = CFRangeMake(result.location, result.length);
     *rect = cgrect_from_rect(result.rect);
 

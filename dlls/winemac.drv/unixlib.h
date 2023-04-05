@@ -79,9 +79,22 @@ struct localized_string
     UINT64 str;
 };
 
+/* driver client callbacks called through NtUserDispatchCallback interface */
+struct macdrv_client_funcs
+{
+    user32_callback_func app_icon;
+    user32_callback_func app_quit_request;
+    user32_callback_func dnd_query_drag;
+    user32_callback_func dnd_query_drop;
+    user32_callback_func dnd_query_exited;
+    user32_callback_func ime_query_char_rect;
+    user32_callback_func ime_set_text;
+};
+
 struct init_params
 {
     struct localized_string *strings;
+    const struct macdrv_client_funcs *client_funcs;
 };
 
 /* macdrv_notify_icon params */
@@ -95,19 +108,6 @@ struct notify_icon_params
 struct quit_result_params
 {
     int result;
-};
-
-/* driver client callbacks exposed with KernelCallbackTable interface */
-enum macdrv_client_funcs
-{
-    client_func_app_icon = NtUserDriverCallbackFirst,
-    client_func_app_quit_request,
-    client_func_dnd_query_drag,
-    client_func_dnd_query_drop,
-    client_func_dnd_query_exited,
-    client_func_ime_query_char_rect,
-    client_func_ime_set_text,
-    client_func_last
 };
 
 /* macdrv_app_icon result */
@@ -129,18 +129,21 @@ struct app_icon_result
 /* macdrv_app_icon params */
 struct app_icon_params
 {
+    struct user32_callback_params cbparams;
     UINT64 result; /* FIXME: Use NtCallbackReturn instead */
 };
 
 /* macdrv_app_quit_request params */
 struct app_quit_request_params
 {
+    struct user32_callback_params cbparams;
     UINT flags;
 };
 
 /* macdrv_dnd_query_drag params */
 struct dnd_query_drag_params
 {
+    struct user32_callback_params cbparams;
     UINT32 hwnd;
     UINT32 effect;
     INT32 x;
@@ -151,6 +154,7 @@ struct dnd_query_drag_params
 /* macdrv_dnd_query_drop params */
 struct dnd_query_drop_params
 {
+    struct user32_callback_params cbparams;
     UINT32 hwnd;
     UINT32 effect;
     INT32 x;
@@ -161,6 +165,7 @@ struct dnd_query_drop_params
 /* macdrv_dnd_query_exited params */
 struct dnd_query_exited_params
 {
+    struct user32_callback_params cbparams;
     UINT32 hwnd;
 };
 
@@ -175,6 +180,7 @@ struct ime_query_char_rect_result
 /* macdrv_ime_query_char_rect params */
 struct ime_query_char_rect_params
 {
+    struct user32_callback_params cbparams;
     UINT32 hwnd;
     UINT32 location;
     UINT64 data;
@@ -185,6 +191,7 @@ struct ime_query_char_rect_params
 /* macdrv_ime_set_text params */
 struct ime_set_text_params
 {
+    struct user32_callback_params cbparams;
     UINT32 hwnd;
     UINT32 cursor_pos;
     UINT64 data;
@@ -196,5 +203,3 @@ static inline void *param_ptr(UINT64 param)
 {
     return (void *)(UINT_PTR)param;
 }
-
-C_ASSERT(client_func_last <= NtUserDriverCallbackLast + 1);
