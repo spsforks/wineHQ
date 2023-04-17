@@ -364,12 +364,120 @@ static void mixer_test_controlA(HMIXEROBJ mix, MIXERCONTROLA *control)
     }
 }
 
+static void test_mixerGetLineControlsA(MIXERLINEA* mixerlineA, HMIXEROBJ mix, DWORD fdwControls, DWORD* control_data)
+{
+    LPMIXERCONTROLA    array;
+    MMRESULT rc;
+    DWORD nc;
+    int loop = 0;
+    const char* current_flag;
+
+    if (mixerlineA->cControls) {
+        array=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,
+            (fdwControls == MIXER_GETLINECONTROLSF_ALL) ? 
+            mixerlineA->cControls*sizeof(MIXERCONTROLA) : sizeof(MIXERCONTROLA));
+        if (array) {
+            MIXERLINECONTROLSA controls;
+            rc = mixerGetLineControlsA(mix, 0, fdwControls);
+            ok(rc==MMSYSERR_INVALPARAM,
+                "mixerGetLineControlsA(MIXER_GETLINECONTROLSF_ALL): "
+                "MMSYSERR_INVALPARAM expected, got %s\n",
+                mmsys_error(rc));
+            rc = mixerGetLineControlsA(mix, &controls, -1);
+            ok(rc==MMSYSERR_INVALFLAG||rc==MMSYSERR_INVALPARAM,
+                "mixerGetLineControlsA(-1): "
+                "MMSYSERR_INVALFLAG or MMSYSERR_INVALPARAM expected, got %s\n",
+                mmsys_error(rc));
+            switch (fdwControls)
+            {
+            case MIXER_GETLINECONTROLSF_ALL:
+                loop = 1;
+                current_flag = "MIXER_GETLINECONTROLSF_ALL";
+                break;
+            case MIXER_GETLINECONTROLSF_ONEBYID:
+                loop = control_data[0];
+                current_flag = "MIXER_GETLINECONTROLSF_ONEBYID";
+                break;
+            case MIXER_GETLINECONTROLSF_ONEBYTYPE:
+                loop = control_data[0];
+                current_flag = "MIXER_GETLINECONTROLSF_ONEBYTYPE";
+                break;
+            }
+            for (int i = 0; i < loop; i++)
+            {
+                switch (fdwControls)
+                {
+                case MIXER_GETLINECONTROLSF_ALL:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSA);
+                    controls.cControls = mixerlineA->cControls;
+                    controls.dwLineID = mixerlineA->dwLineID;
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLA);
+                    break;
+                case MIXER_GETLINECONTROLSF_ONEBYID:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSA);
+                    controls.cControls = 1;
+                    controls.dwLineID = 0xdeadbeef; // MSDN: dwLineID will be ignored
+                    controls.dwControlID = control_data[i+1];
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLA);
+                    break;
+                case MIXER_GETLINECONTROLSF_ONEBYTYPE:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSA);
+                    controls.cControls = 1;
+                    controls.dwLineID = mixerlineA->dwLineID;
+                    controls.dwControlType = control_data[i+1];
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLA);
+                    break;
+                
+                default:
+                    break;
+                }
+
+                rc = mixerGetLineControlsA(mix, &controls, fdwControls);
+                todo_wine_if(fdwControls == MIXER_GETLINECONTROLSF_ONEBYID)
+                ok(rc==MMSYSERR_NOERROR,
+                    "mixerGetLineControlsA(%s): "
+                    "MMSYSERR_NOERROR expected, got %s\n",
+                    current_flag, mmsys_error(rc));
+                if (rc==MMSYSERR_NOERROR) {
+                    if (fdwControls == MIXER_GETLINECONTROLSF_ALL && control_data)
+                        control_data[0] = controls.cControls;
+                    for(nc=0;nc<controls.cControls;nc++) {
+                        if (fdwControls == MIXER_GETLINECONTROLSF_ALL && control_data)
+                            control_data[nc+1] = array[nc].dwControlID;
+
+                        if (winetest_interactive) {
+                            trace("        %ld: \"%s\" (%s) ControlID=%ld\n", nc,
+                                    array[nc].szShortName,
+                                    array[nc].szName, array[nc].dwControlID);
+                            trace("            ControlType=%s\n",
+                                    control_type(array[nc].dwControlType));
+                            trace("            Control=0x%08lx(%s)\n",
+                                    array[nc].fdwControl,
+                                    control_flags(array[nc].fdwControl));
+                            trace("            Items=%ld Min=%ld Max=%ld Step=%ld\n",
+                                    array[nc].cMultipleItems,
+                                    S1(array[nc].Bounds).dwMinimum,
+                                    S1(array[nc].Bounds).dwMaximum,
+                                    array[nc].Metrics.cSteps);
+                        }
+                        mixer_test_controlA(mix, &array[nc]);
+                    }
+                }
+            }
+            HeapFree(GetProcessHeap(),0,array);
+        }
+    }
+}
+
 static void mixer_test_deviceA(int device)
 {
     MIXERCAPSA capsA;
     HMIXEROBJ mix;
     MMRESULT rc;
-    DWORD d,s,ns,nc;
+    DWORD d,s,ns;
 
     rc=mixerGetDevCapsA(device,0,sizeof(capsA));
     ok(rc==MMSYSERR_INVALPARAM,
@@ -488,8 +596,6 @@ static void mixer_test_deviceA(int device)
                 if (rc==MMSYSERR_NODRIVER)
                     trace("  No Driver\n");
                 else if (rc==MMSYSERR_NOERROR) {
-                    LPMIXERCONTROLA    array;
-                    MIXERLINECONTROLSA controls;
                     if (winetest_interactive) {
                         trace("      %ld: \"%s\" (%s) Destination=%ld Source=%ld\n",
                               s,mixerlineA.szShortName, mixerlineA.szName,
@@ -512,61 +618,15 @@ static void mixer_test_deviceA(int device)
                               mixerlineA.Target.wMid, mixerlineA.Target.wPid);
                     }
                     if (mixerlineA.cControls) {
-                        array=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,
-                            mixerlineA.cControls*sizeof(MIXERCONTROLA));
-                        if (array) {
-                            memset(&controls, 0, sizeof(controls));
-
-                            rc = mixerGetLineControlsA(mix, 0, MIXER_GETLINECONTROLSF_ALL);
-                            ok(rc==MMSYSERR_INVALPARAM,
-                               "mixerGetLineControlsA(MIXER_GETLINECONTROLSF_ALL): "
-                               "MMSYSERR_INVALPARAM expected, got %s\n",
-                               mmsys_error(rc));
-
-                            rc = mixerGetLineControlsA(mix, &controls, -1);
-                            ok(rc==MMSYSERR_INVALFLAG||rc==MMSYSERR_INVALPARAM,
-                               "mixerGetLineControlsA(-1): "
-                               "MMSYSERR_INVALFLAG or MMSYSERR_INVALPARAM expected, got %s\n",
-                               mmsys_error(rc));
-
-                            controls.cbStruct = sizeof(MIXERLINECONTROLSA);
-                            controls.cControls = mixerlineA.cControls;
-                            controls.dwLineID = mixerlineA.dwLineID;
-                            controls.pamxctrl = array;
-                            controls.cbmxctrl = sizeof(MIXERCONTROLA);
-
-                            /* FIXME: do MIXER_GETLINECONTROLSF_ONEBYID
-                             * and MIXER_GETLINECONTROLSF_ONEBYTYPE
-                             */
-                            rc = mixerGetLineControlsA(mix, &controls, MIXER_GETLINECONTROLSF_ALL);
-                            ok(rc==MMSYSERR_NOERROR,
-                               "mixerGetLineControlsA(MIXER_GETLINECONTROLSF_ALL): "
-                               "MMSYSERR_NOERROR expected, got %s\n",
-                               mmsys_error(rc));
-                            if (rc==MMSYSERR_NOERROR) {
-                                for(nc=0;nc<mixerlineA.cControls;nc++) {
-                                    if (winetest_interactive) {
-                                        trace("        %ld: \"%s\" (%s) ControlID=%ld\n", nc,
-                                              array[nc].szShortName,
-                                              array[nc].szName, array[nc].dwControlID);
-                                        trace("            ControlType=%s\n",
-                                               control_type(array[nc].dwControlType));
-                                        trace("            Control=0x%08lx(%s)\n",
-                                              array[nc].fdwControl,
-                                              control_flags(array[nc].fdwControl));
-                                        trace("            Items=%ld Min=%ld Max=%ld Step=%ld\n",
-                                              array[nc].cMultipleItems,
-                                              S1(array[nc].Bounds).dwMinimum,
-                                              S1(array[nc].Bounds).dwMaximum,
-                                              array[nc].Metrics.cSteps);
-                                    }
-
-                                    mixer_test_controlA(mix, &array[nc]);
-                                }
-                            }
-
-                            HeapFree(GetProcessHeap(),0,array);
+                        DWORD* ids = HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY, (mixerlineA.cControls+1)*sizeof(DWORD));
+                        DWORD types[] = {2, MIXERCONTROL_CONTROLTYPE_VOLUME, MIXERCONTROL_CONTROLTYPE_MUTE};
+                        test_mixerGetLineControlsA(&mixerlineA, mix, MIXER_GETLINECONTROLSF_ALL, ids);
+                        ok(ids != NULL, "Alloc ids failed\n");
+                        if (ids) {
+                            test_mixerGetLineControlsA(&mixerlineA, mix, MIXER_GETLINECONTROLSF_ONEBYID, ids);
+                            HeapFree(GetProcessHeap(),0,ids);
                         }
+                        test_mixerGetLineControlsA(&mixerlineA, mix, MIXER_GETLINECONTROLSF_ONEBYTYPE, types);
                     }
                 }
               }
@@ -743,12 +803,128 @@ static void mixer_test_controlW(HMIXEROBJ mix, MIXERCONTROLW *control)
     }
 }
 
+static void test_mixerGetLineControlsW(MIXERLINEW* mixerlineW, HMIXEROBJ mix, DWORD fdwControls, DWORD* control_data)
+{
+    LPMIXERCONTROLW    array;
+    MMRESULT rc;
+    DWORD nc;
+    char szShortName[MIXER_SHORT_NAME_CHARS];
+    char szName[MIXER_LONG_NAME_CHARS];
+    int loop = 0;
+    const char* current_flag;
+
+    if (mixerlineW->cControls) {
+        array=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,
+            fdwControls == MIXER_GETLINECONTROLSF_ALL ? 
+            mixerlineW->cControls*sizeof(MIXERCONTROLW) : sizeof(MIXERCONTROLW));
+        if (array) {
+            MIXERLINECONTROLSW controls;
+            rc = mixerGetLineControlsW(mix, 0, fdwControls);
+            ok(rc==MMSYSERR_INVALPARAM,
+                "mixerGetLineControlsW(MIXER_GETLINECONTROLSF_ALL): "
+                "MMSYSERR_INVALPARAM expected, got %s\n",
+                mmsys_error(rc));
+            rc = mixerGetLineControlsW(mix, &controls, -1);
+            ok(rc==MMSYSERR_INVALFLAG||rc==MMSYSERR_INVALPARAM,
+                "mixerGetLineControlsW(-1): "
+                "MMSYSERR_INVALFLAG or MMSYSERR_INVALPARAM expected, got %s\n",
+                mmsys_error(rc));
+            switch (fdwControls)
+            {
+            case MIXER_GETLINECONTROLSF_ALL:
+                loop = 1;
+                current_flag = "MIXER_GETLINECONTROLSF_ALL";
+                break;
+            case MIXER_GETLINECONTROLSF_ONEBYID:
+                loop = control_data[0];
+                current_flag = "MIXER_GETLINECONTROLSF_ONEBYID";
+                break;
+            case MIXER_GETLINECONTROLSF_ONEBYTYPE:
+                loop = control_data[0];
+                current_flag = "MIXER_GETLINECONTROLSF_ONEBYTYPE";
+                break;
+            }
+            for (int i = 0; i < loop; i++)
+            {
+                switch (fdwControls)
+                {
+                case MIXER_GETLINECONTROLSF_ALL:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSW);
+                    controls.cControls = mixerlineW->cControls;
+                    controls.dwLineID = mixerlineW->dwLineID;
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLW);
+                    break;
+                case MIXER_GETLINECONTROLSF_ONEBYID:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSW);
+                    controls.cControls = 1;
+                    controls.dwLineID = 0xdeadbeef; // MSDN: dwLineID will be ignored
+                    controls.dwControlID = control_data[i+1];
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLW);
+                    break;
+                case MIXER_GETLINECONTROLSF_ONEBYTYPE:
+                    controls.cbStruct = sizeof(MIXERLINECONTROLSW);
+                    controls.cControls = 1;
+                    controls.dwLineID = mixerlineW->dwLineID;
+                    controls.dwControlType = control_data[i+1];
+                    controls.pamxctrl = array;
+                    controls.cbmxctrl = sizeof(MIXERCONTROLW);
+                    break;
+                
+                default:
+                    break;
+                }
+
+                rc = mixerGetLineControlsW(mix, &controls, fdwControls);
+                todo_wine_if(fdwControls == MIXER_GETLINECONTROLSF_ONEBYID)
+                ok(rc==MMSYSERR_NOERROR,
+                    "mixerGetLineControlsW(%s): "
+                    "MMSYSERR_NOERROR expected, got %s\n",
+                    current_flag, mmsys_error(rc));
+                if (rc==MMSYSERR_NOERROR) {
+                    if (fdwControls == MIXER_GETLINECONTROLSF_ALL && control_data)
+                        control_data[0] = controls.cControls;
+                    for(nc=0;nc<controls.cControls;nc++) {
+                        if (fdwControls == MIXER_GETLINECONTROLSF_ALL && control_data)
+                            control_data[nc+1] = array[nc].dwControlID;
+
+                        if (winetest_interactive) {
+                            WideCharToMultiByte(CP_ACP,0,array[nc].szShortName,
+                                MIXER_SHORT_NAME_CHARS,szShortName,
+                                MIXER_SHORT_NAME_CHARS,NULL,NULL);
+                            WideCharToMultiByte(CP_ACP,0,array[nc].szName,
+                                MIXER_LONG_NAME_CHARS,szName,
+                                MIXER_LONG_NAME_CHARS,NULL,NULL);
+                            trace("        %ld: \"%s\" (%s) ControlID=%ld\n", nc,
+                                    szShortName, szName, array[nc].dwControlID);
+                            trace("            ControlType=%s\n",
+                                    control_type(array[nc].dwControlType));
+                            trace("            Control=0x%08lx(%s)\n",
+                                    array[nc].fdwControl,
+                                    control_flags(array[nc].fdwControl));
+                            trace("            Items=%ld Min=%ld Max=%ld Step=%ld\n",
+                                    array[nc].cMultipleItems,
+                                    S1(array[nc].Bounds).dwMinimum,
+                                    S1(array[nc].Bounds).dwMaximum,
+                                    array[nc].Metrics.cSteps);
+                        }
+                        mixer_test_controlW(mix, &array[nc]);
+                    }
+                }
+            }
+            HeapFree(GetProcessHeap(),0,array);
+        }
+    }
+
+}
+
 static void mixer_test_deviceW(int device)
 {
     MIXERCAPSW capsW;
     HMIXEROBJ mix;
     MMRESULT rc;
-    DWORD d,s,ns,nc;
+    DWORD d,s,ns;
     char szShortName[MIXER_SHORT_NAME_CHARS];
     char szName[MIXER_LONG_NAME_CHARS];
     char szPname[MAXPNAMELEN];
@@ -881,8 +1057,6 @@ static void mixer_test_deviceW(int device)
                 if (rc==MMSYSERR_NODRIVER)
                     trace("  No Driver\n");
                 else if (rc==MMSYSERR_NOERROR) {
-                    LPMIXERCONTROLW    array;
-                    MIXERLINECONTROLSW controls;
                     if (winetest_interactive) {
                         WideCharToMultiByte(CP_ACP,0,mixerlineW.szShortName,
                             MIXER_SHORT_NAME_CHARS,szShortName,
@@ -913,62 +1087,15 @@ static void mixer_test_deviceW(int device)
                               mixerlineW.Target.wMid, mixerlineW.Target.wPid);
                     }
                     if (mixerlineW.cControls) {
-                        array=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,
-                            mixerlineW.cControls*sizeof(MIXERCONTROLW));
-                        if (array) {
-                            rc = mixerGetLineControlsW(mix, 0, MIXER_GETLINECONTROLSF_ALL);
-                            ok(rc==MMSYSERR_INVALPARAM,
-                               "mixerGetLineControlsW(MIXER_GETLINECONTROLSF_ALL): "
-                               "MMSYSERR_INVALPARAM expected, got %s\n",
-                               mmsys_error(rc));
-                            rc = mixerGetLineControlsW(mix, &controls, -1);
-                            ok(rc==MMSYSERR_INVALFLAG||rc==MMSYSERR_INVALPARAM,
-                               "mixerGetLineControlsW(-1): "
-                               "MMSYSERR_INVALFLAG or MMSYSERR_INVALPARAM expected, got %s\n",
-                               mmsys_error(rc));
-
-                            controls.cbStruct = sizeof(MIXERLINECONTROLSW);
-                            controls.cControls = mixerlineW.cControls;
-                            controls.dwLineID = mixerlineW.dwLineID;
-                            controls.pamxctrl = array;
-                            controls.cbmxctrl = sizeof(MIXERCONTROLW);
-
-                            /* FIXME: do MIXER_GETLINECONTROLSF_ONEBYID
-                             * and MIXER_GETLINECONTROLSF_ONEBYTYPE
-                             */
-                            rc = mixerGetLineControlsW(mix, &controls, MIXER_GETLINECONTROLSF_ALL);
-                            ok(rc==MMSYSERR_NOERROR,
-                               "mixerGetLineControlsW(MIXER_GETLINECONTROLSF_ALL): "
-                               "MMSYSERR_NOERROR expected, got %s\n",
-                               mmsys_error(rc));
-                            if (rc==MMSYSERR_NOERROR) {
-                                for(nc=0;nc<mixerlineW.cControls;nc++) {
-                                    if (winetest_interactive) {
-                                        WideCharToMultiByte(CP_ACP,0,array[nc].szShortName,
-                                            MIXER_SHORT_NAME_CHARS,szShortName,
-                                            MIXER_SHORT_NAME_CHARS,NULL,NULL);
-                                        WideCharToMultiByte(CP_ACP,0,array[nc].szName,
-                                            MIXER_LONG_NAME_CHARS,szName,
-                                            MIXER_LONG_NAME_CHARS,NULL,NULL);
-                                        trace("        %ld: \"%s\" (%s) ControlID=%ld\n", nc,
-                                              szShortName, szName, array[nc].dwControlID);
-                                        trace("            ControlType=%s\n",
-                                               control_type(array[nc].dwControlType));
-                                        trace("            Control=0x%08lx(%s)\n",
-                                              array[nc].fdwControl,
-                                              control_flags(array[nc].fdwControl));
-                                        trace("            Items=%ld Min=%ld Max=%ld Step=%ld\n",
-                                              array[nc].cMultipleItems,
-                                              S1(array[nc].Bounds).dwMinimum,
-                                              S1(array[nc].Bounds).dwMaximum,
-                                              array[nc].Metrics.cSteps);
-                                    }
-                                    mixer_test_controlW(mix, &array[nc]);
-                                }
-                            }
-
-                            HeapFree(GetProcessHeap(),0,array);
+                        DWORD* ids = HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY, (mixerlineW.cControls+1)*sizeof(DWORD));
+                        DWORD types[] = {2, MIXERCONTROL_CONTROLTYPE_VOLUME, MIXERCONTROL_CONTROLTYPE_MUTE};
+                        test_mixerGetLineControlsW(&mixerlineW, mix, MIXER_GETLINECONTROLSF_ALL, ids);
+                                                ok(ids != NULL, "Alloc ids failed\n");
+                        if (ids) {
+                            test_mixerGetLineControlsW(&mixerlineW, mix, MIXER_GETLINECONTROLSF_ONEBYID, ids);
+                            HeapFree(GetProcessHeap(),0,ids);
                         }
+                        test_mixerGetLineControlsW(&mixerlineW, mix, MIXER_GETLINECONTROLSF_ONEBYTYPE, types);
                     }
                 }
             }
