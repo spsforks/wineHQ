@@ -4108,8 +4108,8 @@ UINT WINAPI mixerGetLineControlsW(HMIXEROBJ hmix, LPMIXERLINECONTROLSW lpmlcW,
             return MMSYSERR_INVALPARAM;
         if(lpmlcW->cbmxctrl < sizeof(MIXERCONTROLW))
             return MMSYSERR_INVALPARAM;
-        if(lpmlcW->dwLineID != 0 && lpmlcW->dwLineID != 0xFFFF0000)
-            return MIXERR_INVALLINE;
+        if(lpmlcW->u.dwControlID == 0 || lpmlcW->u.dwControlID == 1)
+            lpmlcW->dwLineID = 0xFFFF0000;
         if(lpmlcW->u.dwControlID == 0)
             return WINMM_GetVolumeLineControl(mmdevice, lpmlcW->dwLineID,
                     lpmlcW->pamxctrl, fdwControls);

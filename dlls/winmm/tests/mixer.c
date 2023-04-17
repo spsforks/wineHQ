@@ -877,7 +877,6 @@ static void test_mixerGetLineControlsW(MIXERLINEW* mixerlineW, HMIXEROBJ mix, DW
                 }
 
                 rc = mixerGetLineControlsW(mix, &controls, fdwControls);
-                todo_wine_if(fdwControls == MIXER_GETLINECONTROLSF_ONEBYID)
                 ok(rc==MMSYSERR_NOERROR,
                     "mixerGetLineControlsW(%s): "
                     "MMSYSERR_NOERROR expected, got %s\n",
@@ -1049,7 +1048,8 @@ static void mixer_test_deviceW(int device)
                 mixerlineW.cbStruct = sizeof(mixerlineW);
                 mixerlineW.dwDestination=d;
                 mixerlineW.dwSource=s;
-                rc = mixerGetLineInfoW(mix, &mixerlineW, MIXER_GETLINEINFOF_SOURCE);
+                // test MIXER_GETLINEINFOF_DESTINATION, MIXER_GETLINEINFOF_SOURCE has been tested by mixerGetLineInfoA
+                rc = mixerGetLineInfoW(mix, &mixerlineW, MIXER_GETLINEINFOF_DESTINATION);
                 ok(rc==MMSYSERR_NOERROR||rc==MMSYSERR_NODRIVER,
                    "mixerGetLineInfoW(MIXER_GETLINEINFOF_SOURCE): "
                    "MMSYSERR_NOERROR expected, got %s\n",
