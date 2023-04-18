@@ -242,6 +242,13 @@ static void exit_process( int code )
 }
 
 
+/* Records the location of the next check.
+ * See the xxx_(file, line) macros.
+ *
+ * Parameters:
+ *   - file - source file name of the check
+ *   - line - source line number of the check
+ */
 void winetest_set_location( const char* file, int line )
 {
     struct tls_data *data = get_tls_data();
@@ -353,12 +360,13 @@ static LONG winetest_add_line( void )
 }
 
 /*
- * Checks condition.
+ * Checks that a condition has the expected value, that is true except if
+ * preceded by a todo indicating the check is expected to fail.
+ *
  * Parameters:
- *   - condition - condition to check;
- *   - msg test description;
- *   - file - test application source code file name of the check
- *   - line - test application source code file line number of the check
+ *   - condition - true if the check succeeded, false otherwise;
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
  * Return:
  *   0 if condition does not have the expected value, 1 otherwise
  */
@@ -478,6 +486,14 @@ void winetest_trace( const char *msg, ... )
         InterlockedIncrement(&muted_traces);
 }
 
+/*
+ * Prints a message to indicate that a group of tests is being skipped
+ * because the requirements for running them are not met.
+ *
+ * Parameters:
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
+ */
 void winetest_vskip( const char *msg, va_list args )
 {
     if (winetest_add_line() < winetest_mute_threshold)
@@ -502,6 +518,10 @@ void winetest_skip( const char *msg, ... )
     va_end(valist);
 }
 
+/* Same as winetest_skip() on Windows and a test failure otherwise. Typically
+ * used when a required Windows API or functionality is missing, since those
+ * should not be missing in Wine.
+ */
 void winetest_win_skip( const char *msg, ... )
 {
     va_list valist;
@@ -513,6 +533,18 @@ void winetest_win_skip( const char *msg, ... )
     va_end(valist);
 }
 
+/* If is_flaky is true, indicates that the next test may occasionally fail due
+ * to unavoidable outside race conditions. Such failures will be flagged as
+ * flaky so they can be ignored by automated testing tools.
+ *
+ * Remarks:
+ * - This is not meant to paper over race conditions within the test itself.
+ *   Those are bugs and should be fixed.
+ * - This is not meant to be used for tests that normally succeed but
+ *   systematically fail on a specific platform or locale.
+ * - The failures should be rare to start with. If a test fails 25% of the time
+ *   it is probably wrong.
+ */
 void winetest_start_flaky( int is_flaky )
 {
     struct tls_data *data = get_tls_data();
@@ -534,6 +566,13 @@ void winetest_end_flaky(void)
     data->flaky_level >>= 1;
 }
 
+/* If is_todo is true, indicates that the next test is expected to fail on this
+ * platform. This is used to identify tests that are known to fail in Wine.
+ *
+ * Remarks:
+ * - is_todo should never be true on Windows. To ensure this, always use
+ *   todo_wine_if().
+ */
 void winetest_start_todo( int is_todo )
 {
     struct tls_data *data = get_tls_data();
@@ -555,6 +594,31 @@ void winetest_end_todo(void)
     data->todo_level >>= 1;
 }
 
+/* Adds a string to be prepended to the test traces and failure messages.
+ * This must be paired with a winetest_pop_context() call.
+ *
+ * Parameters:
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
+ *
+ * Remarks:
+ * - Failure messages must always make it possible to figure out what was being
+ *   tested. While not ideal the line number can usually be used for that
+ *   purpose except when the test loops on a list of test parameters. In such
+ *   cases either the test parameters or the loop index should be added to the
+ *   context.
+ *
+ * Example:
+ *
+ *   for (i = 0; i < ARRAY_SIZE(test_parameters); i++)
+ *   {
+ *       winetest_push_context("%d", i);
+ *       ...
+ *       ok(WinAPI(test_parameters[i]), ...);
+ *       ...
+ *       winetest_pop_context();
+ *   }
+ */
 void winetest_push_context( const char *fmt, ... )
 {
     struct tls_data *data = get_tls_data();
