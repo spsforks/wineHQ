@@ -41,6 +41,7 @@
 
 struct wg_source
 {
+    GstPad *src_pad;
     GstElement *container;
 };
 
@@ -65,6 +66,9 @@ NTSTATUS wg_source_create(void *args)
 
     if (!(source->container = gst_bin_new("wg_source")))
         goto error;
+    if (!(source->src_pad = create_pad_with_caps(GST_PAD_SRC, src_caps)))
+        goto error;
+    gst_pad_set_element_private(source->src_pad, source);
 
     gst_element_set_state(source->container, GST_STATE_PAUSED);
     if (!gst_element_get_state(source->container, NULL, NULL, -1))
@@ -82,6 +86,8 @@ error:
         gst_element_set_state(source->container, GST_STATE_NULL);
         gst_object_unref(source->container);
     }
+    if (source->src_pad)
+        gst_object_unref(source->src_pad);
     free(source);
 
     gst_caps_unref(src_caps);
@@ -98,6 +104,7 @@ NTSTATUS wg_source_destroy(void *args)
 
     gst_element_set_state(source->container, GST_STATE_NULL);
     gst_object_unref(source->container);
+    gst_object_unref(source->src_pad);
     free(source);
 
     return STATUS_SUCCESS;
