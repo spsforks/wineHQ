@@ -1771,6 +1771,43 @@ void wined3d_context_vk_cleanup(struct wined3d_context_vk *context_vk)
     wined3d_context_cleanup(&context_vk->c);
 }
 
+/* In general we only submit when necessary or when a frame ends. However,
+ * applications which do a lot of work per frame can end up with the GPU idle
+ * for long periods of time while the CPU is building commands, and drivers may
+ * choose to reclock the GPU to a lower power level if they detect it being idle
+ * for that long.
+ *
+ * This may also help performance simply by virtue of allowing more parallelism
+ * between the GPU and CPU, although no clear evidence of that has been seen
+ * yet. */
+
+#define WINED3D_PERIODIC_SUBMIT_INTERVAL_MICROSECONDS 2000
+#define WINED3D_PERIODIC_SUBMIT_MAX_BUFFERS 4
+
+static bool should_periodic_submit(struct wined3d_context_vk *context_vk)
+{
+    LARGE_INTEGER now, freq;
+    uint64_t busy_count;
+    ULONGLONG diff;
+
+    /* The point of periodic submit is to keep the GPU busy, so if it's already
+     * busy with 4 or more command buffers, don't submit another one now. */
+    busy_count = context_vk->current_command_buffer.id - context_vk->completed_command_buffer_id - 1;
+    if (busy_count > WINED3D_PERIODIC_SUBMIT_MAX_BUFFERS)
+        return false;
+
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&freq);
+
+    diff = ((now.QuadPart - context_vk->command_buffer_create_time.QuadPart) * 1000000) / freq.QuadPart;
+    if (diff < WINED3D_PERIODIC_SUBMIT_INTERVAL_MICROSECONDS)
+        return false;
+
+    TRACE("Periodically submitting command buffer, %I64u us since last buffer, %I64u currently busy.\n",
+            diff, busy_count);
+    return true;
+}
+
 VkCommandBuffer wined3d_context_vk_get_command_buffer(struct wined3d_context_vk *context_vk)
 {
     struct wined3d_device_vk *device_vk = wined3d_device_vk(context_vk->c.device);
@@ -1785,7 +1822,7 @@ VkCommandBuffer wined3d_context_vk_get_command_buffer(struct wined3d_context_vk 
     buffer = &context_vk->current_command_buffer;
     if (buffer->vk_command_buffer)
     {
-        if (context_vk->retired_bo_size > WINED3D_RETIRED_BO_SIZE_THRESHOLD)
+        if (context_vk->retired_bo_size > WINED3D_RETIRED_BO_SIZE_THRESHOLD || should_periodic_submit(context_vk))
             wined3d_context_vk_submit_command_buffer(context_vk, 0, NULL, NULL, 0, NULL);
         else
         {
@@ -1853,6 +1890,8 @@ VkCommandBuffer wined3d_context_vk_get_command_buffer(struct wined3d_context_vk 
 
         wined3d_query_vk_resume(query_vk, context_vk);
     }
+
+    QueryPerformanceCounter(&context_vk->command_buffer_create_time);
 
     TRACE("Created new command buffer %p with id 0x%s.\n",
             buffer->vk_command_buffer, wine_dbgstr_longlong(buffer->id));

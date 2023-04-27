@@ -599,6 +599,7 @@ struct wined3d_context_vk
     struct wined3d_command_buffer_vk current_command_buffer;
     uint64_t completed_command_buffer_id;
     VkDeviceSize retired_bo_size;
+    LARGE_INTEGER command_buffer_create_time;
 
     struct
     {
