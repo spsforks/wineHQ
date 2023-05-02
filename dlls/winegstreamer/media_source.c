@@ -92,6 +92,9 @@ struct media_source
     IMFMediaEventQueue *event_queue;
     IMFByteStream *byte_stream;
 
+    CRITICAL_SECTION shutdown_cs;
+    CRITICAL_SECTION cs;
+
     struct wg_parser *wg_parser;
 
     struct media_stream **streams;
@@ -531,10 +534,20 @@ static void wait_on_sample(struct media_stream *stream, IUnknown *token)
     struct media_source *source = stream->parent_source;
     PROPVARIANT empty_var = {.vt = VT_EMPTY};
     struct wg_parser_buffer buffer;
+    bool res;
 
     TRACE("%p, %p\n", stream, token);
 
-    if (wg_parser_stream_get_buffer(source->wg_parser, stream->wg_stream, &buffer))
+    LeaveCriticalSection(&source->cs);
+    res = wg_parser_stream_get_buffer(source->wg_parser, stream->wg_stream, &buffer);
+    EnterCriticalSection(&source->cs);
+
+    /* If the media source has been shut down during the wait, then
+     * resources have been released, so don't touch anything. */
+    if (source->state == SOURCE_SHUTDOWN)
+        return;
+
+    if (res)
     {
         send_buffer(stream, &buffer, token);
     }
@@ -553,11 +566,19 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
     IUnknown *state;
     HRESULT hr;
 
-    if (source->state == SOURCE_SHUTDOWN)
-        return S_OK;
-
     if (FAILED(hr = IMFAsyncResult_GetState(result, &state)))
         return hr;
+
+    EnterCriticalSection(&source->shutdown_cs);
+    EnterCriticalSection(&source->cs);
+
+    if (source->state == SOURCE_SHUTDOWN)
+    {
+        LeaveCriticalSection(&source->cs);
+        LeaveCriticalSection(&source->shutdown_cs);
+        IUnknown_Release(state);
+        return S_OK;
+    }
 
     command = impl_from_async_command_IUnknown(state);
     switch (command->op)
@@ -578,6 +599,9 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
                 wait_on_sample(command->u.request_sample.stream, command->u.request_sample.token);
             break;
     }
+
+    LeaveCriticalSection(&source->cs);
+    LeaveCriticalSection(&source->shutdown_cs);
 
     IUnknown_Release(state);
 
@@ -744,31 +768,51 @@ static HRESULT WINAPI media_stream_QueueEvent(IMFMediaStream *iface, MediaEventT
 static HRESULT WINAPI media_stream_GetMediaSource(IMFMediaStream *iface, IMFMediaSource **source)
 {
     struct media_stream *stream = impl_from_IMFMediaStream(iface);
+    HRESULT hr;
 
     TRACE("%p, %p.\n", iface, source);
 
+    EnterCriticalSection(&stream->parent_source->cs);
+
     if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else
+    {
+        IMFMediaSource_AddRef(&stream->parent_source->IMFMediaSource_iface);
+        *source = &stream->parent_source->IMFMediaSource_iface;
+        hr = S_OK;
+    }
 
-    IMFMediaSource_AddRef(&stream->parent_source->IMFMediaSource_iface);
-    *source = &stream->parent_source->IMFMediaSource_iface;
+    LeaveCriticalSection(&stream->parent_source->cs);
 
-    return S_OK;
+    return hr;
 }
 
 static HRESULT WINAPI media_stream_GetStreamDescriptor(IMFMediaStream* iface, IMFStreamDescriptor **descriptor)
 {
     struct media_stream *stream = impl_from_IMFMediaStream(iface);
+    HRESULT hr;
 
     TRACE("%p, %p.\n", iface, descriptor);
 
+    EnterCriticalSection(&stream->parent_source->cs);
+
     if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else
+    {
+        IMFStreamDescriptor_AddRef(stream->descriptor);
+        *descriptor = stream->descriptor;
+        hr = S_OK;
+    }
 
-    IMFStreamDescriptor_AddRef(stream->descriptor);
-    *descriptor = stream->descriptor;
+    LeaveCriticalSection(&stream->parent_source->cs);
 
-    return S_OK;
+    return hr;
 }
 
 static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown *token)
@@ -779,21 +823,22 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
 
     TRACE("%p, %p.\n", iface, token);
 
-    if (stream->state == STREAM_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    EnterCriticalSection(&stream->parent_source->cs);
 
-    if (stream->state == STREAM_INACTIVE)
+    if (stream->state == STREAM_SHUTDOWN)
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else if (stream->state == STREAM_INACTIVE)
     {
         WARN("Stream isn't active\n");
-        return MF_E_MEDIA_SOURCE_WRONGSTATE;
+        hr = MF_E_MEDIA_SOURCE_WRONGSTATE;
     }
-
-    if (stream->eos)
+    else if (stream->eos)
     {
-        return MF_E_END_OF_STREAM;
+        hr = MF_E_END_OF_STREAM;
     }
-
-    if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_REQUEST_SAMPLE, &command)))
+    else if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_REQUEST_SAMPLE, &command)))
     {
         command->u.request_sample.stream = stream;
         if (token)
@@ -803,6 +848,8 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
         hr = MFPutWorkItem(stream->parent_source->async_commands_queue,
                 &stream->parent_source->async_commands_callback, &command->IUnknown_iface);
     }
+
+    LeaveCriticalSection(&stream->parent_source->cs);
 
     return hr;
 }
@@ -1125,7 +1172,9 @@ static HRESULT WINAPI media_source_rate_control_SetRate(IMFRateControl *iface, B
     if (FAILED(hr = IMFRateSupport_IsRateSupported(&source->IMFRateSupport_iface, thin, rate, NULL)))
         return hr;
 
+    EnterCriticalSection(&source->cs);
     source->rate = rate;
+    LeaveCriticalSection(&source->cs);
 
     return IMFMediaEventQueue_QueueEventParamVar(source->event_queue, MESourceRateChanged, &GUID_NULL, S_OK, NULL);
 }
@@ -1139,7 +1188,9 @@ static HRESULT WINAPI media_source_rate_control_GetRate(IMFRateControl *iface, B
     if (thin)
         *thin = FALSE;
 
+    EnterCriticalSection(&source->cs);
     *rate = source->rate;
+    LeaveCriticalSection(&source->cs);
 
     return S_OK;
 }
@@ -1201,6 +1252,10 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
     {
         IMFMediaSource_Shutdown(&source->IMFMediaSource_iface);
         IMFMediaEventQueue_Release(source->event_queue);
+        source->cs.DebugInfo->Spare[0] = 0;
+        DeleteCriticalSection(&source->cs);
+        source->shutdown_cs.DebugInfo->Spare[0] = 0;
+        DeleteCriticalSection(&source->shutdown_cs);
         free(source);
     }
 
@@ -1247,10 +1302,15 @@ static HRESULT WINAPI media_source_QueueEvent(IMFMediaSource *iface, MediaEventT
 static HRESULT WINAPI media_source_GetCharacteristics(IMFMediaSource *iface, DWORD *characteristics)
 {
     struct media_source *source = impl_from_IMFMediaSource(iface);
+    BOOL is_shutdown;
 
     TRACE("%p, %p.\n", iface, characteristics);
 
-    if (source->state == SOURCE_SHUTDOWN)
+    EnterCriticalSection(&source->cs);
+    is_shutdown = source->state == SOURCE_SHUTDOWN;
+    LeaveCriticalSection(&source->cs);
+
+    if (is_shutdown)
         return MF_E_SHUTDOWN;
 
     *characteristics = MFMEDIASOURCE_CAN_SEEK | MFMEDIASOURCE_CAN_PAUSE;
@@ -1261,13 +1321,20 @@ static HRESULT WINAPI media_source_GetCharacteristics(IMFMediaSource *iface, DWO
 static HRESULT WINAPI media_source_CreatePresentationDescriptor(IMFMediaSource *iface, IMFPresentationDescriptor **descriptor)
 {
     struct media_source *source = impl_from_IMFMediaSource(iface);
+    HRESULT hr;
 
     TRACE("%p, %p.\n", iface, descriptor);
 
-    if (source->state == SOURCE_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    EnterCriticalSection(&source->cs);
 
-    return IMFPresentationDescriptor_Clone(source->pres_desc, descriptor);
+    if (source->state == SOURCE_SHUTDOWN)
+        hr = MF_E_SHUTDOWN;
+    else
+        hr = IMFPresentationDescriptor_Clone(source->pres_desc, descriptor);
+
+    LeaveCriticalSection(&source->cs);
+
+    return hr;
 }
 
 static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationDescriptor *descriptor,
@@ -1279,13 +1346,17 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
 
     TRACE("%p, %p, %p, %p.\n", iface, descriptor, time_format, position);
 
+    EnterCriticalSection(&source->cs);
+
     if (source->state == SOURCE_SHUTDOWN)
-        return MF_E_SHUTDOWN;
-
-    if (!(IsEqualIID(time_format, &GUID_NULL)))
-        return MF_E_UNSUPPORTED_TIME_FORMAT;
-
-    if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_START, &command)))
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else if (!(IsEqualIID(time_format, &GUID_NULL)))
+    {
+        hr = MF_E_UNSUPPORTED_TIME_FORMAT;
+    }
+    else if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_START, &command)))
     {
         command->u.start.descriptor = descriptor;
         command->u.start.format = *time_format;
@@ -1293,6 +1364,8 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
 
         hr = MFPutWorkItem(source->async_commands_queue, &source->async_commands_callback, &command->IUnknown_iface);
     }
+
+    LeaveCriticalSection(&source->cs);
 
     return hr;
 }
@@ -1305,11 +1378,14 @@ static HRESULT WINAPI media_source_Stop(IMFMediaSource *iface)
 
     TRACE("%p.\n", iface);
 
-    if (source->state == SOURCE_SHUTDOWN)
-        return MF_E_SHUTDOWN;
+    EnterCriticalSection(&source->cs);
 
-    if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_STOP, &command)))
+    if (source->state == SOURCE_SHUTDOWN)
+        hr = MF_E_SHUTDOWN;
+    else if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_STOP, &command)))
         hr = MFPutWorkItem(source->async_commands_queue, &source->async_commands_callback, &command->IUnknown_iface);
+
+    LeaveCriticalSection(&source->cs);
 
     return hr;
 }
@@ -1322,15 +1398,17 @@ static HRESULT WINAPI media_source_Pause(IMFMediaSource *iface)
 
     TRACE("%p.\n", iface);
 
+    EnterCriticalSection(&source->cs);
+
     if (source->state == SOURCE_SHUTDOWN)
-        return MF_E_SHUTDOWN;
-
-    if (source->state != SOURCE_RUNNING)
-        return MF_E_INVALID_STATE_TRANSITION;
-
-    if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_PAUSE, &command)))
+        hr = MF_E_SHUTDOWN;
+    else if (source->state != SOURCE_RUNNING)
+        hr = MF_E_INVALID_STATE_TRANSITION;
+    else if (SUCCEEDED(hr = source_create_async_op(SOURCE_ASYNC_PAUSE, &command)))
         hr = MFPutWorkItem(source->async_commands_queue,
                 &source->async_commands_callback, &command->IUnknown_iface);
+
+    LeaveCriticalSection(&source->cs);
 
     return S_OK;
 }
@@ -1342,8 +1420,15 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
 
     TRACE("%p.\n", iface);
 
+    EnterCriticalSection(&source->shutdown_cs);
+    EnterCriticalSection(&source->cs);
+
     if (source->state == SOURCE_SHUTDOWN)
+    {
+        LeaveCriticalSection(&source->cs);
+        LeaveCriticalSection(&source->shutdown_cs);
         return MF_E_SHUTDOWN;
+    }
 
     source->state = SOURCE_SHUTDOWN;
 
@@ -1376,6 +1461,9 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
     free(source->streams);
 
     MFUnlockWorkQueue(source->async_commands_queue);
+
+    LeaveCriticalSection(&source->cs);
+    LeaveCriticalSection(&source->shutdown_cs);
 
     return S_OK;
 }
@@ -1436,6 +1524,10 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, struct media_
     object->byte_stream = bytestream;
     IMFByteStream_AddRef(bytestream);
     object->rate = 1.0f;
+    InitializeCriticalSection(&object->shutdown_cs);
+    object->shutdown_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": shutdown_cs");
+    InitializeCriticalSection(&object->cs);
+    object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
 
     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
         goto fail;
