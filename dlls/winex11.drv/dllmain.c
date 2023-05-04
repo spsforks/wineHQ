@@ -45,8 +45,7 @@ static NTSTATUS WINAPI x11drv_callback( void *arg, ULONG size )
     return callback_funcs[params->id]( params->arg );
 }
 
-typedef NTSTATUS (WINAPI *kernel_callback)( void *params, ULONG size );
-static const kernel_callback kernel_callbacks[] =
+static const struct x11drv_client_funcs client_funcs =
 {
     x11drv_callback,
     x11drv_dnd_enter_event,
@@ -57,28 +56,20 @@ static const kernel_callback kernel_callbacks[] =
     x11drv_systray_change_owner,
 };
 
-C_ASSERT( NtUserDriverCallbackFirst + ARRAYSIZE(kernel_callbacks) == client_func_last );
-
-
 BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
 {
-    void **callback_table;
     struct init_params params =
     {
         foreign_window_proc,
         &show_systray,
+        &client_funcs,
     };
 
     if (reason != DLL_PROCESS_ATTACH) return TRUE;
 
     DisableThreadLibraryCalls( instance );
     x11drv_module = instance;
-    if (__wine_init_unix_call()) return FALSE;
-    if (X11DRV_CALL( init, &params )) return FALSE;
-
-    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    memcpy( callback_table + NtUserDriverCallbackFirst, kernel_callbacks, sizeof(kernel_callbacks) );
-    return TRUE;
+    return !__wine_init_unix_call() && !X11DRV_CALL( init, &params );
 }
 
 

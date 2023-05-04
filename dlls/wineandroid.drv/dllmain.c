@@ -117,7 +117,6 @@ static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, U
 BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
 {
     struct init_params params;
-    void **callback_table;
 
     if (reason == DLL_PROCESS_ATTACH) return TRUE;
 
@@ -125,12 +124,8 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
     if (__wine_init_unix_call()) return FALSE;
 
     params.register_window_callback = register_window_callback;
-    if (ANDROID_CALL( init, &params )) return FALSE;
-
-    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    callback_table[client_start_device] = android_start_device;
-
-    return TRUE;
+    params.start_device = android_start_device;
+    return !ANDROID_CALL( init, &params );
 }
 
 

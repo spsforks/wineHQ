@@ -1046,12 +1046,12 @@ static void *import_text_html( Atom type, const void *data, size_t size, size_t 
 
 
 /**************************************************************************
- *      file_list_to_drop_files
+ *      file_list_to_post_drop_params
  */
-void *file_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
+struct dnd_post_drop_params *file_list_to_post_drop_params( const void *data, size_t size, size_t *ret_size )
 {
     size_t buf_size = 4096, path_size;
-    DROPFILES *drop = NULL;
+    struct dnd_post_drop_params *ret = NULL;
     const char *ptr;
     WCHAR *path;
 
@@ -1063,44 +1063,43 @@ void *file_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
 
         if (!path) continue;
 
-        if (!drop)
+        if (!ret)
         {
-            if (!(drop = malloc( buf_size ))) return NULL;
+            DROPFILES *drop;
+            if (!(ret = malloc( FIELD_OFFSET( struct dnd_post_drop_params, drop_files[buf_size] ) ))) return NULL;
+            drop = (void*)ret->drop_files;
             drop->pFiles = sizeof(*drop);
             drop->pt.x = drop->pt.y = 0;
             drop->fNC = FALSE;
             drop->fWide = TRUE;
-            *ret_size = sizeof(*drop);
+            *ret_size = FIELD_OFFSET( struct dnd_post_drop_params, drop_files[sizeof(*drop)] );
         }
 
         path_size = (lstrlenW( path ) + 1) * sizeof(WCHAR);
         if (*ret_size + path_size > buf_size - sizeof(WCHAR))
         {
             void *new_buf;
-            if (!(new_buf = realloc( drop, buf_size * 2 + path_size )))
+            if (!(new_buf = realloc( ret, FIELD_OFFSET( struct dnd_post_drop_params, drop_files[buf_size * 2 + path_size] ) )))
             {
                 free( path );
                 continue;
             }
             buf_size = buf_size * 2 + path_size;
-            drop = new_buf;
+            ret = new_buf;
         }
 
-        memcpy( (char *)drop + *ret_size, path, path_size );
+        memcpy( (char *)ret + *ret_size, path, path_size );
         *ret_size += path_size;
     }
 
-    if (!drop) return NULL;
-    *(WCHAR *)((char *)drop + *ret_size) = 0;
+    if (!ret) return NULL;
+    *(WCHAR *)((char *)ret + *ret_size) = 0;
     *ret_size += sizeof(WCHAR);
-    return drop;
+    return ret;
 }
 
 
-/**************************************************************************
- *      uri_list_to_drop_files
- */
-void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
+static void *uri_list_to_dos_paths( const void *data, size_t size, size_t *ret_size )
 {
     const char *uriList = data;
     char *uri;
@@ -1110,7 +1109,6 @@ void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
     int capacity = 4096;
     int start = 0;
     int end = 0;
-    DROPFILES *dropFiles = NULL;
 
     if (!(out = malloc( capacity * sizeof(WCHAR) ))) return 0;
 
@@ -1155,9 +1153,28 @@ void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
         start = end + 2;
         end = start;
     }
-    if (out && end >= size)
+    if (out)
+        out[total] = '\0';
+    if (out && end < size)
     {
-        *ret_size = sizeof(DROPFILES) + (total + 1) * sizeof(WCHAR);
+        free( out );
+        out = NULL;
+    }
+    *ret_size = (total + 1) * sizeof(WCHAR);
+    return out;
+}
+
+
+static void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
+{
+    DROPFILES *dropFiles = NULL;
+    size_t dos_paths_size = 0;
+    WCHAR *dos_paths;
+
+    dos_paths = uri_list_to_dos_paths( data, size, &dos_paths_size );
+    if (dos_paths)
+    {
+        *ret_size = sizeof(DROPFILES) + dos_paths_size;
         if ((dropFiles = malloc( *ret_size )))
         {
             dropFiles->pFiles = sizeof(DROPFILES);
@@ -1165,12 +1182,40 @@ void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size )
             dropFiles->pt.y = 0;
             dropFiles->fNC = 0;
             dropFiles->fWide = TRUE;
-            out[total] = '\0';
-            memcpy( (char*)dropFiles + dropFiles->pFiles, out, (total + 1) * sizeof(WCHAR) );
+            memcpy( (char*)dropFiles + dropFiles->pFiles, dos_paths, dos_paths_size );
         }
     }
-    free( out );
+    free( dos_paths );
     return dropFiles;
+}
+
+
+/**************************************************************************
+ *      uri_list_to_post_drop_params
+ */
+struct dnd_post_drop_params *uri_list_to_post_drop_params( const void *data, size_t size, size_t *ret_size )
+{
+    struct dnd_post_drop_params *ret = NULL;
+    size_t dos_paths_size = 0;
+    WCHAR *dos_paths;
+
+    dos_paths = uri_list_to_dos_paths( data, size, &dos_paths_size );
+    if (dos_paths)
+    {
+        *ret_size = FIELD_OFFSET( struct dnd_post_drop_params, drop_files[sizeof(DROPFILES) + dos_paths_size] );
+        if ((ret = malloc( *ret_size )))
+        {
+            DROPFILES *dropFiles = (void*)ret->drop_files;
+            dropFiles->pFiles = sizeof(DROPFILES);
+            dropFiles->pt.x = 0;
+            dropFiles->pt.y = 0;
+            dropFiles->fNC = 0;
+            dropFiles->fWide = TRUE;
+            memcpy( (char*)dropFiles + dropFiles->pFiles, dos_paths, dos_paths_size );
+        }
+    }
+    free( dos_paths );
+    return ret;
 }
 
 

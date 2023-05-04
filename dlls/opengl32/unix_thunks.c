@@ -22,6 +22,7 @@
 WINE_DEFAULT_DEBUG_CHANNEL(opengl);
 #endif
 
+extern NTSTATUS wgl_wglInit( void *args ) DECLSPEC_HIDDEN;
 extern NTSTATUS thread_attach( void *args ) DECLSPEC_HIDDEN;
 extern NTSTATUS process_detach( void *args ) DECLSPEC_HIDDEN;
 extern NTSTATUS wgl_wglCopyContext( void *args ) DECLSPEC_HIDDEN;
@@ -24204,6 +24205,7 @@ static NTSTATUS ext_wglSwapIntervalEXT( void *args )
 
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
+    &wgl_wglInit,
     &thread_attach,
     &process_detach,
     &wgl_wglCopyContext,

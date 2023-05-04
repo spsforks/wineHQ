@@ -1453,6 +1453,8 @@ struct wow_handlers16 wow_handlers =
     WIN_CreateWindowEx,
     NULL,  /* call_window_proc */
     NULL,  /* call_dialog_proc */
+    NULL,  /* call_free_icon */
+    NULL,  /* thunk_lock */
 };
 
 static const struct user_client_procs client_procsA =

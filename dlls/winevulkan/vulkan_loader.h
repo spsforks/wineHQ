@@ -28,6 +28,7 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winternl.h"
+#include "ntuser.h"
 #include "wine/debug.h"
 #include "wine/vulkan.h"
 #include "wine/unixlib.h"
@@ -107,10 +108,18 @@ void *wine_vk_get_device_proc_addr(const char *name) DECLSPEC_HIDDEN;
 void *wine_vk_get_phys_dev_proc_addr(const char *name) DECLSPEC_HIDDEN;
 void *wine_vk_get_instance_proc_addr(const char *name) DECLSPEC_HIDDEN;
 
+struct vk_callback_funcs
+{
+    UINT64 call_vulkan_debug_report_callback;
+    UINT64 call_vulkan_debug_utils_callback;
+};
+
 /* debug callbacks params */
 
 struct wine_vk_debug_utils_params
 {
+    struct user32_callback_params cbparams;
+
     PFN_vkDebugUtilsMessengerCallbackEXT user_callback;
     void *user_data;
 
@@ -121,6 +130,8 @@ struct wine_vk_debug_utils_params
 
 struct wine_vk_debug_report_params
 {
+    struct user32_callback_params cbparams;
+
     PFN_vkDebugReportCallbackEXT user_callback;
     void *user_data;
 

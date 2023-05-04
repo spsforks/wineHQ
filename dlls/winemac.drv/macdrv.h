@@ -35,6 +35,7 @@
 #include "wine/gdi_driver.h"
 #include "unixlib.h"
 
+extern struct macdrv_client_funcs client_funcs;
 
 extern BOOL skip_single_buffer_flushes DECLSPEC_HIDDEN;
 extern BOOL allow_vsync DECLSPEC_HIDDEN;
@@ -279,8 +280,7 @@ extern NTSTATUS macdrv_dnd_retain(void *arg) DECLSPEC_HIDDEN;
 extern NTSTATUS macdrv_ime_process_text_input(void *arg) DECLSPEC_HIDDEN;
 extern NTSTATUS macdrv_notify_icon(void *arg) DECLSPEC_HIDDEN;
 
-extern NTSTATUS macdrv_client_func(enum macdrv_client_funcs func, const void *params,
-                                   ULONG size) DECLSPEC_HIDDEN;
+extern NTSTATUS macdrv_client_func(const struct user32_callback_params *cbparams, ULONG size) DECLSPEC_HIDDEN;
 
 /* user helpers */
 

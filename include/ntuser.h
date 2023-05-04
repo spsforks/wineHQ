@@ -24,7 +24,10 @@
 #include <imm.h>
 #include <winternl.h>
 
-/* KernelCallbackTable codes, not compatible with Windows */
+/* KernelCallbackTable codes, not compatible with Windows.
+   All of these functions must live inside user32.dll. Overwatch 2's
+   KiUserCallbackDispatcher hook verifies this and prevents the callback from
+   running if that check fails. */
 enum
 {
     /* user32 callbacks */
@@ -47,17 +50,10 @@ enum
     NtUserPostDDEMessage,
     NtUserRenderSynthesizedFormat,
     NtUserUnpackDDEMessage,
+    NtUserDispatchCallback,
     /* win16 hooks */
     NtUserCallFreeIcon,
     NtUserThunkLock,
-    /* Vulkan support */
-    NtUserCallVulkanDebugReportCallback,
-    NtUserCallVulkanDebugUtilsCallback,
-    /* OpenGL support */
-    NtUserCallOpenGLDebugMessageCallback,
-    /* Driver-specific callbacks */
-    NtUserDriverCallbackFirst,
-    NtUserDriverCallbackLast = NtUserDriverCallbackFirst + 9,
     NtUserCallCount
 };
 
@@ -268,6 +264,13 @@ struct unpack_dde_message_params
     WPARAM wparam;
     LPARAM lparam;
     char data[1];
+};
+
+typedef NTSTATUS (WINAPI *user32_callback_func)( void *args, ULONG len );
+
+struct user32_callback_params
+{
+    UINT64 func;
 };
 
 /* process DPI awareness contexts */

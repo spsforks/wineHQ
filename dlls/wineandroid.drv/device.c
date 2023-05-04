@@ -1180,7 +1180,9 @@ void start_android_device(void)
 {
     void *ret_ptr;
     ULONG ret_len;
-    thread = ULongToHandle( KeUserModeCallback( client_start_device, NULL, 0, &ret_ptr, &ret_len ));
+    struct user32_callback_params cbparams = { (ULONG_PTR)start_device };
+    NTSTATUS ret = KeUserModeCallback( NtUserDispatchCallback, &cbparams, sizeof(cbparams), &ret_ptr, &ret_len );
+    thread = ULongToHandle( ret );
 }
 
 

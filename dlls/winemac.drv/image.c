@@ -256,7 +256,8 @@ CFArrayRef create_app_icon_images(void)
 
     TRACE("()\n");
 
-    macdrv_client_func(client_func_app_icon, &params, sizeof(params));
+    params.cbparams.func = (ULONG_PTR)client_funcs.app_icon;
+    macdrv_client_func(&params.cbparams, sizeof(params));
 
     if (!icons.count) return NULL;
 

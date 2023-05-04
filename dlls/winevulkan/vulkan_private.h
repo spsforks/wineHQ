@@ -242,6 +242,7 @@ BOOL wine_vk_instance_extension_supported(const char *name) DECLSPEC_HIDDEN;
 
 BOOL wine_vk_is_type_wrapped(VkObjectType type) DECLSPEC_HIDDEN;
 
+extern struct vk_callback_funcs callback_funcs;
 NTSTATUS init_vulkan(void *args) DECLSPEC_HIDDEN;
 
 NTSTATUS vk_is_available_instance_function(void *arg) DECLSPEC_HIDDEN;

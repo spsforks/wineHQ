@@ -60,6 +60,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(x11drv);
 WINE_DECLARE_DEBUG_CHANNEL(synchronous);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
+struct x11drv_client_funcs client_funcs;
+
 XVisualInfo default_visual = { 0 };
 XVisualInfo argb_visual = { 0 };
 Colormap default_colormap = None;
@@ -667,6 +669,8 @@ static NTSTATUS x11drv_init( void *arg )
 #ifdef SONAME_LIBXEXT
     dlopen( SONAME_LIBXEXT, RTLD_NOW|RTLD_GLOBAL );
 #endif
+
+    client_funcs = *params->client_funcs;
 
     setup_options();
 
@@ -1303,18 +1307,18 @@ done:
     return status;
 }
 
-NTSTATUS x11drv_client_func( enum x11drv_client_funcs id, const void *params, ULONG size )
+NTSTATUS x11drv_client_func( const struct user32_callback_params *cbparams, ULONG size )
 {
     void *ret_ptr;
     ULONG ret_len;
-    return KeUserModeCallback( id, params, size, &ret_ptr, &ret_len );
+    return KeUserModeCallback( NtUserDispatchCallback, cbparams, size, &ret_ptr, &ret_len );
 }
 
 
 NTSTATUS x11drv_client_call( enum client_callback func, UINT arg )
 {
-    struct client_callback_params params = { .id = func, .arg = arg };
-    return x11drv_client_func( client_func_callback, &params, sizeof(params) );
+    struct client_callback_params params = { { (ULONG_PTR)client_funcs.callback }, .id = func, .arg = arg };
+    return x11drv_client_func( &params.cbparams, sizeof(params) );
 }
 
 
@@ -1346,11 +1350,13 @@ static NTSTATUS x11drv_wow64_init( void *arg )
     {
         ULONG foreign_window_proc;
         ULONG show_systray;
+        ULONG client_funcs;
     } *params32 = arg;
     struct init_params params;
 
     params.foreign_window_proc = UlongToPtr( params32->foreign_window_proc );
     params.show_systray = UlongToPtr( params32->show_systray );
+    params.client_funcs = UlongToPtr( params32->client_funcs );
     return x11drv_init( &params );
 }
 

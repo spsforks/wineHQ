@@ -425,6 +425,7 @@ static inline size_t get_property_size( int format, unsigned long count )
     return count * (format / 8);
 }
 
+extern struct x11drv_client_funcs client_funcs DECLSPEC_HIDDEN;
 extern XVisualInfo default_visual DECLSPEC_HIDDEN;
 extern XVisualInfo argb_visual DECLSPEC_HIDDEN;
 extern Colormap default_colormap DECLSPEC_HIDDEN;
@@ -662,8 +663,10 @@ extern void change_systray_owner( Display *display, Window systray_window ) DECL
 extern HWND create_foreign_window( Display *display, Window window ) DECLSPEC_HIDDEN;
 extern BOOL update_clipboard( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void init_win_context(void) DECLSPEC_HIDDEN;
-extern void *file_list_to_drop_files( const void *data, size_t size, size_t *ret_size ) DECLSPEC_HIDDEN;
-extern void *uri_list_to_drop_files( const void *data, size_t size, size_t *ret_size ) DECLSPEC_HIDDEN;
+extern struct dnd_post_drop_params *file_list_to_post_drop_params( const void *data, size_t size,
+                                                                   size_t *ret_size ) DECLSPEC_HIDDEN;
+extern struct dnd_post_drop_params *uri_list_to_post_drop_params( const void *data, size_t size,
+                                                                  size_t *ret_size ) DECLSPEC_HIDDEN;
 
 static inline void mirror_rect( const RECT *window_rect, RECT *rect )
 {
@@ -851,8 +854,7 @@ extern NTSTATUS x11drv_tablet_info( void *arg ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_xim_preedit_state( void *arg ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_xim_reset( void *arg ) DECLSPEC_HIDDEN;
 
-extern NTSTATUS x11drv_client_func( enum x11drv_client_funcs func, const void *params,
-                                    ULONG size ) DECLSPEC_HIDDEN;
+extern NTSTATUS x11drv_client_func( const struct user32_callback_params *cbparams, ULONG size ) DECLSPEC_HIDDEN;
 extern NTSTATUS x11drv_client_call( enum client_callback func, UINT arg ) DECLSPEC_HIDDEN;
 
 /* GDI helpers */
