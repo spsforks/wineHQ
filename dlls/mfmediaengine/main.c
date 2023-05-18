@@ -1065,8 +1065,8 @@ static HRESULT media_engine_create_video_renderer(struct media_engine *engine, I
     memcpy(&subtype, &MFVideoFormat_Base, sizeof(subtype));
     if (!(subtype.Data1 = MFMapDXGIFormatToDX9Format(output_format)))
     {
-        WARN("Unrecognized output format %#x.\n", output_format);
-        return E_FAIL;
+        FIXME("Output format %#x cannot be converted to DX9, using DXGI_FORMAT_B8G8R8A8_UNORM as fallback.\n", output_format);
+        subtype.Data1 = MFMapDXGIFormatToDX9Format(DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 
     if (FAILED(hr = MFCreateMediaType(&media_type)))
