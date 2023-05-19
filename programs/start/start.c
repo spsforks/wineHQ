@@ -387,6 +387,98 @@ static BOOL search_path(const WCHAR *firstParam, WCHAR **full_path)
     return FALSE;
 }
 
+static LPWSTR *get_args(LPWSTR cmdline, int *pargc)
+{
+    enum {OUTSIDE_ARG, INSIDE_ARG, INSIDE_QUOTED_ARG} state;
+    LPWSTR str;
+    int argc;
+    LPWSTR *argv;
+    int max_argc = 16;
+    BOOL new_arg;
+
+    WINE_TRACE("cmdline: %s\n", wine_dbgstr_w(cmdline));
+    str = HeapAlloc(GetProcessHeap(), 0, (lstrlenW(cmdline) + 1) * sizeof(WCHAR));
+    if(!str) return NULL;
+    lstrcpyW(str, cmdline);
+    argv = HeapAlloc(GetProcessHeap(), 0, (max_argc + 1) * sizeof(LPWSTR));
+    if(!argv)
+    {
+        HeapFree(GetProcessHeap(), 0, str);
+        return NULL;
+    }
+
+    /* Split command line to separate arg-strings and fill argv */
+    state = OUTSIDE_ARG;
+    argc = 0;
+    while(*str)
+    {
+        new_arg = FALSE;
+        /* Check character */
+        if(iswspace(*str))          /* white space */
+        {
+            if(state == INSIDE_ARG)
+            {
+                state = OUTSIDE_ARG;
+                *str = 0;
+            }
+        }
+        else if(*str == '"')        /* double quote */
+            switch(state)
+            {
+                case INSIDE_QUOTED_ARG:
+                    state = OUTSIDE_ARG;
+                    *str = 0;
+                    break;
+                case INSIDE_ARG:
+                    *str = 0;
+                    /* Fall through */
+                case OUTSIDE_ARG:
+                    if(!*++str) continue;
+                    state = INSIDE_QUOTED_ARG;
+                    new_arg = TRUE;
+                    break;
+            }
+        else                        /* regular character */
+            if(state == OUTSIDE_ARG)
+            {
+                state = INSIDE_ARG;
+                new_arg = TRUE;
+            }
+
+        /* Add new argv entry, if need */
+        if(new_arg)
+        {
+            if(argc >= max_argc - 1)
+            {
+                /* Realloc argv here because there always should be
+                   at least one reserved cell for terminating NULL */
+                max_argc *= 2;
+                argv = HeapReAlloc(GetProcessHeap(), 0, argv,
+                        (max_argc + 1) * sizeof(LPWSTR));
+                if(!argv)
+                {
+                    HeapFree(GetProcessHeap(), 0, str);
+                    return NULL;
+                }
+            }
+            argv[argc++] = str;
+        }
+
+        str++;
+    }
+
+    argv[argc] = NULL;
+    *pargc = argc;
+
+    if (TRACE_ON(start))
+    {
+        int i;
+        for(i = 0; i < argc; i++)
+            WINE_TRACE("arg %d: %s\n", i, wine_dbgstr_w(argv[i]));
+    }
+    return argv;
+}
+
 int __cdecl wmain (int argc, WCHAR *argv[])
 {
 	SHELLEXECUTEINFOW sei;
@@ -394,12 +486,15 @@ int __cdecl wmain (int argc, WCHAR *argv[])
 	int i;
         BOOL unix_mode = FALSE;
         BOOL progid_open = FALSE;
-	WCHAR *title = NULL;
+	WCHAR *title = NULL, *cmdline;
 	const WCHAR *file;
 	WCHAR *dos_filename = NULL;
 	WCHAR *fullpath = NULL;
 	WCHAR *parent_directory = NULL;
 	DWORD binary_type;
+
+	cmdline = GetCommandLineW();
+	argv = get_args(cmdline, &argc);
 
 	memset(&sei, 0, sizeof(sei));
 	sei.cbSize = sizeof(sei);
