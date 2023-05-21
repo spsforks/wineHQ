@@ -29,6 +29,7 @@
 #include "wingdi.h"
 #include "winreg.h"
 #include "shlwapi.h"
+#include "knownfolders.h"
 
 #include "commdlg.h"
 #include "cdlg.h"
@@ -40,6 +41,7 @@
 #define IDC_NAV_TOOLBAR      200
 #define IDC_NAVBACK          201
 #define IDC_NAVFORWARD       202
+#define IDC_NAVUP            203
 
 #include <initguid.h>
 /* This seems to be another version of IID_IFileDialogCustomize. If
@@ -121,7 +123,9 @@ typedef struct FileDialogImpl {
     IShellItem *psi_folder;
 
     HWND dlg_hwnd;
+    HWND address_edit_hwnd;
     IExplorerBrowser *peb;
+    IKnownFolderManager *kfmgr;
     DWORD ebevents_cookie;
 
     LPWSTR set_filename;
@@ -1414,6 +1418,71 @@ static LRESULT CALLBACK ctrl_container_wndproc(HWND hwnd, UINT umessage, WPARAM 
     return FALSE;
 }
 
+static LRESULT on_browse_address_accept(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
+{
+    wchar_t address_text[MAX_PATH];
+    PIDLIST_ABSOLUTE pidl = 0;
+    IKnownFolder *known_folder = NULL;
+    HRESULT hr;
+    TRACE("%p\n", This);
+    SendMessageW(This->address_edit_hwnd, WM_GETTEXT, MAX_PATH, (LPARAM)address_text);
+    hr = IKnownFolderManager_GetFolderByName(This->kfmgr, address_text, &known_folder);
+    if (SUCCEEDED(hr))
+    {
+        hr = IKnownFolder_GetIDList(known_folder, KF_FLAG_DEFAULT, &pidl);
+        if (FAILED(hr))
+        {
+            TRACE("IKnownFolder_GetIDList failed\n");
+        }
+    }
+    else
+    {
+        hr = SHParseDisplayName(address_text, 0, &pidl, SFGAO_FOLDER, 0);
+        if (FAILED(hr))
+        {
+            TRACE("SHParseDisplayName failed\n");
+        }
+    }
+    if (pidl != 0)
+    {
+        IExplorerBrowser_BrowseToIDList(This->peb, pidl, SBSP_ABSOLUTE);
+        CoTaskMemFree(pidl);
+    }
+    else
+    {
+        ERR("on_browse_address_accept failed to get pidl for path\n");
+    }
+    return FALSE;
+}
+
+static LRESULT CALLBACK address_edit_wndproc(HWND hwnd, UINT umessage, WPARAM wparam, LPARAM lparam,
+                                             UINT_PTR id_subclass, DWORD_PTR ref_data)
+{
+    FileDialogImpl *This = (FileDialogImpl*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    switch(umessage)
+    {
+        case WM_COMMAND:
+            if (wparam == IDOK)
+            {
+                if (GetFocus() == This->address_edit_hwnd)
+                {
+                    return on_browse_address_accept(This, wparam, lparam);
+                }
+                else
+                {
+                    return DefSubclassProc(hwnd, umessage, wparam, lparam);
+                }
+            }
+            else
+            {
+                return DefSubclassProc(hwnd, umessage, wparam, lparam);
+            }
+        default:
+            return DefSubclassProc(hwnd, umessage, wparam, lparam);
+    }
+    return FALSE;
+}
+
 static void radiobuttonlist_set_selected_item(FileDialogImpl *This, customctrl *ctrl, cctrl_item *item)
 {
     cctrl_item *cursor;
@@ -1636,13 +1705,16 @@ static void update_layout(FileDialogImpl *This)
     HDWP hdwp;
     HWND hwnd;
     RECT dialog_rc;
+    RECT wnd_rc;
     RECT cancel_rc, dropdown_rc, open_rc;
     RECT filetype_rc, filename_rc, filenamelabel_rc;
     RECT toolbar_rc, ebrowser_rc, customctrls_rc;
+    RECT address_edit_rc = {0,0,264,14};
     static const UINT vspacing = 4, hspacing = 4;
     static const UINT min_width = 320, min_height = 200;
     BOOL show_dropdown;
 
+    MapDialogRect(This->dlg_hwnd, &address_edit_rc);
     if (!GetClientRect(This->dlg_hwnd, &dialog_rc))
     {
         TRACE("Invalid dialog window, not updating layout\n");
@@ -1772,6 +1844,10 @@ static void update_layout(FileDialogImpl *This)
         MapWindowPoints(NULL, This->dlg_hwnd, (POINT*)&toolbar_rc, 2);
     }
 
+    hwnd = GetParent(This->dlg_hwnd);
+    GetWindowRect(hwnd, &wnd_rc);
+    GetWindowRect(This->address_edit_hwnd, &address_edit_rc);
+
     /* The custom controls */
     customctrls_rc.left = dialog_rc.left + hspacing;
     customctrls_rc.right = dialog_rc.right - hspacing;
@@ -1854,6 +1930,14 @@ static HRESULT init_explorerbrowser(FileDialogImpl *This)
         return hr;
     }
 
+    hr = CoCreateInstance(&CLSID_KnownFolderManager, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IKnownFolderManager, (LPVOID*)&This->kfmgr);
+    if (FAILED(hr))
+    {
+        ERR("Failed to instantiate KnownFolderManager");
+        return hr;
+    }
+
     IExplorerBrowser_SetOptions(This->peb, EBO_SHOWFRAMES | EBO_NOBORDER);
 
     hr = IExplorerBrowser_Initialize(This->peb, This->dlg_hwnd, &rc, NULL);
@@ -1895,7 +1979,11 @@ static void init_toolbar(FileDialogImpl *This, HWND hwnd)
 {
     HWND htoolbar;
     TBADDBITMAP tbab;
-    TBBUTTON button[2];
+    TBBUTTON button[4];
+    const int button_size = 24;
+    RECT rc_edit = {0,0,264,14};
+    int border_w = GetSystemMetrics(SM_CXBORDER);
+    MapDialogRect(hwnd, &rc_edit);
 
     htoolbar = CreateWindowExW(0, TOOLBARCLASSNAMEW, NULL, TBSTYLE_FLAT | WS_CHILD | WS_VISIBLE,
                                0, 0, 0, 0,
@@ -1919,9 +2007,32 @@ static void init_toolbar(FileDialogImpl *This, HWND hwnd)
     button[1].dwData = 0;
     button[1].iString = 0;
 
-    SendMessageW(htoolbar, TB_ADDBUTTONSW, 2, (LPARAM)button);
-    SendMessageW(htoolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(24,24));
+    button[2].iBitmap = HIST_VIEWTREE+1;
+    button[2].idCommand = IDC_NAVUP;
+    button[2].fsState = TBSTATE_ENABLED;
+    button[2].fsStyle = BTNS_BUTTON;
+    button[2].dwData = 0;
+    button[2].iString = 0;
+
+    button[3].iBitmap = rc_edit.right;
+    button[3].idCommand = 0;
+    button[3].fsState = TBSTATE_ENABLED;
+    button[3].fsStyle = BTNS_SEP;
+    button[3].dwData = 0;
+    button[3].iString = 0;
+
+    SendMessageW(htoolbar, TB_ADDBUTTONSW, 3, (LPARAM)button);
+    SendMessageW(htoolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(button_size,button_size));
     SendMessageW(htoolbar, TB_AUTOSIZE, 0, 0);
+
+    This->address_edit_hwnd = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                             WS_CHILD | WS_BORDER | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL,
+                            button_size*3+button_size, border_w+2, rc_edit.right, rc_edit.bottom,
+                            htoolbar, (HMENU) IDC_NAV_TOOLBAR, COMDLG32_hInstance, This );
+    SetWindowSubclass(This->address_edit_hwnd, address_edit_wndproc, 1, (DWORD_PTR)This->address_edit_hwnd);
+    SetWindowSubclass(htoolbar, address_edit_wndproc, 1, (DWORD_PTR)0);
+    SetWindowSubclass(hwnd, address_edit_wndproc, 1, (DWORD_PTR)0);
+    SetWindowLongPtrW(This->address_edit_hwnd, GWLP_ID, 0xFFFF);
 }
 
 static void update_control_text(FileDialogImpl *This)
@@ -2160,6 +2271,13 @@ static LRESULT on_browse_forward(FileDialogImpl *This)
     return FALSE;
 }
 
+static LRESULT on_browse_up(FileDialogImpl *This)
+{
+    TRACE("%p\n", This);
+    IExplorerBrowser_BrowseToIDList(This->peb, NULL, SBSP_PARENT);
+    return FALSE;
+}
+
 static LRESULT on_command_filetype(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
 {
     if(HIWORD(wparam) == CBN_SELCHANGE)
@@ -2218,6 +2336,7 @@ static LRESULT on_wm_command(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
     case psh1:                return on_command_opendropdown(This, wparam, lparam);
     case IDC_NAVBACK:         return on_browse_back(This);
     case IDC_NAVFORWARD:      return on_browse_forward(This);
+    case IDC_NAVUP:           return on_browse_up(This);
     case IDC_FILETYPE:        return on_command_filetype(This, wparam, lparam);
     default:                  TRACE("Unknown command.\n");
     }
@@ -3354,6 +3473,8 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
 {
     FileDialogImpl *This = impl_from_IExplorerBrowserEvents(iface);
     HRESULT hr;
+    PWSTR disp_name = 0;
+    SFGAOF shellitem_attr;
     TRACE("%p (%p)\n", This, pidlFolder);
 
     if(This->psi_folder)
@@ -3366,6 +3487,16 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
         This->psi_folder = NULL;
     }
 
+    hr = IShellItem_GetAttributes(This->psi_folder, SFGAO_FILESYSTEM, &shellitem_attr);
+    if (hr == S_OK)
+    {
+        IShellItem_GetDisplayName(This->psi_folder, SIGDN_FILESYSPATH,&disp_name);
+    }
+    else
+    {
+        IShellItem_GetDisplayName(This->psi_folder, SIGDN_NORMALDISPLAY,&disp_name);
+    }
+    SendMessageW(This->address_edit_hwnd, WM_SETTEXT, 0, (LPARAM)disp_name);
     events_OnFolderChange(This);
 
     return S_OK;
