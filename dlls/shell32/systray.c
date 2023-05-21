@@ -34,6 +34,16 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(systray);
 
+struct notify_data_icon
+{
+    /* data for the icon bitmap */
+    UINT width;
+    UINT height;
+    UINT planes;
+    UINT bpp;
+    char buffer[];
+};
+
 struct notify_data  /* platform-independent format for NOTIFYICONDATA */
 {
     LONG  hWnd;
@@ -51,12 +61,9 @@ struct notify_data  /* platform-independent format for NOTIFYICONDATA */
     WCHAR szInfoTitle[64];
     DWORD dwInfoFlags;
     GUID  guidItem;
-    /* data for the icon bitmap */
-    UINT width;
-    UINT height;
-    UINT planes;
-    UINT bpp;
+    struct notify_data_icon icons[];
 };
+
 
 /*************************************************************************
  * Shell_NotifyIcon			[SHELL32.296]
@@ -180,7 +187,7 @@ BOOL WINAPI Shell_NotifyIconW(DWORD dwMessage, PNOTIFYICONDATAW nid)
         cbMaskBits = (bmMask.bmPlanes * bmMask.bmWidth * bmMask.bmHeight * bmMask.bmBitsPixel + 15) / 16 * 2;
         if (iconinfo.hbmColor)
             cbColourBits = (bmColour.bmPlanes * bmColour.bmWidth * bmColour.bmHeight * bmColour.bmBitsPixel + 15) / 16 * 2;
-        cds.cbData = sizeof(*data) + cbMaskBits + cbColourBits;
+        cds.cbData = sizeof(*data) + sizeof(struct notify_data_icon) + cbMaskBits + cbColourBits;
         buffer = malloc(cds.cbData);
         if (!buffer)
         {
@@ -192,23 +199,21 @@ BOOL WINAPI Shell_NotifyIconW(DWORD dwMessage, PNOTIFYICONDATAW nid)
 
         data = (struct notify_data *)buffer;
         memset( data, 0, sizeof(*data) );
-        buffer += sizeof(*data);
-        GetBitmapBits(iconinfo.hbmMask, cbMaskBits, buffer);
+        GetBitmapBits(iconinfo.hbmMask, cbMaskBits, &data->icons[0].buffer);
         if (!iconinfo.hbmColor)
         {
-            data->width  = bmMask.bmWidth;
-            data->height = bmMask.bmHeight / 2;
-            data->planes = 1;
-            data->bpp    = 1;
+            data->icons[0].width  = bmMask.bmWidth;
+            data->icons[0].height = bmMask.bmHeight / 2;
+            data->icons[0].planes = 1;
+            data->icons[0].bpp    = 1;
         }
         else
         {
-            data->width  = bmColour.bmWidth;
-            data->height = bmColour.bmHeight;
-            data->planes = bmColour.bmPlanes;
-            data->bpp    = bmColour.bmBitsPixel;
-            buffer += cbMaskBits;
-            GetBitmapBits(iconinfo.hbmColor, cbColourBits, buffer);
+            data->icons[0].width  = bmColour.bmWidth;
+            data->icons[0].height = bmColour.bmHeight;
+            data->icons[0].planes = bmColour.bmPlanes;
+            data->icons[0].bpp    = bmColour.bmBitsPixel;
+            GetBitmapBits(iconinfo.hbmColor, cbColourBits, &data->icons[0].buffer[cbMaskBits]);
             DeleteObject(iconinfo.hbmColor);
         }
         DeleteObject(iconinfo.hbmMask);

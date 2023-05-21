@@ -32,6 +32,16 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(systray);
 
+struct notify_data_icon
+{
+    /* data for the icon bitmap */
+    UINT width;
+    UINT height;
+    UINT planes;
+    UINT bpp;
+    char buffer[];
+};
+
 struct notify_data  /* platform-independent format for NOTIFYICONDATA */
 {
     LONG  hWnd;
@@ -50,10 +60,7 @@ struct notify_data  /* platform-independent format for NOTIFYICONDATA */
     DWORD dwInfoFlags;
     GUID  guidItem;
     /* data for the icon bitmap */
-    UINT width;
-    UINT height;
-    UINT planes;
-    UINT bpp;
+    struct notify_data_icon icons[];
 };
 
 static int (CDECL *wine_notify_icon)(DWORD,NOTIFYICONDATAW *);
@@ -519,6 +526,7 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 {
     struct icon *icon = NULL;
     const struct notify_data *data;
+    const struct notify_data_icon *data_icon;
     NOTIFYICONDATAW nid;
     int ret = FALSE;
 
@@ -543,22 +551,23 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 
     /* FIXME: if statement only needed because we don't support interprocess
      * icon handles */
-    if ((nid.uFlags & NIF_ICON) && cds->cbData > sizeof(*data))
+    if ((nid.uFlags & NIF_ICON) && cds->cbData > (sizeof(*data) + sizeof(struct notify_data_icon)))
     {
         LONG cbMaskBits;
         LONG cbColourBits;
-        const char *buffer = (const char *)(data + 1);
+        data_icon = &data->icons[0];
 
-        cbMaskBits = (data->width * data->height + 15) / 16 * 2;
-        cbColourBits = (data->planes * data->width * data->height * data->bpp + 15) / 16 * 2;
+        cbMaskBits = (data_icon->width * data_icon->height + 15) / 16 * 2;
+        cbColourBits = (data_icon->planes * data_icon->width * data_icon->height * data_icon->bpp + 15) / 16 * 2;
 
-        if (cds->cbData < sizeof(*data) + cbMaskBits + cbColourBits)
+        if (cds->cbData < sizeof(*data) + sizeof(*data_icon) + cbMaskBits + cbColourBits)
         {
             ERR( "buffer underflow\n" );
             return FALSE;
         }
-        nid.hIcon = CreateIcon(NULL, data->width, data->height, data->planes, data->bpp,
-                               buffer, buffer + cbMaskBits);
+        nid.hIcon = CreateIcon(NULL, data_icon->width, data_icon->height, data_icon->planes, data_icon->bpp,
+                               &data_icon->buffer[0], &data_icon->buffer[cbMaskBits]);
+        data_icon = (const struct notify_data_icon*)&data_icon->buffer[cbMaskBits + cbColourBits];
     }
 
     /* try forwarding to the display driver first */
