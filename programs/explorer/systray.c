@@ -532,6 +532,7 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 
     if (cds->cbData < sizeof(*data)) return FALSE;
     data = cds->lpData;
+    data_icon = &data->icons[0];
 
     nid.cbSize           = sizeof(nid);
     nid.hWnd             = LongToHandle( data->hWnd );
@@ -551,11 +552,10 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 
     /* FIXME: if statement only needed because we don't support interprocess
      * icon handles */
-    if ((nid.uFlags & NIF_ICON) && cds->cbData > (sizeof(*data) + sizeof(struct notify_data_icon)))
+    if ((nid.uFlags & NIF_ICON) && cds->cbData > ((char*)data_icon - (char*)data) + sizeof(struct notify_data_icon))
     {
         LONG cbMaskBits;
         LONG cbColourBits;
-        data_icon = &data->icons[0];
 
         cbMaskBits = (data_icon->width * data_icon->height + 15) / 16 * 2;
         cbColourBits = (data_icon->planes * data_icon->width * data_icon->height * data_icon->bpp + 15) / 16 * 2;
@@ -570,6 +570,23 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
         data_icon = (const struct notify_data_icon*)&data_icon->buffer[cbMaskBits + cbColourBits];
     }
 
+    if ((nid.uFlags & NIF_INFO) && cds->cbData > ((char*)data_icon - (char*)data) + sizeof(struct notify_data_icon))
+    {
+        /* Balloon icon */
+        LONG cbMaskBits;
+        LONG cbColourBits;
+
+        cbMaskBits = (data_icon->width * data_icon->height + 15) / 16 * 2;
+        cbColourBits = (data_icon->planes * data_icon->width * data_icon->height * data_icon->bpp + 15) / 16 * 2;
+
+        if (cds->cbData < sizeof(*data) + sizeof(*data_icon) + cbMaskBits + cbColourBits)
+        {
+            WINE_ERR("buffer underflow\n");
+            return FALSE;
+        }
+        nid.hBalloonIcon = CreateIcon(NULL, data_icon->width, data_icon->height, data_icon->planes, data_icon->bpp,
+                               &data_icon->buffer[0], &data_icon->buffer[cbMaskBits]);
+    }
     /* try forwarding to the display driver first */
     if (cds->dwData == NIM_ADD || !(icon = get_icon( nid.hWnd, nid.uID )))
     {
@@ -605,6 +622,7 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
     }
 
     if (nid.hIcon) DestroyIcon( nid.hIcon );
+    if (nid.hBalloonIcon) DestroyIcon( nid.hBalloonIcon );
     sync_taskbar_buttons();
     return ret;
 }
