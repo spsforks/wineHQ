@@ -1541,27 +1541,46 @@ static HRESULT WINAPI xmlwriter_WriteFullEndElement(IXmlWriter *iface)
     return S_OK;
 }
 
-static HRESULT WINAPI xmlwriter_WriteName(IXmlWriter *iface, LPCWSTR pwszName)
+static HRESULT WINAPI xmlwriter_WriteName(IXmlWriter *iface, LPCWSTR qname)
 {
-    xmlwriter *This = impl_from_IXmlWriter(iface);
+    xmlwriter *writer = impl_from_IXmlWriter(iface);
+    const WCHAR *p = qname;
 
-    FIXME("%p %s\n", This, wine_dbgstr_w(pwszName));
+    TRACE("%p %s\n", iface, wine_dbgstr_w(qname));
 
-    switch (This->state)
+    if (is_empty_string(qname))
+        return E_INVALIDARG;
+
+    while (*p && is_ncnamechar(*p))
+        p++;
+
+    if (*p && *p++ == ':')
+    {
+        while (*p && is_ncnamechar(*p))
+               p++;
+    }
+
+    if (*p) return WC_E_NAMECHARACTER;
+
+    switch (writer->state)
     {
     case XmlWriterState_Initial:
         return E_UNEXPECTED;
     case XmlWriterState_Ready:
     case XmlWriterState_DocClosed:
-        This->state = XmlWriterState_DocClosed;
+        writer->state = XmlWriterState_DocClosed;
         return WR_E_INVALIDACTION;
     case XmlWriterState_InvalidEncoding:
         return MX_E_ENCODING;
+    case XmlWriterState_ElemStarted:
+        writer_close_starttag(writer);
+        break;
     default:
         ;
     }
 
-    return E_NOTIMPL;
+    write_output_buffer(writer->output, qname, p - qname);
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteNmToken(IXmlWriter *iface, LPCWSTR pwszNmToken)
