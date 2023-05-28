@@ -1842,7 +1842,7 @@ static void test_WriteName(void)
     hr = IXmlWriter_WriteName(writer, L"name");
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-    hr = IXmlWriter_WriteFullEndElement(writer);
+    hr = IXmlWriter_WriteEndElement(writer);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = IXmlWriter_WriteStartElement(writer, NULL, L"b", NULL);
@@ -1877,6 +1877,80 @@ static void test_WriteName(void)
 
     CHECK_OUTPUT(stream,
         "<a");
+
+    IStream_Release(stream);
+    IXmlWriter_Release(writer);
+}
+
+static void test_WriteEntityRef(void)
+{
+    IXmlWriter *writer;
+    IStream *stream;
+    HRESULT hr;
+
+    hr = CreateXmlWriter(&IID_IXmlWriter, (void**)&writer, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"");
+    ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, NULL);
+    ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"name");
+    ok(hr == E_UNEXPECTED, "Unexpected hr %#lx.\n", hr);
+
+    stream = writer_set_output(writer);
+
+    writer_set_property(writer, XmlWriterProperty_OmitXmlDeclaration);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"name");
+    ok(hr == WR_E_INVALIDACTION, "Unexpected hr %#lx.\n", hr);
+
+    IStream_Release(stream);
+    stream = writer_set_output(writer);
+
+    hr = IXmlWriter_WriteStartDocument(writer, XmlStandalone_Omit);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteStartElement(writer, NULL, L"a", NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"na:me");
+    ok(hr == WC_E_NAMECHARACTER, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_Flush(writer);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    CHECK_OUTPUT(stream,
+        "<a");
+
+    IStream_Release(stream);
+    stream = writer_set_output(writer);
+
+    hr = IXmlWriter_WriteStartDocument(writer, XmlStandalone_Omit);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteStartElement(writer, NULL, L"a", NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"name");
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L".name");
+    ok(hr == WC_E_NAMECHARACTER, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEndDocument(writer);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_WriteEntityRef(writer, L"name");
+    ok(hr == WR_E_INVALIDACTION, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXmlWriter_Flush(writer);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    CHECK_OUTPUT(stream,
+        "<a>&name;</a>");
 
     IStream_Release(stream);
     IXmlWriter_Release(writer);
@@ -3069,4 +3143,5 @@ START_TEST(writer)
     test_WriteNode();
     test_WriteNodeShallow();
     test_WriteName();
+    test_WriteEntityRef();
 }
