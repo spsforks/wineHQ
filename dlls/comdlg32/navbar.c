@@ -359,11 +359,42 @@ static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
     ILFree(pidl);
     IShellFolder_Release(desktop);
 
-    LIST_FOR_EACH_ENTRY_SAFE(crumb1, crumb2, &info->crumbs, struct crumb, entry)
+    /* reuse existing crumbs */
+    crumb1 = LIST_ENTRY((&info->crumbs)->next, struct crumb, entry);
+    crumb2 = LIST_ENTRY((&new_crumbs)->next, struct crumb, entry);
+    for (;;)
     {
+        if (&crumb1->entry == &info->crumbs ||
+            &crumb2->entry == &new_crumbs ||
+            !ILIsEqual(crumb2->pidl, crumb1->pidl))
+            break;
+
+        DestroyWindow(crumb2->hwnd);
+        ILFree(crumb2->pidl);
+        CoTaskMemFree(crumb2->display_name);
+        crumb2->pidl = crumb1->pidl;
+        crumb2->display_name = crumb1->display_name;
+        crumb2->hwnd = crumb1->hwnd;
+
+        crumb1 = LIST_ENTRY(crumb1->entry.next, struct crumb, entry);
+        crumb2 = LIST_ENTRY(crumb2->entry.next, struct crumb, entry);
+    }
+
+    /* cleanup unused existing crumbs */
+    for (;;)
+    {
+        if (&crumb1->entry == &info->crumbs)
+            break;
+
         DestroyWindow(crumb1->hwnd);
         ILFree(crumb1->pidl);
         CoTaskMemFree(crumb1->display_name);
+
+        crumb1 = LIST_ENTRY(crumb1->entry.next, struct crumb, entry);
+    }
+
+    LIST_FOR_EACH_ENTRY_SAFE(crumb1, crumb2, &info->crumbs, struct crumb, entry)
+    {
         list_remove(&crumb1->entry);
         HeapFree(GetProcessHeap(), 0, crumb1);
     }
