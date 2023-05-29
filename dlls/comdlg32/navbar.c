@@ -129,6 +129,27 @@ static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
                 w = max_crumbs_w;
                 crumbs_visible_n += 1;
                 prev_x = buttons_w + crumb->current_w;
+
+                /* try to also fit the next crumb */
+                continue;
+            }
+            else if (crumbs_visible_n == 1)
+            {
+                struct crumb *last_crumb = (struct crumb *)list_tail(&info->crumbs);
+                INT crumb_w = min(MulDiv(56, info->dpi_x, USER_DEFAULT_SCREEN_DPI), crumb->full_w);
+
+                if (w + crumb_w <= max_crumbs_w)
+                    /* last crumb fully fits, let this crumb take the remaining free space */
+                    crumb->current_w = max_crumbs_w - w;
+                else
+                {
+                    /* last crumb doesn't fully fit, let this crumb take the minimum amount of space, and last crumb take the remaining space */
+                    crumb->current_w = crumb_w;
+                    last_crumb->current_w = max(0, max_crumbs_w - crumb->current_w);
+                }
+
+                crumbs_visible_n += 1;
+                prev_x = buttons_w + crumb->current_w + last_crumb->current_w;
             }
 
             break;
