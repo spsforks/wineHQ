@@ -37,6 +37,10 @@ WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 #define IDC_NAVUP 203
 #define IDC_NAVCRUMB 204
 
+#define FRAME_SUBCLASS_ID 1
+
+#define LAYOUT_ITEMS_N 1 /* number of items (not including crumbs) in NAVBAR_DoLayout to update */
+
 typedef struct {
     HWND parent_hwnd;
     HWND container_hwnd;
@@ -49,6 +53,10 @@ typedef struct {
     HWND back_btn_hwnd;
     HWND fwd_btn_hwnd;
     HWND up_btn_hwnd;
+
+    HWND frame_hwnd;
+    INT frame_x;
+    INT frame_w;
 
     struct list crumbs;
     INT crumbs_total_n;
@@ -90,6 +98,28 @@ static void set_title_and_add_tooltip(NAVBAR_INFO *info, HWND window, UINT strin
     toolinfo.uId = (UINT_PTR)window;
 
     SendMessageW(info->tooltip, TTM_ADDTOOLW, 0, (LPARAM)&toolinfo);
+}
+
+static LRESULT CALLBACK NAVBAR_FRAME_SubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR id_subclass, DWORD_PTR ref_data)
+{
+    switch (msg)
+    {
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc;
+
+            GetClientRect(hwnd, &rc);
+
+            /* draw a frame without left border */
+            DrawEdge(hdc, &rc, EDGE_SUNKEN, BF_TOP | BF_BOTTOM | BF_RIGHT | BF_FLAT);
+
+            return 0; /* processed */
+        }
+    }
+
+    return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
 static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
@@ -160,6 +190,9 @@ static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
         prev_x = buttons_w + w;
     }
 
+    info->frame_x = prev_x;
+    info->frame_w = container_rc.right - info->frame_x;
+
     info->crumbs_visible_n = crumbs_visible_n;
 
     LIST_FOR_EACH_ENTRY_REV(crumb, &info->crumbs, struct crumb, entry)
@@ -190,6 +223,7 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
 {
     struct crumb *crumb;
     INT can_fit_n = info->crumbs_visible_n;
+    UINT frame_flags = 0;
 
     LIST_FOR_EACH_ENTRY_REV(crumb, &info->crumbs, struct crumb, entry)
     {
@@ -207,6 +241,16 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
 
         can_fit_n -= 1;
     }
+
+    if (info->frame_w > 0)
+        frame_flags |= SWP_SHOWWINDOW | SWP_NOCOPYBITS;
+    else
+        frame_flags |= SWP_HIDEWINDOW;
+
+    hdwp = DeferWindowPos(hdwp, info->frame_hwnd, HWND_TOP,
+                          info->frame_x, 0,
+                          info->frame_w, info->container_h,
+                          frame_flags);
 
     return hdwp;
 }
@@ -265,6 +309,13 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     set_icon(info->icons, ILI_UP, info->up_btn_hwnd);
     set_title_and_add_tooltip(info, info->up_btn_hwnd, IDS_UPFOLDER);
 
+    x += cs->cy + gap;
+    info->frame_hwnd = CreateWindowExW(0, WC_STATICW, NULL,
+                                       WS_CHILD | WS_VISIBLE,
+                                       x, 0, 0, cs->cy,
+                                       hwnd, 0, COMDLG32_hInstance, NULL);
+    SetWindowSubclass(info->frame_hwnd, NAVBAR_FRAME_SubclassProc, FRAME_SUBCLASS_ID, (DWORD_PTR)info);
+
     SetWindowLongPtrW(hwnd, 0, (DWORD_PTR)info);
 
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -296,7 +347,7 @@ static LRESULT NAVBAR_Size(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam
 
     NAVBAR_CalcLayout(info);
 
-    hdwp = BeginDeferWindowPos(info->crumbs_total_n);
+    hdwp = BeginDeferWindowPos(info->crumbs_total_n + LAYOUT_ITEMS_N);
     hdwp = NAVBAR_DoLayout(info, hdwp);
     EndDeferWindowPos(hdwp);
 
@@ -426,7 +477,7 @@ static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
 
     NAVBAR_CalcLayout(info);
 
-    hdwp = BeginDeferWindowPos(info->crumbs_total_n);
+    hdwp = BeginDeferWindowPos(info->crumbs_total_n + LAYOUT_ITEMS_N);
     hdwp = NAVBAR_DoLayout(info, hdwp);
     EndDeferWindowPos(hdwp);
 
