@@ -25,6 +25,7 @@
 #include "cdlg.h"
 #include "filedlgbrowser.h"
 #include "shlwapi.h"
+#include "commoncontrols.h"
 
 #include "wine/debug.h"
 #include "wine/list.h"
@@ -36,6 +37,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 #define IDC_NAVFORWARD 202
 #define IDC_NAVUP 203
 #define IDC_NAVCRUMB 204
+#define IDC_OVERFLOW 205
 
 #define FRAME_SUBCLASS_ID 1
 
@@ -61,6 +63,9 @@ typedef struct {
     struct list crumbs;
     INT crumbs_total_n;
     INT crumbs_visible_n;
+
+    HWND overflow_hwnd;
+    HMENU overflow_menu;
 } NAVBAR_INFO;
 
 struct crumb {
@@ -100,6 +105,87 @@ static void set_title_and_add_tooltip(NAVBAR_INFO *info, HWND window, UINT strin
     SendMessageW(info->tooltip, TTM_ADDTOOLW, 0, (LPARAM)&toolinfo);
 }
 
+static void NAVBAR_OVERFLOW_Insert(NAVBAR_INFO *info, ITEMIDLIST* pidl, WCHAR *display_name)
+{
+    MENUITEMINFOW menu_item = {0};
+
+    TRACE("info %p pidl %p display_name %s\n", info, pidl, debugstr_w(display_name));
+
+    menu_item.cbSize = sizeof(MENUITEMINFOW);
+    menu_item.fMask = MIIM_FTYPE | MIIM_DATA | MIIM_STRING | MIIM_BITMAP;
+    menu_item.fType = MFT_STRING;
+    menu_item.dwItemData = (ULONG_PTR)pidl;
+    menu_item.dwTypeData = display_name; /* copied by InsertMenuItemW */
+    menu_item.cch = lstrlenW(display_name);
+    menu_item.hbmpItem = HBMMENU_CALLBACK; /* see NAVBAR_OVERFLOW_DrawIcon */
+
+    InsertMenuItemW(info->overflow_menu, -1, TRUE, &menu_item);
+}
+
+static void NAVBAR_OVERFLOW_Clear(NAVBAR_INFO *info)
+{
+    INT i, menu_item_count = GetMenuItemCount(info->overflow_menu);
+    MENUITEMINFOW menu_item = {0};
+
+    TRACE("info %p menu_item_count %i\n", info, menu_item_count);
+
+    menu_item.cbSize = sizeof(MENUITEMINFOW);
+    menu_item.fMask = MIIM_DATA;
+
+    for (i = menu_item_count - 1; i >= 0; i--)
+    {
+        GetMenuItemInfoW(info->overflow_menu, i, TRUE, &menu_item);
+        ILFree((ITEMIDLIST *)menu_item.dwItemData);
+        DeleteMenu(info->overflow_menu, i, MF_BYPOSITION);
+    }
+}
+
+static LRESULT NAVBAR_OVERFLOW_MeasureIcon(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    MEASUREITEMSTRUCT *mis = (MEASUREITEMSTRUCT *)lparam;
+    ITEMIDLIST *pidl = (ITEMIDLIST *)mis->itemData;
+    SHFILEINFOW file_info = {0};
+    IImageList *icon_list;
+
+    icon_list = (IImageList *)SHGetFileInfoW((const WCHAR *)pidl, 0, &file_info, sizeof(file_info),
+                                             SHGFI_PIDL | SHGFI_ICON | SHGFI_SMALLICON | SHGFI_SHELLICONSIZE | SHGFI_SYSICONINDEX);
+    if (icon_list)
+    {
+        IImageList_GetIconSize(icon_list, (int *)&mis->itemWidth, (int *)&mis->itemHeight);
+        IImageList_Release(icon_list);
+        DestroyIcon(file_info.hIcon);
+
+        /* add some padding to the right side so that the text isn't so close to the icon */
+        /* 4px is the default left side padding for MNS_NOCHECK */
+        mis->itemWidth += 4;
+    }
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+static LRESULT NAVBAR_OVERFLOW_DrawIcon(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lparam;
+    ITEMIDLIST *pidl = (ITEMIDLIST *)dis->itemData;
+    SHFILEINFOW file_info = {0};
+    IImageList *icon_list;
+
+    icon_list = (IImageList *)SHGetFileInfoW((const WCHAR *)pidl, 0, &file_info, sizeof(file_info),
+                                             SHGFI_PIDL | SHGFI_ICON | SHGFI_SMALLICON | SHGFI_SHELLICONSIZE | SHGFI_SYSICONINDEX);
+    if (icon_list)
+    {
+        int icon_width, icon_height;
+
+        IImageList_GetIconSize(icon_list, &icon_width, &icon_height);
+        DrawIconEx(dis->hDC, dis->rcItem.left, dis->rcItem.top,
+                   file_info.hIcon, icon_width, icon_height, 0, NULL, DI_NORMAL);
+        IImageList_Release(icon_list);
+        DestroyIcon(file_info.hIcon);
+    }
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
 static LRESULT CALLBACK NAVBAR_FRAME_SubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR id_subclass, DWORD_PTR ref_data)
 {
     switch (msg)
@@ -125,10 +211,12 @@ static LRESULT CALLBACK NAVBAR_FRAME_SubclassProc(HWND hwnd, UINT msg, WPARAM wp
 static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
 {
     RECT container_rc,
-         button_rc;
+         button_rc,
+         overflow_rc;
     struct crumb *crumb;
     INT container_w = 0,
         gap = MulDiv(1, info->dpi_x, USER_DEFAULT_SCREEN_DPI),
+        overflow_w = 0,
         buttons_w = 0,
         max_crumbs_w = 0,
         w = 0,
@@ -137,10 +225,12 @@ static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
 
     if (!GetClientRect(info->container_hwnd, &container_rc) ||
         !(container_w = container_rc.right - container_rc.left) ||
-        !GetClientRect(info->up_btn_hwnd, &button_rc))
+        !GetClientRect(info->up_btn_hwnd, &button_rc) ||
+        !GetClientRect(info->overflow_hwnd, &overflow_rc))
         return;
 
-    buttons_w = (button_rc.right - button_rc.left + gap) * 3;
+    overflow_w = overflow_rc.right - overflow_rc.left;
+    buttons_w = ((button_rc.right - button_rc.left + gap) * 3) + overflow_w;
     max_crumbs_w = container_w - buttons_w;
     if (max_crumbs_w < 0)
         return;
@@ -224,6 +314,9 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
     struct crumb *crumb;
     INT can_fit_n = info->crumbs_visible_n;
     UINT frame_flags = 0;
+    BUTTON_SPLITINFO split_info = {0};
+
+    NAVBAR_OVERFLOW_Clear(info);
 
     LIST_FOR_EACH_ENTRY_REV(crumb, &info->crumbs, struct crumb, entry)
     {
@@ -232,7 +325,10 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
         if (can_fit_n > 0)
             flags |= SWP_SHOWWINDOW | SWP_NOCOPYBITS;
         else
+        {
             flags |= SWP_HIDEWINDOW;
+            NAVBAR_OVERFLOW_Insert(info, ILClone(crumb->pidl), crumb->display_name);
+        }
 
         hdwp = DeferWindowPos(hdwp, crumb->hwnd, HWND_TOP,
                               crumb->x, 0,
@@ -240,6 +336,18 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
                               flags);
 
         can_fit_n -= 1;
+    }
+
+    split_info.mask = BCSIF_STYLE;
+
+    if (GetMenuItemCount(info->overflow_menu) > 0)
+        /* reset split style to re-enable split and dropdown arrow if they were disabled */
+        SendMessageW(info->overflow_hwnd, BCM_SETSPLITINFO, 0, (LPARAM)&split_info);
+    else
+    {
+        /* remove the split and dropdown arrow when there are no items in the overflow */
+        split_info.uSplitStyle = BCSS_NOSPLIT | BCSS_IMAGE;
+        SendMessageW(info->overflow_hwnd, BCM_SETSPLITINFO, 0, (LPARAM)&split_info);
     }
 
     if (info->frame_w > 0)
@@ -263,6 +371,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     INT x;
     INT gap;
     HGDIOBJ gui_font = GetStockObject(DEFAULT_GUI_FONT);
+    MENUINFO menu_info = {0};
 
     info = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(NAVBAR_INFO));
     list_init(&info->crumbs);
@@ -316,6 +425,18 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                                        hwnd, 0, COMDLG32_hInstance, NULL);
     SetWindowSubclass(info->frame_hwnd, NAVBAR_FRAME_SubclassProc, FRAME_SUBCLASS_ID, (DWORD_PTR)info);
 
+    info->overflow_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
+                                          WS_CHILD | WS_VISIBLE | BS_ICON | BS_SPLITBUTTON,
+                                          x, 0, cs->cy + MulDiv(6, info->dpi_x, USER_DEFAULT_SCREEN_DPI), cs->cy,
+                                          hwnd, (HMENU)IDC_OVERFLOW, COMDLG32_hInstance, NULL);
+    SendMessageW(info->overflow_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
+
+    info->overflow_menu = CreatePopupMenu();
+    menu_info.cbSize = sizeof(MENUINFO);
+    menu_info.fMask = MIM_STYLE;
+    menu_info.dwStyle = MNS_NOCHECK | MNS_NOTIFYBYPOS;
+    SetMenuInfo(info->overflow_menu, &menu_info);
+
     SetWindowLongPtrW(hwnd, 0, (DWORD_PTR)info);
 
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -335,6 +456,8 @@ static LRESULT NAVBAR_Destroy(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
 
     SetWindowLongPtrW(hwnd, 0, 0);
     ImageList_Destroy(info->icons);
+    NAVBAR_OVERFLOW_Clear(info);
+    DestroyMenu(info->overflow_menu);
 
     HeapFree(GetProcessHeap(), 0, info);
 
@@ -379,12 +502,32 @@ static LRESULT NAVBAR_Command(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
+static LRESULT NAVBAR_MenuCommand(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    UINT pos = wparam;
+    HMENU menu = (HMENU)lparam;
+    MENUITEMINFOW menu_item = {0};
+
+    TRACE("info %p pos %i menu %p\n", info, pos, menu);
+
+    menu_item.cbSize = sizeof(MENUITEMINFOW);
+    menu_item.fMask = MIIM_DATA;
+
+    if (GetMenuItemInfoW(menu, pos, TRUE, &menu_item))
+        SendMessageW(info->parent_hwnd, NBN_NAVPIDL, 0, (LPARAM)menu_item.dwItemData);
+    else
+        ERR("failed to get menu item info\n");
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
 static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     ITEMIDLIST *pidl = (ITEMIDLIST *)lparam;
     IShellFolder *desktop;
     HGDIOBJ gui_font = GetStockObject(DEFAULT_GUI_FONT);
     HRESULT hr;
+    SHFILEINFOW file_info;
     INT padding = MulDiv(10, info->dpi_x, USER_DEFAULT_SCREEN_DPI);
     struct list new_crumbs;
     struct crumb *crumb1, *crumb2;
@@ -398,6 +541,15 @@ static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
         ERR("failed to get desktop folder\n");
         goto exit;
     }
+
+    if (SHGetFileInfoW((const WCHAR *)pidl, 0, &file_info, sizeof(file_info),
+                       SHGFI_PIDL | SHGFI_ICON | SHGFI_SMALLICON | SHGFI_SHELLICONSIZE))
+    {
+        SendMessageW(info->overflow_hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)file_info.hIcon);
+        DestroyIcon(file_info.hIcon);
+    }
+    else
+        WARN("failed to get file info for pidl %p\n", pidl);
 
     list_init(&new_crumbs);
     info->crumbs_total_n = 0;
@@ -485,6 +637,24 @@ exit:
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
+static LRESULT NAVBAR_Notify(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    NMHDR *nmhdr = (NMHDR *)lparam;
+
+    if (nmhdr && nmhdr->hwndFrom == info->overflow_hwnd && nmhdr->code == BCN_DROPDOWN)
+    {
+        NMBCDROPDOWN* dropdown = (NMBCDROPDOWN *)lparam;
+        POINT pt = { .x = dropdown->rcButton.left,
+                     .y = dropdown->rcButton.bottom, };
+
+        ClientToScreen(info->overflow_hwnd, &pt);
+        TrackPopupMenu(info->overflow_menu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hwnd, NULL);
+        return TRUE;
+    }
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
 static LRESULT CALLBACK NAVBAR_WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     NAVBAR_INFO *info = (NAVBAR_INFO *)GetWindowLongPtrW(hwnd, 0);
@@ -498,6 +668,10 @@ static LRESULT CALLBACK NAVBAR_WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LP
         case WM_DESTROY: return NAVBAR_Destroy(hwnd, info, msg, wparam, lparam);
         case WM_SIZE: return NAVBAR_Size(hwnd, info, msg, wparam, lparam);
         case WM_COMMAND: return NAVBAR_Command(hwnd, info, msg, wparam, lparam);
+        case WM_MENUCOMMAND: return NAVBAR_MenuCommand(hwnd, info, msg, wparam, lparam);
+        case WM_NOTIFY: return NAVBAR_Notify(hwnd, info, msg, wparam, lparam);
+        case WM_MEASUREITEM: return NAVBAR_OVERFLOW_MeasureIcon(hwnd, info, msg, wparam, lparam);
+        case WM_DRAWITEM: return NAVBAR_OVERFLOW_DrawIcon(hwnd, info, msg, wparam, lparam);
         case NBM_SETPIDL: return NAVBAR_SetPIDL(hwnd, info, msg, wparam, lparam);
     }
 
