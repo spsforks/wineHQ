@@ -1609,12 +1609,13 @@ static void parse_file( struct makefile *make, struct incl_file *source, int src
  *
  * Add a source file to the list.
  */
-static struct incl_file *add_src_file( struct makefile *make, const char *name )
+static struct incl_file *add_src_file( struct makefile *make, const char *name, unsigned int arch )
 {
     struct incl_file *file = xmalloc( sizeof(*file) );
 
     memset( file, 0, sizeof(*file) );
     file->name = xstrdup(name);
+    file->arch = arch;
     file->use_msvcrt = is_using_msvcrt( make );
     file->is_external = !!make->extlib;
     list_add_tail( &make->sources, &file->entry );
@@ -4281,7 +4282,19 @@ static void load_sources( struct makefile *make )
     for (var = source_vars; *var; var++)
     {
         value = get_expanded_make_var_array( make, *var );
-        for (i = 0; i < value.count; i++) add_src_file( make, value.str[i] );
+        for (i = 0; i < value.count; i++) add_src_file( make, value.str[i], 0 );
+    }
+    for (var = source_vars; *var; var++)
+    {
+        for (arch = 1; arch < archs.count; arch++)
+        {
+            char buffer[64];
+            strcpy( buffer, archs.str[arch] );
+            strcat( buffer, "_" );
+            strcat( buffer, *var );
+            value = get_expanded_make_var_array( make, buffer );
+            for (i = 0; i < value.count; i++) add_src_file( make, value.str[i], arch );
+        }
     }
 
     add_generated_sources( make );
