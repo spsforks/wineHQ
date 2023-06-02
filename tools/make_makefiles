@@ -68,6 +68,26 @@ my @source_vars = (
     "XTEMPLATE_SRCS"
 );
 
+my @archs = (
+    "i386",
+    "x86_64",
+    "arm",
+    "aarch64"
+);
+
+my @source_vars_all_archs = (@source_vars);
+my $arch;
+my $var;
+foreach $arch (@archs)
+{
+   foreach $var (@source_vars)
+   {
+      push @source_vars_all_archs, $arch . "_" . $var;
+   }
+}
+undef $arch;
+undef $var;
+
 my (@makefiles, %makefiles);
 my @nls_files;
 
@@ -132,7 +152,7 @@ sub replace_makefile_variables($)
 {
     my $file = shift;
     my $make = $makefiles{$file};
-    my $source_vars_regexp = join "|", @source_vars;
+    my $source_vars_regexp = join "|", @source_vars_all_archs;
     my %replaced;
     my %files;
     my $old;
@@ -196,7 +216,7 @@ sub replace_makefile_variables($)
     # if we are using SOURCES, ignore the other variables
     unless ($replaced{"SOURCES"})
     {
-        foreach my $var (@source_vars)
+        foreach my $var (@source_vars_all_archs)
         {
             next if defined $replaced{$var};
             next if $var eq "SOURCES";
@@ -237,7 +257,7 @@ sub parse_makefile($)
             $make{$var} = $2;
             next;
         }
-        my $source_vars_regexp = join "|", @source_vars;
+        my $source_vars_regexp = join "|", @source_vars_all_archs;
         if (/^\s*($source_vars_regexp|PROGRAMS|EXTRA_TARGETS|EXTRA_OBJS|INSTALL_LIB|INSTALL_DEV)\s*=\s*(.*)/)
         {
             my $var = $1;
@@ -354,7 +374,19 @@ sub assign_sources_to_makefiles(@)
         }
         elsif ($name =~ /\.c$/)
         {
-            push @{${$make}{"=C_SRCS"}}, $name;
+            my $found = 0;
+            foreach $arch (@archs)
+            {
+                if ($name =~ /\/$arch\// || $name =~ /^$arch\//)
+                {
+                    push @{${$make}{"=${arch}_C_SRCS"}}, $name;
+                    $found = 1;
+                }
+            }
+            if (not $found)
+            {
+                push @{${$make}{"=C_SRCS"}}, $name;
+            }
         }
         elsif ($name =~ /\.h$/ || $name =~ /\.rh$/ || $name =~ /\.inl$/ || $name =~ /\.x$/)
         {
