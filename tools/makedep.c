@@ -150,6 +150,7 @@ static const char *fontforge;
 static const char *convert;
 static const char *flex;
 static const char *bison;
+static const char *nasm;
 static const char *ar;
 static const char *ranlib;
 static const char *rsvg;
@@ -1058,6 +1059,27 @@ static void parse_idl_file( struct file *source, FILE *file )
     }
 }
 
+
+/*******************************************************************
+ *         parse_asm_file
+ */
+static void parse_asm_file( struct file *source, FILE *file )
+{
+    char *buffer;
+
+    input_line = 0;
+    while ((buffer = get_line( file )))
+    {
+        buffer = skip_spaces( buffer );
+        if (*buffer++ != '%') return;
+        buffer = skip_spaces( buffer );
+
+        if (!strncmp( buffer, "include", 7 ))
+            parse_include_directive( source, buffer + 7 );
+    }
+}
+
+
 /*******************************************************************
  *         parse_c_file
  */
@@ -1183,6 +1205,7 @@ static const struct
     void (*parse)( struct file *file, FILE *f );
 } parse_functions[] =
 {
+    { ".asm", parse_asm_file },
     { ".c",   parse_c_file },
     { ".h",   parse_c_file },
     { ".inl", parse_c_file },
@@ -2671,6 +2694,83 @@ static void output_po_files( struct makefile *make )
 
 
 /*******************************************************************
+ *         output_source_asm
+ */
+static void output_source_asm_one_arch( struct makefile *make, struct incl_file *source, const char *obj,
+                                        struct strarray defines, struct strarray *targets,
+                                        unsigned int arch, int is_dll_src )
+{
+    const char *obj_name;
+
+    if (make->disabled[arch] && !(source->file->flags & FLAG_C_IMPLIB)) return;
+
+    if (arch)
+    {
+        if (source->file->flags & FLAG_C_UNIX) return;
+        if (!is_using_msvcrt( make ) && !make->staticlib && !(source->file->flags & FLAG_C_IMPLIB)) return;
+    }
+    else if (source->file->flags & FLAG_C_UNIX)
+    {
+        if (!*dll_ext) return;
+    }
+    else if (archs.count > 1 && is_using_msvcrt( make ) &&
+             !(source->file->flags & FLAG_C_IMPLIB) &&
+             (!make->staticlib || make->extlib)) return;
+
+    obj_name = strmake( "%s%s.o", source->arch ? "" : arch_dirs[arch], obj );
+    strarray_add( targets, obj_name );
+
+    if (source->file->flags & FLAG_C_UNIX)
+        strarray_add( &make->unixobj_files, obj_name );
+    else if (source->file->flags & FLAG_C_IMPLIB)
+        strarray_add( &make->implib_files[arch], obj_name );
+    else if (!is_dll_src)
+        strarray_add( &make->object_files[arch], obj_name );
+    else
+        strarray_add( &make->clean_files, obj_name );
+
+    output( "%s: %s\n", obj_dir_path( make, obj_name ), source->filename );
+    if (strendswith( source->name, ".asm" ))
+        output( "\t%s%s -o$@", cmd_prefix( "NASM" ), nasm );
+    else
+        output( "\t%s%s -c -o $@", cmd_prefix( "CC" ), arch_make_variable( "CC", arch ) );
+    output_filenames( defines );
+    output_filenames( cpp_flags );
+    output_filenames( get_expanded_make_var_array( make, "EXTRAASMFLAGS" ));
+    output_filenames( get_expanded_file_local_var( make, obj, "EXTRAASMFLAGS" ));
+    output( " %s\n", source->filename );
+}
+
+
+/*******************************************************************
+ *         output_source_asm
+ */
+static void output_source_asm( struct makefile *make, struct incl_file *source, const char *obj )
+{
+    struct strarray defines = get_source_defines( make, source, obj );
+    struct strarray targets = empty_strarray;
+    int is_dll_src = (make->testdll && strendswith( source->name, ".asm" ) &&
+                      find_src_file( make, replace_extension( source->name, ".asm", ".spec" )));
+    unsigned int arch;
+
+    for (arch = 0; arch < archs.count; arch++)
+        if (!source->arch || source->arch == arch)
+            output_source_asm_one_arch( make, source, obj, defines, &targets, arch, is_dll_src );
+
+    if (source->file->flags & FLAG_GENERATED)
+        strarray_add( &make->clean_files, source->basename );
+
+    if (targets.count && source->dependencies.count)
+    {
+        output_filenames_obj_dir( make, targets );
+        output( ":" );
+        output_filenames( source->dependencies );
+        output( "\n" );
+    }
+}
+
+
+/*******************************************************************
  *         output_source_y
  */
 static void output_source_y( struct makefile *make, struct incl_file *source, const char *obj )
@@ -3259,6 +3359,7 @@ static const struct
     void (*fn)( struct makefile *make, struct incl_file *source, const char *obj );
 } output_source_funcs[] =
 {
+    { "asm", output_source_asm },
     { "y", output_source_y },
     { "l", output_source_l },
     { "h", output_source_h },
@@ -4183,6 +4284,7 @@ static void load_sources( struct makefile *make )
         "IDL_SRCS",
         "BISON_SRCS",
         "LEX_SRCS",
+        "ASM_SRCS",
         "HEADER_SRCS",
         "XTEMPLATE_SRCS",
         "SVG_SRCS",
@@ -4425,6 +4527,7 @@ int main( int argc, char *argv[] )
     convert            = get_expanded_make_variable( top_makefile, "CONVERT" );
     flex               = get_expanded_make_variable( top_makefile, "FLEX" );
     bison              = get_expanded_make_variable( top_makefile, "BISON" );
+    nasm               = get_expanded_make_variable( top_makefile, "NASM" );
     ar                 = get_expanded_make_variable( top_makefile, "AR" );
     ranlib             = get_expanded_make_variable( top_makefile, "RANLIB" );
     rsvg               = get_expanded_make_variable( top_makefile, "RSVG" );
