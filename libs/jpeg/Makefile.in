@@ -1,4 +1,5 @@
 EXTLIB    = libjpeg.a
+EXTRADEFS = -DJPEG_LIB_VERSION=90
 
 C_SRCS = \
 	jaricom.c \
@@ -8,29 +9,43 @@ C_SRCS = \
 	jccoefct.c \
 	jccolor.c \
 	jcdctmgr.c \
+	jcdiffct.c \
 	jchuff.c \
+	jcicc.c \
 	jcinit.c \
+	jclhuff.c \
+	jclossls.c \
 	jcmainct.c \
 	jcmarker.c \
 	jcmaster.c \
 	jcomapi.c \
 	jcparam.c \
+	jcphuff.c \
 	jcprepct.c \
 	jcsample.c \
+	jctrans.c \
 	jdapimin.c \
 	jdapistd.c \
 	jdarith.c \
+	jdatadst.c \
+	jdatasrc.c \
 	jdcoefct.c \
 	jdcolor.c \
 	jddctmgr.c \
+	jddiffct.c \
 	jdhuff.c \
+	jdicc.c \
 	jdinput.c \
+	jdlhuff.c \
+	jdlossls.c \
 	jdmainct.c \
 	jdmarker.c \
 	jdmaster.c \
 	jdmerge.c \
+	jdphuff.c \
 	jdpostct.c \
 	jdsample.c \
+	jdtrans.c \
 	jerror.c \
 	jfdctflt.c \
 	jfdctfst.c \
@@ -38,8 +53,54 @@ C_SRCS = \
 	jidctflt.c \
 	jidctfst.c \
 	jidctint.c \
-	jmemansi.c \
+	jidctred.c \
 	jmemmgr.c \
+	jmemnobs.c \
+	jpeg12/jcapistd.c \
+	jpeg12/jccoefct.c \
+	jpeg12/jccolor.c \
+	jpeg12/jcdctmgr.c \
+	jpeg12/jcdiffct.c \
+	jpeg12/jclossls.c \
+	jpeg12/jcmainct.c \
+	jpeg12/jcprepct.c \
+	jpeg12/jcsample.c \
+	jpeg12/jdapistd.c \
+	jpeg12/jdcoefct.c \
+	jpeg12/jdcolor.c \
+	jpeg12/jddctmgr.c \
+	jpeg12/jddiffct.c \
+	jpeg12/jdlossls.c \
+	jpeg12/jdmainct.c \
+	jpeg12/jdmerge.c \
+	jpeg12/jdpostct.c \
+	jpeg12/jdsample.c \
+	jpeg12/jfdctfst.c \
+	jpeg12/jfdctint.c \
+	jpeg12/jidctflt.c \
+	jpeg12/jidctfst.c \
+	jpeg12/jidctint.c \
+	jpeg12/jidctred.c \
+	jpeg12/jquant1.c \
+	jpeg12/jquant2.c \
+	jpeg12/jutils.c \
+	jpeg16/jcapistd.c \
+	jpeg16/jccolor.c \
+	jpeg16/jcdiffct.c \
+	jpeg16/jclossls.c \
+	jpeg16/jcmainct.c \
+	jpeg16/jcprepct.c \
+	jpeg16/jcsample.c \
+	jpeg16/jdapistd.c \
+	jpeg16/jdcolor.c \
+	jpeg16/jddiffct.c \
+	jpeg16/jdlossls.c \
+	jpeg16/jdmainct.c \
+	jpeg16/jdpostct.c \
+	jpeg16/jdsample.c \
+	jpeg16/jquant1.c \
+	jpeg16/jquant2.c \
+	jpeg16/jutils.c \
 	jquant1.c \
 	jquant2.c \
 	jutils.c
