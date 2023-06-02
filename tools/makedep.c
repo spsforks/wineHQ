@@ -2701,6 +2701,7 @@ static void output_source_asm_one_arch( struct makefile *make, struct incl_file 
                                         unsigned int arch, int is_dll_src )
 {
     const char *obj_name;
+    char buffer[64];
 
     if (make->disabled[arch] && !(source->file->flags & FLAG_C_IMPLIB)) return;
 
@@ -2738,6 +2739,11 @@ static void output_source_asm_one_arch( struct makefile *make, struct incl_file 
     output_filenames( cpp_flags );
     output_filenames( get_expanded_make_var_array( make, "EXTRAASMFLAGS" ));
     output_filenames( get_expanded_file_local_var( make, obj, "EXTRAASMFLAGS" ));
+    strcpy( buffer, archs.str[arch] );
+    strcat( buffer, "_" );
+    strcat( buffer, "EXTRAASMFLAGS" );
+    output_filenames( get_expanded_make_var_array( make, buffer ));
+    output_filenames( get_expanded_file_local_var( make, obj, buffer ));
     output( " %s\n", source->filename );
 }
 
