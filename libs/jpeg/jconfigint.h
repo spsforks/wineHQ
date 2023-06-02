@@ -28,6 +28,9 @@
 #if BITS_IN_JSAMPLE == 8
 #define C_ARITH_CODING_SUPPORTED 1
 #define D_ARITH_CODING_SUPPORTED 1
+#if defined(__i386__) || defined(__x86_64__)
+#define WITH_SIMD 1
+#endif
 #else
 #undef C_ARITH_CODING_SUPPORTED
 #undef D_ARITH_CODING_SUPPORTED
