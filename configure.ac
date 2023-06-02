@@ -290,6 +290,12 @@ EOF
     fi])
 test $wine_cv_recent_bison != no || AC_MSG_ERROR([Your bison version is too old. Please install bison version 3.0 or newer.])
 
+AC_CHECK_PROGS(NASM,[nasm yasm],none)
+if test "$NASM" = "none"
+then
+  AC_MSG_ERROR([no suitable nasm found. Please install the 'nasm' or 'yasm' package.])
+fi
+
 AC_CHECK_TOOLS(AR,[ar gar],ar)
 AC_CHECK_TOOL(STRIP,strip,strip)
 AC_PROG_RANLIB
