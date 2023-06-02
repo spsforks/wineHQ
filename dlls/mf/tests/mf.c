@@ -5494,7 +5494,7 @@ static void test_sample_grabber_shutdown(void)
 
     hr = IMFMediaSession_Shutdown(session);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine ok(grabber_callback->is_shutdown, "Samplegrabber wasn't shut down.\n");
+    ok(grabber_callback->is_shutdown, "Samplegrabber wasn't shut down.\n");
     todo_wine ok(!activate_shim->is_shutdown, "Activate Object was shut down.\n");
 
     hr = IMFMediaSource_Shutdown(source);
@@ -5506,7 +5506,7 @@ static void test_sample_grabber_shutdown(void)
     ref = IMFActivate_Release(&activate_shim->IMFActivate_iface);
     ok(!ref, "Unexpected ref %lu.\n", ref);
     ref = IMFMediaSession_Release(session);
-    todo_wine ok(!ref || broken(ref == 1) /* Windows rarely fails this. */, "Unexpected ref %lu.\n", ref);
+    ok(!ref || broken(ref == 1) /* Windows rarely fails this. */, "Unexpected ref %lu.\n", ref);
 
     hr = MFShutdown();
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
