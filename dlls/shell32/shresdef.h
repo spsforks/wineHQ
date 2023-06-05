@@ -55,6 +55,8 @@
 #define IDS_VIEW_SMALL		26
 #define IDS_VIEW_LIST		27
 #define IDS_VIEW_DETAILS	28
+#define IDS_INTERNET        29
+#define IDS_PRINTERS        30
 
 #define IDS_RESTART_TITLE      40
 #define IDS_RESTART_PROMPT     41

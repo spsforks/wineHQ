@@ -359,6 +359,8 @@ static void test_desktop_displaynameof(void)
         { CLSID_MyComputer,  CLSID_NULL },
         { CLSID_MyDocuments, CLSID_NULL },
         { CLSID_RecycleBin,  CLSID_NULL },
+        { CLSID_Printers,    CLSID_NULL },
+        { CLSID_Internet,    CLSID_NULL },
         { CLSID_MyComputer,  CLSID_ControlPanel },
     };
 
