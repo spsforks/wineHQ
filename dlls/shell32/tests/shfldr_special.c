@@ -331,29 +331,30 @@ static void test_desktop_displaynameof(void)
         WCHAR name1[MAX_PATH], name2[MAX_PATH];
 
         hr = IShellFolder_ParseDisplayName(desktop, NULL, NULL, folders[i], &eaten, &pidl, NULL);
-        ok(hr == S_OK, "IShellFolder::ParseDisplayName failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         if (FAILED(hr)) continue;
 
         hr = IShellFolder_GetDisplayNameOf(desktop, pidl, SHGDN_INFOLDER, &strret);
-        ok(hr == S_OK, "IShellFolder::GetDisplayNameOf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         hr = StrRetToBufW(&strret, pidl, name1, ARRAY_SIZE(name1));
-        ok(hr == S_OK, "StrRetToBuf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
 
         hr = IShellFolder_GetDisplayNameOf(desktop, pidl, SHGDN_INFOLDER | SHGDN_FORPARSING | SHGDN_FORADDRESSBAR, &strret);
-        ok(hr == S_OK, "IShellFolder::GetDisplayNameOf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         hr = StrRetToBufW(&strret, pidl, name2, ARRAY_SIZE(name2));
-        ok(hr == S_OK, "StrRetToBuf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
 
-        ok(!lstrcmpW(name1, name2), "the display names are not equal: %s vs %s\n", wine_dbgstr_w(name1), wine_dbgstr_w(name2));
-        ok(name1[0] != ':' || name1[1] != ':', "display name is a GUID: %s\n", wine_dbgstr_w(name1));
+        ok(!lstrcmpW(name1, name2), "Test %d: the display names aren't equal: %s vs %s.\n",
+                i, wine_dbgstr_w(name1), wine_dbgstr_w(name2));
+        ok(name1[0] != ':' || name1[1] != ':', "Test %d: display name is a GUID: %s.\n", i, wine_dbgstr_w(name1));
 
         hr = IShellFolder_GetDisplayNameOf(desktop, pidl, SHGDN_INFOLDER | SHGDN_FORPARSING, &strret);
-        ok(hr == S_OK, "IShellFolder::GetDisplayNameOf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         hr = StrRetToBufW(&strret, pidl, name1, ARRAY_SIZE(name1));
-        ok(hr == S_OK, "StrRetToBuf failed with error 0x%08lx\n", hr);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
 
-        ok(lstrcmpW(name1, name2), "the display names are equal: %s\n", wine_dbgstr_w(name1));
-        ok(name1[0] == ':' && name1[1] == ':', "display name is not a GUID: %s\n", wine_dbgstr_w(name1));
+        ok(lstrcmpW(name1, name2), "Test %d: the display names are equal: %s.\n", i, wine_dbgstr_w(name1));
+        ok(name1[0] == ':' && name1[1] == ':', "Test %d: display name is not a GUID: %s.\n", i, wine_dbgstr_w(name1));
 
         ILFree(pidl);
     }
