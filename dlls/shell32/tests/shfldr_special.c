@@ -307,30 +307,78 @@ static void test_desktop_folder(void)
     IShellFolder_Release(psf);
 }
 
+static void get_localized_string(const WCHAR *clsid, WCHAR *output)
+{
+    WCHAR buffer[MAX_PATH], resource_id[8], *p;
+    DWORD type, size;
+    HMODULE module;
+    int lenght, id;
+    LONG result;
+    HKEY key;
+
+    wsprintfW(buffer, L"CLSID\\%s", clsid);
+    result = RegOpenKeyExW(HKEY_CLASSES_ROOT, buffer, 0, KEY_READ, &key);
+    ok(result == ERROR_SUCCESS, "RegOpenKeyExW failed %#lx.\n", result);
+
+    type = REG_SZ;
+    size = sizeof(buffer);
+    result = RegQueryValueExW(key, L"LocalizedString", NULL, &type, (LPBYTE)&buffer, &size);
+    ok(result == ERROR_SUCCESS, "RegQueryValueExW failed %#lx.\n", result);
+    RegCloseKey(key);
+
+    p = wcsrchr(buffer, L',');
+    lenght = p - buffer;
+    lstrcpynW(buffer, buffer + 1, lenght);
+    result = ExpandEnvironmentStringsW(buffer, buffer, MAX_PATH);
+    ok(!!result, "ExpandEnvironmentStringsW failed %#lx.\n", GetLastError());
+    wcscpy(resource_id, p + 2);
+    id = _wtoi(resource_id);
+
+    module = LoadLibraryExW(buffer, NULL, LOAD_LIBRARY_AS_DATAFILE);
+    ok(!!module, "LoadLibraryExW failed %#lx.\n", GetLastError());
+    result = LoadStringW(module, id, output, MAX_PATH);
+    ok(!!result, "LoadStringW failed %#lx.\n", GetLastError());
+    CloseHandle(module);
+}
+
 static void test_desktop_displaynameof(void)
 {
-    static WCHAR MyComputer[]  = { ':',':','{','2','0','D','0','4','F','E','0','-','3','A','E','A','-','1','0','6','9','-','A','2','D','8','-','0','8','0','0','2','B','3','0','3','0','9','D','}', 0 };
-    static WCHAR MyDocuments[] = { ':',':','{','4','5','0','D','8','F','B','A','-','A','D','2','5','-','1','1','D','0','-','9','8','A','8','-','0','8','0','0','3','6','1','B','1','1','0','3','}', 0 };
-    static WCHAR RecycleBin[]  = { ':',':','{','6','4','5','F','F','0','4','0','-','5','0','8','1','-','1','0','1','B','-','9','F','0','8','-','0','0','A','A','0','0','2','F','9','5','4','E','}', 0 };
-    static WCHAR ControlPanel[]= { ':',':','{','2','0','D','0','4','F','E','0','-','3','A','E','A','-','1','0','6','9','-','A','2','D','8','-','0','8','0','0','2','B','3','0','3','0','9','D','}','\\',
-                                   ':',':','{','2','1','E','C','2','0','2','0','-','3','A','E','A','-','1','0','6','9','-','A','2','D','D','-','0','8','0','0','2','B','3','0','3','0','9','D','}', 0 };
-    static WCHAR *folders[] = { MyComputer, MyDocuments, RecycleBin, ControlPanel };
+    WCHAR buffer[MAX_PATH], name1[MAX_PATH], name2[MAX_PATH];
     IShellFolder *desktop;
     ITEMIDLIST *pidl;
+    UINT i, lenght;
     STRRET strret;
     DWORD eaten;
     HRESULT hr;
-    UINT i;
+    struct folder_test
+    {
+        const CLSID clsid;
+        const CLSID sub_clsid;
+    } folder_tests[] =
+    {
+        { CLSID_MyComputer,  CLSID_NULL },
+        { CLSID_MyDocuments, CLSID_NULL },
+        { CLSID_RecycleBin,  CLSID_NULL },
+        { CLSID_MyComputer,  CLSID_ControlPanel },
+    };
 
     hr = SHGetDesktopFolder(&desktop);
     ok(hr == S_OK, "SHGetDesktopFolder failed with error 0x%08lx\n", hr);
     if (FAILED(hr)) return;
 
-    for (i = 0; i < ARRAY_SIZE(folders); i++)
+    wcscpy(buffer, L"::");
+    for (i = 0; i < ARRAY_SIZE(folder_tests); i++)
     {
-        WCHAR name1[MAX_PATH], name2[MAX_PATH];
+        lenght = wcslen(L"::");
+        StringFromGUID2(&folder_tests[i].clsid, buffer + lenght, MAX_PATH - lenght);
+        if (!IsEqualCLSID(&folder_tests[i].sub_clsid, &CLSID_NULL))
+        {
+            StringFromGUID2(&folder_tests[i].sub_clsid, name2, MAX_PATH);
+            wsprintfW(buffer, L"%s\\::%s", buffer, name2);
+            lenght = wcslen(buffer) - wcslen(name2);
+        }
 
-        hr = IShellFolder_ParseDisplayName(desktop, NULL, NULL, folders[i], &eaten, &pidl, NULL);
+        hr = IShellFolder_ParseDisplayName(desktop, NULL, NULL, buffer, &eaten, &pidl, NULL);
         ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         if (FAILED(hr)) continue;
 
@@ -338,6 +386,10 @@ static void test_desktop_displaynameof(void)
         ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
         hr = StrRetToBufW(&strret, pidl, name1, ARRAY_SIZE(name1));
         ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
+
+        get_localized_string(buffer + lenght, name2);
+        ok(!lstrcmpW(name1, name2), "Test %d: got wrong display name %s, excepted %s.\n",
+                i, debugstr_w(name1), debugstr_w(name2));
 
         hr = IShellFolder_GetDisplayNameOf(desktop, pidl, SHGDN_INFOLDER | SHGDN_FORPARSING | SHGDN_FORADDRESSBAR, &strret);
         ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
