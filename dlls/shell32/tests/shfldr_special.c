@@ -344,9 +344,10 @@ static void get_localized_string(const WCHAR *clsid, WCHAR *output)
 static void test_desktop_displaynameof(void)
 {
     WCHAR buffer[MAX_PATH], name1[MAX_PATH], name2[MAX_PATH];
-    IShellFolder *desktop;
+    IShellFolder *desktop, *parent;
+    LPCITEMIDLIST child;
+    UINT i, lenght, j;
     ITEMIDLIST *pidl;
-    UINT i, lenght;
     STRRET strret;
     DWORD eaten;
     HRESULT hr;
@@ -362,6 +363,23 @@ static void test_desktop_displaynameof(void)
         { CLSID_Printers,    CLSID_NULL },
         { CLSID_Internet,    CLSID_NULL },
         { CLSID_MyComputer,  CLSID_ControlPanel },
+    };
+    static const SHGNO flags[] =
+    {
+        SHGDN_NORMAL,
+        SHGDN_INFOLDER,
+        SHGDN_FOREDITING,
+        SHGDN_FORADDRESSBAR,
+        SHGDN_INCLUDE_NONFILESYS,
+        SHGDN_FORPARSING | SHGDN_FORADDRESSBAR,
+        SHGDN_FORPARSING | SHGDN_FORADDRESSBAR | SHGDN_INFOLDER,
+    }, valid_flags[] =
+    {
+        SHGDN_FORPARSING,
+        SHGDN_FORPARSING | SHGDN_NORMAL,
+        SHGDN_FORPARSING | SHGDN_INFOLDER,
+        SHGDN_FORPARSING | SHGDN_FOREDITING,
+        SHGDN_FORPARSING | SHGDN_INCLUDE_NONFILESYS,
     };
 
     hr = SHGetDesktopFolder(&desktop);
@@ -410,8 +428,35 @@ static void test_desktop_displaynameof(void)
         ok(lstrcmpW(name1, name2), "Test %d: the display names are equal: %s.\n", i, wine_dbgstr_w(name1));
         ok(name1[0] == ':' && name1[1] == ':', "Test %d: display name is not a GUID: %s.\n", i, wine_dbgstr_w(name1));
 
+        for (j = 0; j < ARRAYSIZE(flags); j++)
+        {
+            hr = IShellFolder_GetDisplayNameOf(desktop, pidl, flags[j], &strret);
+            ok(hr == S_OK, "Test %d,%d: got %#lx.\n", i, j, hr);
+        }
         ILFree(pidl);
     }
+
+    wcscpy(name1, L"shell:::{01234567-4321-1234-4321-ba9876543210}");
+    hr = IShellFolder_ParseDisplayName(desktop, NULL, NULL, name1, NULL, &pidl, NULL);
+    ok(hr == S_OK, "Got %#lx.\n", hr);
+    hr = SHBindToParent(pidl, &IID_IShellFolder, (void **)&parent, &child);
+    ok(hr == S_OK, "Got %#lx.\n", hr);
+    for (i = 0; i < ARRAYSIZE(flags); i++)
+    {
+        hr = IShellFolder_GetDisplayNameOf(parent, child, flags[i], &strret);
+        todo_wine ok(hr == E_FAIL, "Test %d: got %#lx.\n", i, hr);
+    }
+    for (i = 0; i < ARRAYSIZE(valid_flags); i++)
+    {
+        hr = IShellFolder_GetDisplayNameOf(desktop, pidl, valid_flags[i], &strret);
+        ok(hr == S_OK, "Test %d: got %#lx.\n", i, hr);
+        hr = StrRetToBufW(&strret, pidl, name2, ARRAYSIZE(name2));
+        ok(hr == S_OK, "Got %#lx.\n", hr);
+        ok(!wcsicmp(name2, L"::{01234567-4321-1234-4321-ba9876543210}"),
+                "Got wrong name %s.\n", debugstr_w(name2));
+    }
+    IShellFolder_Release(parent);
+
     IShellFolder_Release(desktop);
 }
 
