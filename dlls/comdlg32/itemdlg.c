@@ -3442,6 +3442,16 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnViewCreated(IExplorerBrowserEve
 {
     FileDialogImpl *This = impl_from_IExplorerBrowserEvents(iface);
     TRACE("%p (%p)\n", This, psv);
+
+    if (GetFocus() == NULL)
+    {
+        /* previous view was probably focused, focus the new view */
+        HWND view_hwnd;
+        HRESULT hr = IShellView_GetWindow(psv, &view_hwnd);
+        if (SUCCEEDED(hr))
+            SetFocus(view_hwnd);
+    }
+
     return S_OK;
 }
 
