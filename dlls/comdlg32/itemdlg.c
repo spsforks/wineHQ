@@ -1976,7 +1976,7 @@ static HRESULT init_explorerbrowser(FileDialogImpl *This)
 
 static void init_toolbar(FileDialogImpl *This, HWND hwnd)
 {
-    CreateWindowExW(0, WC_NAVBARW, NULL, WS_CHILD | WS_VISIBLE,
+    CreateWindowExW(WS_EX_CONTROLPARENT, WC_NAVBARW, NULL, WS_CHILD | WS_VISIBLE,
                     0, 0,
                     0, MulDiv(NAVBAR_HEIGHT, This->dpi_y, USER_DEFAULT_SCREEN_DPI),
                     hwnd, (HMENU)IDC_NAVBAR, NULL, NULL);

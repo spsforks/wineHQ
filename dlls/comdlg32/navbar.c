@@ -41,7 +41,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 
 #define FRAME_SUBCLASS_ID 1
 
-#define LAYOUT_ITEMS_N 1 /* number of items (not including crumbs) in NAVBAR_DoLayout to update */
+#define LAYOUT_ITEMS_N 5 /* number of items (not including crumbs) in NAVBAR_DoLayout to update */
 
 typedef struct {
     HWND parent_hwnd;
@@ -289,7 +289,7 @@ static void NAVBAR_CalcLayout(NAVBAR_INFO *info)
     {
         if (crumbs_visible_n > 0)
         {
-            LONG_PTR style = WS_CHILD | WS_VISIBLE;
+            LONG_PTR style = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
 
             /* if label doesn't fully fit, align it to the left */
             if (crumb->current_w < crumb->full_w)
@@ -337,6 +337,12 @@ static HDWP NAVBAR_DoLayout(NAVBAR_INFO *info, HDWP hdwp)
 
         can_fit_n -= 1;
     }
+
+    /* update the Z order of other buttons for consistent tab order */
+    hdwp = DeferWindowPos(hdwp, info->overflow_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE);
+    hdwp = DeferWindowPos(hdwp, info->up_btn_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE);
+    hdwp = DeferWindowPos(hdwp, info->fwd_btn_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE);
+    hdwp = DeferWindowPos(hdwp, info->back_btn_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE);
 
     split_info.mask = BCSIF_STYLE;
 
@@ -393,7 +399,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
     x = 0;
     info->back_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
-                                          WS_CHILD | WS_VISIBLE | BS_ICON | BS_BITMAP,
+                                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_ICON | BS_BITMAP,
                                           x, 0, cs->cy, cs->cy,
                                           hwnd, (HMENU)IDC_NAVBACK, COMDLG32_hInstance, NULL);
     SendMessageW(info->back_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
@@ -402,7 +408,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
     x += cs->cy + gap;
     info->fwd_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
-                                         WS_CHILD | WS_VISIBLE | BS_ICON | BS_BITMAP,
+                                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_ICON | BS_BITMAP,
                                          x, 0, cs->cy, cs->cy,
                                          hwnd, (HMENU)IDC_NAVFORWARD, COMDLG32_hInstance, NULL);
     SendMessageW(info->fwd_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
@@ -411,7 +417,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
     x += cs->cy + gap;
     info->up_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
-                                        WS_CHILD | WS_VISIBLE | BS_ICON | BS_BITMAP,
+                                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_ICON | BS_BITMAP,
                                         x, 0, cs->cy, cs->cy,
                                         hwnd, (HMENU)IDC_NAVUP, COMDLG32_hInstance, NULL);
     SendMessageW(info->up_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
@@ -426,7 +432,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     SetWindowSubclass(info->frame_hwnd, NAVBAR_FRAME_SubclassProc, FRAME_SUBCLASS_ID, (DWORD_PTR)info);
 
     info->overflow_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
-                                          WS_CHILD | WS_VISIBLE | BS_ICON | BS_SPLITBUTTON,
+                                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_ICON | BS_SPLITBUTTON,
                                           x, 0, cs->cy + MulDiv(6, info->dpi_x, USER_DEFAULT_SCREEN_DPI), cs->cy,
                                           hwnd, (HMENU)IDC_OVERFLOW, COMDLG32_hInstance, NULL);
     SendMessageW(info->overflow_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
@@ -565,7 +571,7 @@ static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
         IShellFolder_GetDisplayNameOf(desktop, pidl, SHGDN_FORADDRESSBAR, &strret);
         StrRetToStrW(&strret, pidl, &crumb1->display_name);
 
-        crumb1->hwnd = CreateWindowExW(0, WC_BUTTONW, crumb1->display_name, WS_CHILD,
+        crumb1->hwnd = CreateWindowExW(0, WC_BUTTONW, crumb1->display_name, WS_CHILD | WS_TABSTOP,
                                        0, 0, 0, 0,
                                        info->container_hwnd, (HMENU)IDC_NAVCRUMB, COMDLG32_hInstance, NULL);
         SendMessageW(crumb1->hwnd, WM_SETFONT, (LPARAM)gui_font, FALSE);
