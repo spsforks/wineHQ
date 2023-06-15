@@ -40,6 +40,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 #define IDC_OVERFLOW 205
 
 #define FRAME_SUBCLASS_ID 1
+#define PUSHBUTTON_SUBCLASS_ID 2
 
 #define LAYOUT_ITEMS_N 5 /* number of items (not including crumbs) in NAVBAR_DoLayout to update */
 
@@ -184,6 +185,20 @@ static LRESULT NAVBAR_OVERFLOW_DrawIcon(HWND hwnd, NAVBAR_INFO *info, UINT msg, 
     }
 
     return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+static LRESULT CALLBACK NAVBAR_PushButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR id_subclass, DWORD_PTR ref_data)
+{
+    switch (msg)
+    {
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONDBLCLK:
+            /* avoid taking focus by sending a keypress instead */
+            SendMessageW(hwnd, WM_KEYDOWN, VK_SPACE, 0);
+            return 0; /* processed */
+    }
+
+    return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
 static LRESULT CALLBACK NAVBAR_FRAME_SubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR id_subclass, DWORD_PTR ref_data)
@@ -405,6 +420,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     SendMessageW(info->back_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
     set_icon(info->icons, ILI_BACK, info->back_btn_hwnd);
     set_title_and_add_tooltip(info, info->back_btn_hwnd, IDS_BACK);
+    SetWindowSubclass(info->back_btn_hwnd, NAVBAR_PushButtonProc, PUSHBUTTON_SUBCLASS_ID, (DWORD_PTR)info);
 
     x += cs->cy + gap;
     info->fwd_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
@@ -414,6 +430,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     SendMessageW(info->fwd_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
     set_icon(info->icons, ILI_FORWARD, info->fwd_btn_hwnd);
     set_title_and_add_tooltip(info, info->fwd_btn_hwnd, IDS_FORWARD);
+    SetWindowSubclass(info->fwd_btn_hwnd, NAVBAR_PushButtonProc, PUSHBUTTON_SUBCLASS_ID, (DWORD_PTR)info);
 
     x += cs->cy + gap;
     info->up_btn_hwnd = CreateWindowExW(0, WC_BUTTONW, NULL,
@@ -423,6 +440,7 @@ static LRESULT NAVBAR_Create(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     SendMessageW(info->up_btn_hwnd, WM_SETFONT, (WPARAM)gui_font, FALSE);
     set_icon(info->icons, ILI_UP, info->up_btn_hwnd);
     set_title_and_add_tooltip(info, info->up_btn_hwnd, IDS_UPFOLDER);
+    SetWindowSubclass(info->up_btn_hwnd, NAVBAR_PushButtonProc, PUSHBUTTON_SUBCLASS_ID, (DWORD_PTR)info);
 
     x += cs->cy + gap;
     info->frame_hwnd = CreateWindowExW(0, WC_STATICW, NULL,
@@ -577,6 +595,7 @@ static LRESULT NAVBAR_SetPIDL(HWND hwnd, NAVBAR_INFO *info, UINT msg, WPARAM wpa
         SendMessageW(crumb1->hwnd, WM_SETFONT, (LPARAM)gui_font, FALSE);
         SendMessageW(crumb1->hwnd, BCM_GETIDEALSIZE, 0, (LPARAM)&full_size);
         SetWindowLongPtrW(crumb1->hwnd, GWLP_USERDATA, (LPARAM)crumb1->pidl);
+        SetWindowSubclass(crumb1->hwnd, NAVBAR_PushButtonProc, PUSHBUTTON_SUBCLASS_ID, (DWORD_PTR)info);
 
         crumb1->full_w = full_size.cx + padding;
         crumb1->current_w = crumb1->full_w;
