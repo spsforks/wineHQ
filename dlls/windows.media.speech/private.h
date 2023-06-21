@@ -126,4 +126,13 @@ HRESULT vector_inspectable_create( const struct vector_iids *iids, IVector_IInsp
 #define DEFINE_IINSPECTABLE_OUTER( pfx, iface_type, impl_type, outer_iface )                       \
     DEFINE_IINSPECTABLE_( pfx, iface_type, impl_type, impl_from_##iface_type, iface_type##_iface, impl->outer_iface )
 
+struct synth_voices_provider
+{
+    struct IVoiceInformation **voices;
+    unsigned num_voices;
+};
+
+HRESULT voice_information_allocate(const WCHAR *display_name, const WCHAR *id, const WCHAR *locale,
+                                   VoiceGender gender, IVoiceInformation **pvoice);
+
 #endif
