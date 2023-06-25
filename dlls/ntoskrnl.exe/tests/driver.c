@@ -2520,6 +2520,48 @@ static NTSTATUS test_load_driver_ioctl(IRP *irp, IO_STACK_LOCATION *stack, ULONG
         return ZwUnloadDriver(&name);
 }
 
+static NTSTATUS empty_ioctl(IRP *irp, IO_STACK_LOCATION *stack)
+{
+    ULONG code = stack->Parameters.DeviceIoControl.IoControlCode;
+    const void *input_buffer, *output_buffer;
+
+    input_buffer = irp->AssociatedIrp.SystemBuffer;
+    output_buffer = irp->AssociatedIrp.SystemBuffer;
+
+    if (code == IOCTL_WINETEST_EMPTY_NEITHER)
+    {
+        input_buffer = stack->Parameters.DeviceIoControl.Type3InputBuffer;
+        output_buffer = irp->UserBuffer;
+    }
+    else if (code == IOCTL_WINETEST_EMPTY_IN_DIRECT)
+    {
+        if (irp->MdlAddress)
+            input_buffer = MmGetSystemAddressForMdlSafe(irp->MdlAddress, NormalPagePriority);
+        else
+            input_buffer = NULL;
+        input_buffer = irp->MdlAddress;
+    }
+    else if (code == IOCTL_WINETEST_EMPTY_OUT_DIRECT)
+    {
+        if (irp->MdlAddress)
+            output_buffer = MmGetSystemAddressForMdlSafe(irp->MdlAddress, NormalPagePriority);
+        else
+            output_buffer = NULL;
+        output_buffer = irp->MdlAddress;
+    }
+
+    if (input_buffer)
+        return STATUS_INVALID_PARAMETER_1;
+    if (stack->Parameters.DeviceIoControl.InputBufferLength)
+        return STATUS_INVALID_PARAMETER_2;
+    if (output_buffer)
+        return STATUS_INVALID_PARAMETER_3;
+    if (stack->Parameters.DeviceIoControl.OutputBufferLength)
+        return STATUS_INVALID_PARAMETER_4;
+
+    return STATUS_END_OF_FILE;
+}
+
 static NTSTATUS completion_ioctl(DEVICE_OBJECT *device, IRP *irp, IO_STACK_LOCATION *stack)
 {
     if (device == upper_device)
@@ -2636,6 +2678,12 @@ static NTSTATUS WINAPI driver_IoControl(DEVICE_OBJECT *device, IRP *irp)
             break;
         case IOCTL_WINETEST_COMPLETION:
             return completion_ioctl(device, irp, stack);
+        case IOCTL_WINETEST_EMPTY_BUFFERED:
+        case IOCTL_WINETEST_EMPTY_IN_DIRECT:
+        case IOCTL_WINETEST_EMPTY_OUT_DIRECT:
+        case IOCTL_WINETEST_EMPTY_NEITHER:
+            status = empty_ioctl(irp, stack);
+            break;
         default:
             break;
     }
