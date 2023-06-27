@@ -2539,7 +2539,6 @@ static NTSTATUS empty_ioctl(IRP *irp, IO_STACK_LOCATION *stack)
             input_buffer = MmGetSystemAddressForMdlSafe(irp->MdlAddress, NormalPagePriority);
         else
             input_buffer = NULL;
-        input_buffer = irp->MdlAddress;
     }
     else if (code == IOCTL_WINETEST_EMPTY_OUT_DIRECT)
     {
@@ -2547,7 +2546,6 @@ static NTSTATUS empty_ioctl(IRP *irp, IO_STACK_LOCATION *stack)
             output_buffer = MmGetSystemAddressForMdlSafe(irp->MdlAddress, NormalPagePriority);
         else
             output_buffer = NULL;
-        output_buffer = irp->MdlAddress;
     }
 
     if (input_buffer)
