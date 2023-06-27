@@ -1168,13 +1168,13 @@ static void test_ioctl_buffers(void)
     }
     param_tests[] =
     {
-        {NULL,       0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_END_OF_FILE,         {0, 1, 1, 0}},
-        {NULL,       4, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_2, {1, 1, 1, 1}},
-        {(void *)16, 0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_1, {0, 1, 1, 1}},
+        {NULL,       0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_END_OF_FILE,         {0, 0, 0, 0}},
+        {NULL,       4, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_2, {0, 0, 0, 1}},
+        {(void *)16, 0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_1, {0, 0, 0, 1}},
         {(void *)16, 4, NULL,       0, STATUS_ACCESS_VIOLATION, STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_1, {0, 0, 0, 1}},
-        {NULL,       0, NULL,       4, STATUS_END_OF_FILE,      STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_4, {1, 1, 1, 1}},
-        {NULL,       0, (void *)16, 0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_3, {0, 1, 1, 1}},
-        {NULL,       0, (void *)16, 4, STATUS_ACCESS_VIOLATION, STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_3, {1, 1, 1, 1}},
+        {NULL,       0, NULL,       4, STATUS_END_OF_FILE,      STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_4, {0, 0, 0, 1}},
+        {NULL,       0, (void *)16, 0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_3, {0, 0, 0, 1}},
+        {NULL,       0, (void *)16, 4, STATUS_ACCESS_VIOLATION, STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_3, {0, 0, 0, 1}},
     };
 
     for (j = 0; j < ARRAY_SIZE(param_tests); ++j)
