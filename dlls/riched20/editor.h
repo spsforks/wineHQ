@@ -36,6 +36,12 @@ extern HINSTANCE dll_instance DECLSPEC_HIDDEN;
         (fe).lindex=-1;\
         };
 
+#define MAKE_OPENTYPE_TAG( _x1, _x2, _x3, _x4 ) \
+            ( ( (ULONG)_x4 << 24 ) | \
+            ( (ULONG)_x3 << 16 ) | \
+            ( (ULONG)_x2 <<  8 ) | \
+            (ULONG)_x1 )
+
 static inline WCHAR *get_text( const ME_Run *run, int offset )
 {
     return run->para->text->szData + run->nCharOfs + offset;
@@ -44,6 +50,11 @@ static inline WCHAR *get_text( const ME_Run *run, int offset )
 static inline const char *debugstr_run( const ME_Run *run )
 {
     return debugstr_wn( get_text( run, 0 ), run->len );
+}
+
+static inline const char *debugstr_tag( OPENTYPE_TAG tag )
+{
+    return debugstr_an( (char *)&tag, 4 );
 }
 
 /* style.c */
@@ -63,6 +74,7 @@ BOOL cfany_to_cf2w(CHARFORMAT2W *to, const CHARFORMAT2W *from) DECLSPEC_HIDDEN;
 BOOL cf2w_to_cfany(CHARFORMAT2W *to, const CHARFORMAT2W *from) DECLSPEC_HIDDEN;
 void ME_CopyCharFormat(CHARFORMAT2W *pDest, const CHARFORMAT2W *pSrc) DECLSPEC_HIDDEN; /* only works with 2W structs */
 void ME_CharFormatFromLogFont(HDC hDC, const LOGFONTW *lf, CHARFORMAT2W *fmt) DECLSPEC_HIDDEN; /* ditto */
+ME_Style *duplicate_style( ME_Style *style );
 
 /* list.c */
 void ME_InsertBefore(ME_DisplayItem *diWhere, ME_DisplayItem *diWhat) DECLSPEC_HIDDEN;

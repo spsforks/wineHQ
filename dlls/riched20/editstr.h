@@ -76,6 +76,7 @@ typedef struct tagME_Style
   int nRefs; /* reference count */
   SCRIPT_CACHE script_cache;
   struct list entry;
+  LOGFONTW fallback_font;
 } ME_Style;
 
 typedef enum {
@@ -176,6 +177,7 @@ typedef struct tagME_Run
   GOFFSET *offsets;
   int max_clusters;
   WORD *clusters;
+  OPENTYPE_TAG script_tag;
 } ME_Run;
 
 typedef struct tagME_Border

@@ -319,6 +319,7 @@ ME_Run *run_split( ME_TextEditor *editor, ME_Cursor *cursor )
     new_run->nCharOfs = run->nCharOfs + nOffset;
     new_run->len = run->len - nOffset;
     new_run->para = run->para;
+    new_run->script_tag = run->script_tag;
     run->len = nOffset;
     cursor->run = new_run;
     cursor->nOffset = 0;
@@ -352,8 +353,13 @@ ME_Run *run_create( ME_Style *s, int flags )
 
     if (!item) return NULL;
 
-    ME_AddRefStyle( s );
-    run->style = s;
+    if (s->fallback_font.lfFaceName[0])
+        run->style = duplicate_style( s );
+    else
+    {
+        ME_AddRefStyle( s );
+        run->style = s;
+    }
     run->reobj = NULL;
     run->nFlags = flags;
     run->nCharOfs = -1;
@@ -367,6 +373,7 @@ ME_Run *run_create( ME_Style *s, int flags )
     run->offsets = NULL;
     run->max_clusters = 0;
     run->clusters = NULL;
+    run->script_tag = 0;
     return run;
 }
 

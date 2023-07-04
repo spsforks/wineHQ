@@ -61,8 +61,118 @@ static BOOL get_run_glyph_buffers( ME_Run *run )
     return TRUE;
 }
 
+static WCHAR hang_font[LF_FACESIZE] = L"Gulim";
+static WCHAR hani_font[LF_FACESIZE] = L"Simsun";
+static WCHAR kana_font[LF_FACESIZE] = L"MS UI Gothic";
+static BOOL fallbacks_initialized = FALSE;
+static CRITICAL_SECTION fallbacks_cs;
+static CRITICAL_SECTION_DEBUG critsect_debug =
+{
+    0, 0, &fallbacks_cs,
+    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": fallbacks_cs") }
+};
+static CRITICAL_SECTION fallbacks_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+struct richedit_fallback
+{
+    OPENTYPE_TAG script_tag;
+    WCHAR *font_name;
+} richedit_fallbacks[] =
+{
+    { MAKE_OPENTYPE_TAG( 'h','a','n','g' ), hang_font },
+    { MAKE_OPENTYPE_TAG( 'h','a','n','i' ), hani_font },
+    { MAKE_OPENTYPE_TAG( 'k','a','n','a' ), kana_font },
+};
+
+static void init_richedit_fallbacks( void )
+{
+    LCID lcid;
+
+    EnterCriticalSection( &fallbacks_cs );
+
+    if (fallbacks_initialized)
+    {
+        LeaveCriticalSection( &fallbacks_cs );
+        return;
+    }
+
+    /* Setting proper font for "hani". */
+    lcid = GetSystemDefaultLangID();
+    switch (PRIMARYLANGID( lcid ))
+    {
+        case LANG_CHINESE:
+        {
+            switch (SUBLANGID( lcid ))
+            {
+                case SUBLANG_CHINESE_HONGKONG:
+                case SUBLANG_CHINESE_MACAU:
+                case SUBLANG_CHINESE_TRADITIONAL:
+                    wcscpy( hani_font, L"PMingLiU" );
+                    break;
+                case SUBLANG_CHINESE_SIMPLIFIED:
+                    wcscpy( hani_font, L"Simsun" );
+                    break;
+            }
+            break;
+        }
+        case LANG_JAPANESE:
+            wcscpy( hani_font, L"MS UI Gothic" );
+            break;
+        case LANG_KOREAN:
+            wcscpy( hani_font, L"Gulim" );
+            break;
+    }
+
+    fallbacks_initialized = TRUE;
+    LeaveCriticalSection( &fallbacks_cs );
+}
+
+static const WCHAR *find_fallback_font( OPENTYPE_TAG script_tag )
+{
+    int count;
+
+    init_richedit_fallbacks();
+
+    count = ARRAYSIZE( richedit_fallbacks );
+    while (count--)
+        if (richedit_fallbacks[count].script_tag == script_tag)
+            return richedit_fallbacks[count].font_name;
+
+    WARN( "Failed to find a fallback font for %s.\n", debugstr_tag( script_tag ) );
+    return NULL;
+}
+
+static BOOL requires_fallback( HDC dc, ME_Run *run )
+{
+    SCRIPT_CACHE script_cache = NULL;
+    static const WCHAR *text;
+    WORD *glyphs;
+    int len;
+
+    if (!run->script_tag)
+        return FALSE;
+
+    len = run->len;
+    if (!(glyphs = heap_calloc( len, sizeof( *glyphs ) )))
+        return FALSE;
+
+    text = get_text( run, 0 );
+    if (ScriptGetCMap( dc, &script_cache, text, len, 0, glyphs ) != S_OK)
+    {
+        heap_free( glyphs );
+        return TRUE;
+    }
+    heap_free( glyphs );
+
+    return FALSE;
+}
+
 static HRESULT shape_run( ME_Context *c, ME_Run *run )
 {
+    HFONT old_font = NULL, fallback = NULL;
+    SCRIPT_GLYPHPROP *glyph_props = NULL;
+    SCRIPT_CHARPROP *char_props;
     HRESULT hr;
     int i;
 
@@ -73,6 +183,9 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
         get_run_glyph_buffers( run );
     }
 
+    if (!(char_props = heap_alloc( run->len * sizeof( *char_props ) )))
+        return E_OUTOFMEMORY;
+
     if (run->max_clusters < run->len)
     {
         heap_free( run->clusters );
@@ -81,10 +194,44 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     }
 
     select_style( c, run->style );
+    if (requires_fallback( c->hDC, run ))
+    {
+        static const WCHAR *font_name;
+
+        font_name = find_fallback_font( run->script_tag );
+        if (font_name)
+        {
+            if (wcscmp( run->style->fallback_font.lfFaceName, font_name ))
+            {
+                ME_Style *style;
+
+                GetObjectW( GetCurrentObject( c->hDC, OBJ_FONT ), sizeof( run->style->fallback_font ),
+                            &run->style->fallback_font );
+                style = duplicate_style( run->style );
+                ME_ReleaseStyle( run->style );
+                run->style = style;
+                wcscpy( run->style->fallback_font.lfFaceName, font_name );
+            }
+            TRACE( "Falling back to %s font for %s.\n", debugstr_w( font_name ), debugstr_tag( run->script_tag ) );
+            fallback = CreateFontIndirectW( &run->style->fallback_font );
+            if (fallback)
+                old_font = SelectObject( c->hDC, fallback );
+        }
+    }
+    else
+        run->style->fallback_font.lfFaceName[0] = 0;
+
     while (1)
     {
-        hr = ScriptShape( c->hDC, &run->style->script_cache, get_text( run, 0 ), run->len, run->max_glyphs,
-                          &run->script_analysis, run->glyphs, run->clusters, run->vis_attrs, &run->num_glyphs );
+        heap_free( glyph_props );
+        if (!(glyph_props = heap_alloc( run->max_glyphs * sizeof( *glyph_props ))))
+        {
+            hr = E_OUTOFMEMORY;
+            break;
+        }
+        hr = ScriptShapeOpenType( c->hDC, &run->style->script_cache, &run->script_analysis, run->script_tag, 0,
+                                  NULL, NULL, 0, get_text( run, 0 ), run->len, run->max_glyphs, run->clusters,
+                                  char_props, run->glyphs, glyph_props, &run->num_glyphs );
         if (hr != E_OUTOFMEMORY) break;
         if (run->max_glyphs > 10 * run->len) break; /* something has clearly gone wrong */
         run->max_glyphs *= 2;
@@ -92,14 +239,27 @@ static HRESULT shape_run( ME_Context *c, ME_Run *run )
     }
 
     if (SUCCEEDED(hr))
-        hr = ScriptPlace( c->hDC, &run->style->script_cache, run->glyphs, run->num_glyphs, run->vis_attrs,
-                          &run->script_analysis, run->advances, run->offsets, NULL );
+        hr = ScriptPlaceOpenType( c->hDC, &run->style->script_cache, &run->script_analysis, run->script_tag, 0,
+                                  NULL, NULL, 0, get_text( run, 0 ), run->clusters, char_props, run->len, run->glyphs,
+                                  glyph_props, run->num_glyphs, run->advances, run->offsets, NULL );
+
+    if (old_font)
+    {
+        SelectObject( c->hDC, old_font );
+        DeleteObject( fallback );
+    }
 
     if (SUCCEEDED(hr))
     {
         for (i = 0, run->nWidth = 0; i < run->num_glyphs; i++)
+        {
             run->nWidth += run->advances[i];
+            run->vis_attrs[i] = glyph_props[i].sva;
+        }
     }
+
+    heap_free( glyph_props );
+    heap_free( char_props );
 
     return hr;
 }
@@ -725,6 +885,7 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 {
     ME_Run *run;
     SCRIPT_ITEM buf[16], *items = buf;
+    OPENTYPE_TAG tags[16], *script_tags = tags;
     int items_passed = ARRAY_SIZE( buf ), num_items, cur_item;
     SCRIPT_CONTROL control = { LANG_USER_DEFAULT, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
                                FALSE, FALSE, 0 };
@@ -738,16 +899,22 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
     while (1)
     {
-        hr = ScriptItemize( para->text->szData, para->text->nLen, items_passed, &control,
-                            &state, items, &num_items );
+        hr = ScriptItemizeOpenType( para->text->szData, para->text->nLen, items_passed, &control,
+                                    &state, items, script_tags, &num_items );
         if (hr != E_OUTOFMEMORY) break; /* may not be enough items if hr == E_OUTOFMEMORY */
         if (items_passed > para->text->nLen + 1) break; /* something else has gone wrong */
         items_passed *= 2;
         if (items == buf)
+        {
             items = heap_alloc( items_passed * sizeof( *items ) );
+            script_tags = heap_alloc( items_passed * sizeof( *script_tags ) );
+        }
         else
+        {
             items = heap_realloc( items, items_passed * sizeof( *items ) );
-        if (!items) break;
+            script_tags = heap_realloc( script_tags, items_passed * sizeof( *script_tags ) );
+        }
+        if (!items || !script_tags) break;
     }
     if (FAILED( hr )) goto end;
 
@@ -760,9 +927,10 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
                    items[cur_item].a.fRTL, items[cur_item].a.s.uBidiLevel );
         }
 
-        TRACE( "before splitting runs into ranges\n" );
+        TRACE( "before splitting runs into ranges:\n" );
         for (run = para_first_run( para ); run; run = run_next( run ))
-            TRACE( "\t%d: %s\n", run->nCharOfs, debugstr_run( run ) );
+            TRACE( "\t%d %s: %s\n", run->nCharOfs, run->script_tag ? debugstr_tag( run->script_tag ) : " ",
+                   debugstr_run( run ) );
     }
 
     /* split runs into ranges at item boundaries */
@@ -772,6 +940,7 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
         items[cur_item].a.fLogicalOrder = TRUE;
         run->script_analysis = items[cur_item].a;
+        run->script_tag = script_tags[cur_item];
 
         if (run->nFlags & MERF_ENDPARA) break; /* don't split eop runs */
 
@@ -784,15 +953,17 @@ static HRESULT itemize_para( ME_Context *c, ME_Paragraph *para )
 
     if (TRACE_ON( richedit ))
     {
-        TRACE( "after splitting into ranges\n" );
+        TRACE( "after splitting runs into ranges:\n" );
         for (run = para_first_run( para ); run; run = run_next( run ))
-            TRACE( "\t%d: %s\n", run->nCharOfs, debugstr_run( run ) );
+            TRACE( "\t%d %s: %s\n", run->nCharOfs, run->script_tag ? debugstr_tag( run->script_tag ) : " ",
+                   debugstr_run( run ) );
     }
 
     para->nFlags |= MEPF_COMPLEX;
 
 end:
     if (items != buf) heap_free( items );
+    if (script_tags != tags) heap_free( script_tags );
     return hr;
 }
 
