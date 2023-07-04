@@ -651,6 +651,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH VariantClear(VARIANTARG* pVarg)
           IRecordInfo_RecordClear(pBr->pRecInfo, pBr->pvRecord);
           IRecordInfo_Release(pBr->pRecInfo);
         }
+        CoTaskMemFree(pBr->pvRecord);
       }
       else if (V_VT(pVarg) == VT_DISPATCH ||
                V_VT(pVarg) == VT_UNKNOWN)

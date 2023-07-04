@@ -248,7 +248,7 @@ typedef struct IRecordInfoImpl
     unsigned int recordclear;
     unsigned int getsize;
     unsigned int recordcopy;
-    struct __tagBRECORD *rec;
+    void *validsrc;
 } IRecordInfoImpl;
 
 static inline IRecordInfoImpl *impl_from_IRecordInfo(IRecordInfo *iface)
@@ -298,7 +298,8 @@ static HRESULT WINAPI RecordInfo_RecordClear(IRecordInfo *iface, void *data)
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->recordclear++;
-    This->rec->pvRecord = NULL;
+    if(data == This->validsrc)
+        This->validsrc = NULL; /* not valid anymore, now that it's been cleared */
     return S_OK;
 }
 
@@ -306,7 +307,7 @@ static HRESULT WINAPI RecordInfo_RecordCopy(IRecordInfo *iface, void *src, void 
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->recordcopy++;
-    ok(src == (void*)0xdeadbeef, "wrong src pointer %p\n", src);
+    ok(This->validsrc && (src == This->validsrc), "wrong src pointer %p\n", src);
     return S_OK;
 }
 
@@ -326,7 +327,7 @@ static HRESULT WINAPI RecordInfo_GetSize(IRecordInfo *iface, ULONG* size)
 {
     IRecordInfoImpl* This = impl_from_IRecordInfo(iface);
     This->getsize++;
-    *size = 0;
+    *size = 1;
     return S_OK;
 }
 
@@ -764,9 +765,141 @@ static const IUnknownVtbl test_VariantClear_vtbl = {
 
 static test_VariantClearImpl test_myVariantClearImpl = {{&test_VariantClear_vtbl}, 1, 0};
 
+typedef struct IMallocSpyImpl
+{
+    IMallocSpy IMallocSpy_iface;
+    void *validptr;
+    void *lastalloc;
+    SIZE_T cbAlloc;
+} IMallocSpyImpl;
+
+static inline IMallocSpyImpl *impl_from_IMallocSpy(IMallocSpy *iface)
+{
+    return CONTAINING_RECORD(iface, IMallocSpyImpl, IMallocSpy_iface);
+}
+
+static HRESULT WINAPI IMallocSpyImpl_QueryInterface(IMallocSpy *iface, REFIID riid, void **obj)
+{
+    if (IsEqualIID(riid, &IID_IMallocSpy) || IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = iface;
+        IMallocSpy_AddRef(iface);
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI IMallocSpyImpl_AddRef(IMallocSpy *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI IMallocSpyImpl_Release(IMallocSpy *iface)
+{
+    return 1;
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PreAlloc(IMallocSpy *iface, SIZE_T cb)
+{
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    ok(This->cbAlloc && cb == This->cbAlloc, "unexpected allocation size=%Iu\n",cb);
+    return cb;
+}
+
+static void* WINAPI IMallocSpyImpl_PostAlloc(IMallocSpy *iface, void *ptr)
+{
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    This->lastalloc = ptr;
+    return ptr;
+}
+
+static void* WINAPI IMallocSpyImpl_PreFree(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    IMallocSpyImpl* This = impl_from_IMallocSpy(iface);
+    if(This->validptr && ptr == This->validptr)
+    {
+        This->validptr = NULL;
+        /* allow (but swallow) a prearranged pretend-it's-valid ptr */
+	return NULL;
+    }
+    if(ptr == This->lastalloc)
+        This->lastalloc = NULL;
+    ok(spyed, "freed %p not allocated by this spy\n",ptr);
+    return ptr;
+}
+
+static void WINAPI IMallocSpyImpl_PostFree(IMallocSpy *iface, BOOL spyed)
+{
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PreRealloc(IMallocSpy *iface, void *ptr, SIZE_T cb, void **newptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return 0;
+}
+
+static void* WINAPI IMallocSpyImpl_PostRealloc(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return NULL;
+}
+
+static void* WINAPI IMallocSpyImpl_PreGetSize(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return ptr;
+}
+
+static SIZE_T WINAPI IMallocSpyImpl_PostGetSize(IMallocSpy *iface, SIZE_T actual, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return actual;
+}
+
+static void* WINAPI IMallocSpyImpl_PreDidAlloc(IMallocSpy *iface, void *ptr, BOOL spyed)
+{
+    ok(0, "unexpected call\n");
+    return ptr;
+}
+
+static int WINAPI IMallocSpyImpl_PostDidAlloc(IMallocSpy *iface, void *ptr, BOOL spyed, int actual)
+{
+    ok(0, "unexpected call\n");
+    return actual;
+}
+
+static void WINAPI IMallocSpyImpl_PreHeapMinimize(IMallocSpy *iface)
+{
+    ok(0, "unexpected call\n");
+}
+
+static void WINAPI IMallocSpyImpl_PostHeapMinimize(IMallocSpy *iface)
+{
+    ok(0, "unexpected call\n");
+}
+
+static const IMallocSpyVtbl IMallocSpyImpl_vtbl =
+{
+    IMallocSpyImpl_QueryInterface,
+    IMallocSpyImpl_AddRef,
+    IMallocSpyImpl_Release,
+    IMallocSpyImpl_PreAlloc,
+    IMallocSpyImpl_PostAlloc,
+    IMallocSpyImpl_PreFree,
+    IMallocSpyImpl_PostFree,
+    IMallocSpyImpl_PreRealloc,
+    IMallocSpyImpl_PostRealloc,
+    IMallocSpyImpl_PreGetSize,
+    IMallocSpyImpl_PostGetSize,
+    IMallocSpyImpl_PreDidAlloc,
+    IMallocSpyImpl_PostDidAlloc,
+    IMallocSpyImpl_PreHeapMinimize,
+    IMallocSpyImpl_PostHeapMinimize
+};
+
 static void test_VariantClear(void)
 {
-  struct __tagBRECORD *rec;
   IRecordInfoImpl *recinfo;
   HRESULT hres;
   VARIANTARG v;
@@ -774,6 +907,7 @@ static void test_VariantClear(void)
   size_t i;
   LONG i4;
   IUnknown *punk;
+  IMallocSpyImpl malloc_spy = { {&IMallocSpyImpl_vtbl} };
 
   /* Crashes: Native does not test input for NULL, so neither does Wine */
   if (0)
@@ -888,31 +1022,52 @@ static void test_VariantClear(void)
   /* Check that nothing got called */
   ok(test_myVariantClearImpl.events ==  0, "Unexpected call. events %08lx\n", test_myVariantClearImpl.events);
 
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
   /* RECORD */
   recinfo = get_test_recordinfo();
   V_VT(&v) = VT_RECORD;
-  rec = &V_UNION(&v, brecVal);
-  rec->pRecInfo = &recinfo->IRecordInfo_iface;
-  rec->pvRecord = (void*)0xdeadbeef;
+  V_RECORDINFO(&v) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&v) = (void*)0xdeadbeef;
+  malloc_spy.validptr = (void*)0xdeadbeef;
   recinfo->recordclear = 0;
   recinfo->ref = 2;
-  recinfo->rec = rec;
   hres = VariantClear(&v);
   ok(hres == S_OK, "ret %08lx\n", hres);
-  ok(rec->pvRecord == NULL, "got %p\n", rec->pvRecord);
+  ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
+  ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
   ok(recinfo->recordclear == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
   IRecordInfo_Release(&recinfo->IRecordInfo_iface);
+
+  /* RECORD BYREF */
+  recinfo = get_test_recordinfo();
+  V_VT(&v) = VT_RECORD | VT_BYREF;
+  V_RECORDINFO(&v) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&v) = (void*)0xdeadbeef;
+  malloc_spy.validptr = NULL; /* BYREF will not free */
+  recinfo->recordclear = 0;
+  recinfo->ref = 1; /* BYREF does not own a refcount */
+  hres = VariantClear(&v);
+  ok(hres == S_OK, "ret %08lx\n", hres);
+  ok(V_RECORD(&v) == (void*)0xdeadbeef, "got %p\n",V_RECORD(&v));
+  ok(recinfo->recordclear == 0, "got %d\n", recinfo->recordclear);
+  ok(recinfo->ref == 1, "got %ld\n", recinfo->ref);
+  IRecordInfo_Release(&recinfo->IRecordInfo_iface);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 static void test_VariantCopy(void)
 {
-  struct __tagBRECORD *rec;
   IRecordInfoImpl *recinfo;
   VARIANTARG vSrc, vDst;
   VARTYPE vt;
   size_t i;
   HRESULT hres, hExpected;
+  IMallocSpyImpl malloc_spy = { {&IMallocSpyImpl_vtbl} };
 
   /* Establish that the failure/other cases are dealt with. Individual tests
    * for each type should verify that data is copied correctly, references
@@ -1025,6 +1180,9 @@ static void test_VariantCopy(void)
     VariantClear(&vDst);
   }
 
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
   /* copy RECORD */
   recinfo = get_test_recordinfo();
 
@@ -1032,25 +1190,33 @@ static void test_VariantCopy(void)
   V_VT(&vDst) = VT_EMPTY;
 
   V_VT(&vSrc) = VT_RECORD;
-  rec = &V_UNION(&vSrc, brecVal);
-  rec->pRecInfo = &recinfo->IRecordInfo_iface;
-  rec->pvRecord = (void*)0xdeadbeef;
+  V_RECORDINFO(&vSrc) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&vSrc) = (void*)0xdeadbeef;
 
   recinfo->recordclear = 0;
   recinfo->recordcopy = 0;
   recinfo->getsize = 0;
-  recinfo->rec = rec;
+  recinfo->validsrc = (void*)0xdeadbeef;
+  malloc_spy.cbAlloc = 1;
   hres = VariantCopy(&vDst, &vSrc);
   ok(hres == S_OK, "ret %08lx\n", hres);
 
-  rec = &V_UNION(&vDst, brecVal);
-  ok(rec->pvRecord != (void*)0xdeadbeef && rec->pvRecord != NULL, "got %p\n", rec->pvRecord);
-  ok(rec->pRecInfo == &recinfo->IRecordInfo_iface, "got %p\n", rec->pRecInfo);
+  ok(V_RECORD(&vDst) != (void*)0xdeadbeef && V_RECORD(&vDst) != NULL, "got %p\n", V_RECORD(&vDst));
+  ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
+  ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
   ok(recinfo->getsize == 1, "got %d\n", recinfo->recordclear);
   ok(recinfo->recordcopy == 1, "got %d\n", recinfo->recordclear);
 
+  malloc_spy.validptr = NULL;
   VariantClear(&vDst);
+  ok(!malloc_spy.lastalloc, "%p not freed\n",malloc_spy.lastalloc);
+
+  malloc_spy.validptr = (void*)0xdeadbeef;
   VariantClear(&vSrc);
+  ok(!malloc_spy.validptr, "%p not freed\n",malloc_spy.validptr);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 /* Determine if a vt is valid for VariantCopyInd() */
@@ -1074,6 +1240,8 @@ static void test_VariantCopyInd(void)
   size_t i;
   BYTE buffer[64];
   HRESULT hres, hExpected;
+  IRecordInfoImpl *recinfo;
+  IMallocSpyImpl malloc_spy = {{&IMallocSpyImpl_vtbl}, 0, NULL };
 
   memset(buffer, 0, sizeof(buffer));
 
@@ -1264,6 +1432,37 @@ static void test_VariantCopyInd(void)
   hres = VariantCopyInd(&vDst, &vSrc);
   ok(hres == E_INVALIDARG,
      "CopyInd(ref->ref): expected E_INVALIDARG, got 0x%08lx\n", hres);
+
+  hres = CoRegisterMallocSpy(&malloc_spy.IMallocSpy_iface);
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
+
+  /* Copy RECORD BYREF */
+  recinfo = get_test_recordinfo();
+  V_VT(&vSrc) = VT_RECORD|VT_BYREF;
+  V_RECORDINFO(&vSrc) = &recinfo->IRecordInfo_iface;
+  V_RECORD(&vSrc) = (void*)0xdeadbeef;
+
+  VariantInit(&vDst);
+  recinfo->validsrc = (void*)0xdeadbeef;
+  malloc_spy.cbAlloc = 1;
+  hres = VariantCopyInd(&vDst, &vSrc);
+  ok(hres == S_OK, "VariantCopyInd failed: 0x%08lx\n", hres);
+  ok(V_VT(&vDst) == VT_RECORD, "got vt = %d|0x%X\n", V_VT(&vDst) & VT_TYPEMASK, V_VT(&vDst) & ~VT_TYPEMASK);
+  ok(V_RECORDINFO(&vDst) == &recinfo->IRecordInfo_iface, "got %p\n", V_RECORDINFO(&vDst));
+  ok(recinfo->recordclear == 0,"got %d\n", recinfo->recordclear);
+  ok(V_RECORD(&vDst) != (void*)0xdeadbeef, "expected a newly-allocated deep copy\n");
+  ok(malloc_spy.lastalloc == V_RECORD(&vDst), "%p allocation not seen by IMallocSpy\n",V_RECORD(&vDst));
+  ok(recinfo->getsize == 1,"got %d\n", recinfo->getsize);
+  ok(recinfo->recordcopy == 1,"got %d\n", recinfo->recordcopy);
+  ok(recinfo->ref == 2,"got %ld\n", recinfo->ref);
+
+  VariantClear(&vDst);
+  ok(recinfo->ref == 1,"got %ld\n", recinfo->ref);
+  ok(recinfo->recordclear == 1,"got %d\n", recinfo->recordclear);
+  ok(!malloc_spy.lastalloc, "%p not freed\n",malloc_spy.lastalloc);
+
+  hres = CoRevokeMallocSpy();
+  ok(hres == S_OK, "ret 0x%08lx\n", hres);
 }
 
 static HRESULT (WINAPI *pVarParseNumFromStr)(const OLECHAR*,LCID,ULONG,NUMPARSE*,BYTE*);
