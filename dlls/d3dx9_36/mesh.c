@@ -1656,7 +1656,6 @@ static HRESULT WINAPI d3dx9_mesh_OptimizeInplace(ID3DXMesh *iface, DWORD flags, 
             FIXME("D3DXMESHOPT_VERTEXCACHE not implemented.\n");
         if (flags & D3DXMESHOPT_STRIPREORDER)
             FIXME("D3DXMESHOPT_STRIPREORDER not implemented.\n");
-        return E_NOTIMPL;
     }
 
     hr = iface->lpVtbl->LockIndexBuffer(iface, 0, &indices);
