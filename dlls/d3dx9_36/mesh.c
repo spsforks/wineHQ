@@ -7667,3 +7667,9 @@ cleanup:
 
     return found;
 }
+
+HRESULT WINAPI D3DXFrameCalculateBoundingSphere(const D3DXFRAME *frame_root, D3DXVECTOR3 *center, FLOAT *radius)
+{
+    FIXME("(%p, %p, %p) stub!\n", frame_root, center, radius);
+    return E_NOTIMPL;
+}
