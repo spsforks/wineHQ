@@ -210,7 +210,7 @@
 @ stub ?ToString@uint32@default@@QEAAPE$AAVString@Platform@@XZ
 @ stub ?ToString@uint64@default@@QEAAPE$AAVString@Platform@@XZ
 @ stub ?ToString@uint8@default@@QEAAPE$AAVString@Platform@@XZ
-@ stub ?UninitializeData@Details@Platform@@YAXH@Z
+@ stdcall ?UninitializeData@Details@Platform@@YAXH@Z(long) wincorlib.?UninitializeData@Details@Platform@@YAXH@Z
 @ stub ?Union@Rect@Foundation@Windows@@QEAAXV123@@Z
 @ stub ?Union@Rect@Foundation@Windows@@QEAAXVPoint@23@@Z
 @ stub ?WriteLine@Console@Details@Platform@@SAXPE$AAVObject@3@@Z

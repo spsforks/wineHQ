@@ -32,3 +32,8 @@ long WINAPI platform_details_init_data(int arg)
     FIXME("(%d) stub!\n", arg);
     return 0;
 }
+
+void WINAPI platform_details_uninit_data(int arg)
+{
+    FIXME("(%d) stub!\n", arg);
+}
