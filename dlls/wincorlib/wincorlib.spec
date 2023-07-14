@@ -173,7 +173,7 @@
 @ stub ?GetTypeCode@Type@Platform@@SA?AW4TypeCode@2@PE$AAV12@@Z
 @ stub ?GetWeakReference@Details@Platform@@YAPEAU__abi_IUnknown@@QE$ADVObject@2@@Z
 @ stub ?InitControlBlock@ControlBlock@Details@Platform@@AEAAXPEAX_N11@Z
-@ stub ?InitializeData@Details@Platform@@YAJH@Z
+@ stdcall ?InitializeData@Details@Platform@@YAJH@Z(long) platform_details_init_data
 @ stub ?Intersect@Rect@Foundation@Windows@@QEAAXV123@@Z
 @ stub ?IntersectsWith@Rect@Foundation@Windows@@QEAA_NV123@@Z
 @ stub ?Invert@Matrix3D@Media3D@Media@Xaml@UI@Windows@@QEAAXXZ
