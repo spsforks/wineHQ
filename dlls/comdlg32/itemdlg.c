@@ -31,13 +31,13 @@
 #include "commdlg.h"
 #include "cdlg.h"
 #include "filedlgbrowser.h"
+#include "navbar.h"
 
 #include "wine/debug.h"
 #include "wine/list.h"
 
-#define IDC_NAV_TOOLBAR      200
-#define IDC_NAVBACK          201
-#define IDC_NAVFORWARD       202
+#define IDC_NAVBAR           200
+#define NAVBAR_HEIGHT        30
 
 #include <initguid.h>
 /* This seems to be another version of IID_IFileDialogCustomize. If
@@ -1637,6 +1637,13 @@ static HRESULT init_custom_controls(FileDialogImpl *This)
             ERR("Failed to register RadioButtonList window class.\n");
     }
 
+    if (!GetClassInfoW(COMDLG32_hInstance, WC_NAVBARW, &wc) ||
+        wc.hInstance != COMDLG32_hInstance)
+    {
+        if (!NAVBAR_Register())
+            ERR("Failed to register NavBar window class.\n");
+    }
+
     return S_OK;
 }
 
@@ -1708,7 +1715,7 @@ static void update_layout(FileDialogImpl *This)
     RECT dialog_rc;
     RECT cancel_rc, dropdown_rc, open_rc;
     RECT filetype_rc, filename_rc, filenamelabel_rc;
-    RECT toolbar_rc, ebrowser_rc, customctrls_rc;
+    RECT navbar_rc, ebrowser_rc, customctrls_rc;
     static const UINT vspacing = 4, hspacing = 4;
     static const UINT min_width = 320, min_height = 200;
     BOOL show_dropdown;
@@ -1835,12 +1842,11 @@ static void update_layout(FileDialogImpl *This)
         filename_rc.bottom = filename_rc.top + filename_height;
     }
 
-    hwnd = GetDlgItem(This->dlg_hwnd, IDC_NAV_TOOLBAR);
-    if(hwnd)
-    {
-        GetWindowRect(hwnd, &toolbar_rc);
-        MapWindowPoints(NULL, This->dlg_hwnd, (POINT*)&toolbar_rc, 2);
-    }
+    /* Navigation bar */
+    navbar_rc.top = hspacing;
+    navbar_rc.bottom = navbar_rc.top + MulDiv(NAVBAR_HEIGHT, This->dpi_y, USER_DEFAULT_SCREEN_DPI);
+    navbar_rc.left = dialog_rc.left + hspacing;
+    navbar_rc.right = dialog_rc.right - hspacing;
 
     /* The custom controls */
     customctrls_rc.left = dialog_rc.left + hspacing;
@@ -1851,7 +1857,7 @@ static void update_layout(FileDialogImpl *This)
 
     /* The ExplorerBrowser control. */
     ebrowser_rc.left = dialog_rc.left + hspacing;
-    ebrowser_rc.top = toolbar_rc.bottom + vspacing;
+    ebrowser_rc.top = navbar_rc.bottom + vspacing;
     ebrowser_rc.right = dialog_rc.right - hspacing;
     ebrowser_rc.bottom = customctrls_rc.top - vspacing;
 
@@ -1860,7 +1866,7 @@ static void update_layout(FileDialogImpl *This)
      */
 
     /* FIXME: The Save Dialog uses a slightly different layout. */
-    hdwp = BeginDeferWindowPos(7);
+    hdwp = BeginDeferWindowPos(8);
 
     if(hdwp && This->peb)
         IExplorerBrowser_SetRect(This->peb, &hdwp, ebrowser_rc);
@@ -1896,6 +1902,11 @@ static void update_layout(FileDialogImpl *This)
     if(hdwp && (hwnd = GetDlgItem(This->dlg_hwnd, IDCANCEL)) )
         DeferWindowPos(hdwp, hwnd, NULL, cancel_rc.left, cancel_rc.top, 0, 0,
                        SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    if (hdwp && (hwnd = GetDlgItem(This->dlg_hwnd, IDC_NAVBAR)))
+        DeferWindowPos(hdwp, hwnd, NULL, navbar_rc.left, navbar_rc.top,
+                       navbar_rc.right - navbar_rc.left, navbar_rc.bottom - navbar_rc.top,
+                       SWP_NOZORDER | SWP_NOACTIVATE);
 
     if(hdwp)
         EndDeferWindowPos(hdwp);
@@ -1963,37 +1974,10 @@ static HRESULT init_explorerbrowser(FileDialogImpl *This)
 
 static void init_toolbar(FileDialogImpl *This, HWND hwnd)
 {
-    HWND htoolbar;
-    TBADDBITMAP tbab;
-    TBBUTTON button[2];
-    int height;
-
-    htoolbar = CreateWindowExW(0, TOOLBARCLASSNAMEW, NULL, TBSTYLE_FLAT | WS_CHILD | WS_VISIBLE,
-                               0, 0, 0, 0,
-                               hwnd, (HMENU)IDC_NAV_TOOLBAR, NULL, NULL);
-
-    tbab.hInst = HINST_COMMCTRL;
-    tbab.nID = IDB_HIST_LARGE_COLOR;
-    SendMessageW(htoolbar, TB_ADDBITMAP, 0, (LPARAM)&tbab);
-
-    button[0].iBitmap = HIST_BACK;
-    button[0].idCommand = IDC_NAVBACK;
-    button[0].fsState = TBSTATE_ENABLED;
-    button[0].fsStyle = BTNS_BUTTON;
-    button[0].dwData = 0;
-    button[0].iString = 0;
-
-    button[1].iBitmap = HIST_FORWARD;
-    button[1].idCommand = IDC_NAVFORWARD;
-    button[1].fsState = TBSTATE_ENABLED;
-    button[1].fsStyle = BTNS_BUTTON;
-    button[1].dwData = 0;
-    button[1].iString = 0;
-
-    SendMessageW(htoolbar, TB_ADDBUTTONSW, 2, (LPARAM)button);
-    height = MulDiv(24, This->dpi_y, USER_DEFAULT_SCREEN_DPI);
-    SendMessageW(htoolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(height, height));
-    SendMessageW(htoolbar, TB_AUTOSIZE, 0, 0);
+    CreateWindowExW(WS_EX_CONTROLPARENT, WC_NAVBARW, NULL, WS_CHILD | WS_VISIBLE,
+                    0, 0,
+                    0, MulDiv(NAVBAR_HEIGHT, This->dpi_y, USER_DEFAULT_SCREEN_DPI),
+                    hwnd, (HMENU)IDC_NAVBAR, NULL, NULL);
 }
 
 static void update_control_text(FileDialogImpl *This)
@@ -2134,8 +2118,8 @@ static LRESULT on_wm_initdialog(HWND hwnd, LPARAM lParam)
     }
 
     ctrl_container_reparent(This, This->dlg_hwnd);
-    init_explorerbrowser(This);
     init_toolbar(This, hwnd);
+    init_explorerbrowser(This);
     update_control_text(This);
     update_layout(This);
 
@@ -2232,6 +2216,22 @@ static LRESULT on_browse_forward(FileDialogImpl *This)
     return FALSE;
 }
 
+static LRESULT on_browse_up(FileDialogImpl *This)
+{
+    TRACE("%p\n", This);
+    IExplorerBrowser_BrowseToIDList(This->peb, NULL, SBSP_PARENT);
+    return FALSE;
+}
+
+static LRESULT on_browse_pidl(FileDialogImpl *This, LPARAM lparam)
+{
+    ITEMIDLIST* pidl = (ITEMIDLIST*)lparam;
+
+    TRACE("%p - pidl %p\n", This, pidl);
+    IExplorerBrowser_BrowseToIDList(This->peb, pidl, SBSP_ABSOLUTE);
+    return FALSE;
+}
+
 static LRESULT on_command_filetype(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
 {
     if(HIWORD(wparam) == CBN_SELCHANGE)
@@ -2288,8 +2288,6 @@ static LRESULT on_wm_command(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
     case IDOK:                return on_idok(This);
     case IDCANCEL:            return on_idcancel(This);
     case psh1:                return on_command_opendropdown(This, wparam, lparam);
-    case IDC_NAVBACK:         return on_browse_back(This);
-    case IDC_NAVFORWARD:      return on_browse_forward(This);
     case IDC_FILETYPE:        return on_command_filetype(This, wparam, lparam);
     default:                  TRACE("Unknown command.\n");
     }
@@ -2307,6 +2305,10 @@ static INT_PTR CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam,
     case WM_SIZE:             return on_wm_size(This);
     case WM_GETMINMAXINFO:    return on_wm_getminmaxinfo(This, lparam);
     case WM_DESTROY:          return on_wm_destroy(This);
+    case NBN_NAVBACK:         return on_browse_back(This);
+    case NBN_NAVFORWARD:      return on_browse_forward(This);
+    case NBN_NAVUP:           return on_browse_up(This);
+    case NBN_NAVPIDL:         return on_browse_pidl(This, lparam);
     }
 
     return FALSE;
@@ -3438,6 +3440,16 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnViewCreated(IExplorerBrowserEve
 {
     FileDialogImpl *This = impl_from_IExplorerBrowserEvents(iface);
     TRACE("%p (%p)\n", This, psv);
+
+    if (GetFocus() == NULL)
+    {
+        /* previous view was probably focused, focus the new view */
+        HWND view_hwnd;
+        HRESULT hr = IShellView_GetWindow(psv, &view_hwnd);
+        if (SUCCEEDED(hr))
+            SetFocus(view_hwnd);
+    }
+
     return S_OK;
 }
 
@@ -3446,6 +3458,7 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
 {
     FileDialogImpl *This = impl_from_IExplorerBrowserEvents(iface);
     HRESULT hr;
+    HWND hwnd;
     TRACE("%p (%p)\n", This, pidlFolder);
 
     if(This->psi_folder)
@@ -3456,6 +3469,14 @@ static HRESULT WINAPI IExplorerBrowserEvents_fnOnNavigationComplete(IExplorerBro
     {
         ERR("Failed to get the current folder.\n");
         This->psi_folder = NULL;
+    }
+    else
+    {
+        hwnd = GetDlgItem(This->dlg_hwnd, IDC_NAVBAR);
+        if (!hwnd)
+            ERR("Failed to update navbar.\n");
+        else
+            SendMessageW(hwnd, NBM_SETPIDL, 0, (LPARAM)pidlFolder);
     }
 
     events_OnFolderChange(This);

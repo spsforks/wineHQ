@@ -13,11 +13,13 @@ C_SRCS = \
 	finddlg.c \
 	fontdlg.c \
 	itemdlg.c \
+	navbar.c \
 	printdlg.c
 
 RC_SRCS = comdlg32.rc
 
 SVG_SRCS = \
+	navbar.svg \
 	pd32_collate.svg \
 	pd32_landscape.svg \
 	pd32_nocollate.svg \
