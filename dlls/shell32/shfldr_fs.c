@@ -1219,36 +1219,6 @@ ISFHelper_fnAddFolder (ISFHelper * iface, HWND hwnd, LPCWSTR pwszName,
 }
 
 /****************************************************************************
- * build_paths_list
- *
- * Builds a list of paths like the one used in SHFileOperation from a table of
- * PIDLs relative to the given base folder
- */
-static WCHAR *build_paths_list(LPCWSTR wszBasePath, int cidl, const LPCITEMIDLIST *pidls)
-{
-    WCHAR *wszPathsList;
-    WCHAR *wszListPos;
-    int iPathLen;
-    int i;
-    
-    iPathLen = lstrlenW(wszBasePath);
-    wszPathsList = heap_alloc(MAX_PATH*sizeof(WCHAR)*cidl+1);
-    wszListPos = wszPathsList;
-    
-    for (i = 0; i < cidl; i++) {
-        if (!_ILIsFolder(pidls[i]) && !_ILIsValue(pidls[i]))
-            continue;
-
-        lstrcpynW(wszListPos, wszBasePath, MAX_PATH);
-        /* FIXME: abort if path too long */
-        _ILSimpleGetTextW(pidls[i], wszListPos+iPathLen, MAX_PATH-iPathLen);
-        wszListPos += lstrlenW(wszListPos)+1;
-    }
-    *wszListPos=0;
-    return wszPathsList;
-}
-
-/****************************************************************************
  * ISFHelper_fnDeleteItems
  *
  * deletes items in folder
@@ -1257,22 +1227,28 @@ static HRESULT WINAPI
 ISFHelper_fnDeleteItems (ISFHelper * iface, UINT cidl, LPCITEMIDLIST * apidl)
 {
     IGenericSFImpl *This = impl_from_ISFHelper(iface);
-    UINT i;
+    IShellFolder2 *pSFFrom = &This->IShellFolder2_iface;
+
     SHFILEOPSTRUCTW op;
-    WCHAR wszPath[MAX_PATH];
-    WCHAR *wszPathsList;
+    WCHAR *wszPathsList = heap_alloc(MAX_PATH * sizeof(WCHAR) * cidl + 1);
+    WCHAR *wszListPos = wszPathsList;
     HRESULT ret;
-    WCHAR *wszCurrentPath;
+    STRRET strretFrom;
 
-    TRACE ("(%p)(%u %p)\n", This, cidl, apidl);
-    if (cidl==0) return S_OK;
+    /* Build double null terminated list of C strings */
+    for (UINT i = 0; i < cidl; i++) {
+        ret = IShellFolder2_GetDisplayNameOf(pSFFrom, apidl[i], SHGDN_FORPARSING, &strretFrom);
+        if (FAILED(ret))
+            goto cleanup;
 
-    if (This->sPathTarget)
-        lstrcpynW(wszPath, This->sPathTarget, MAX_PATH);
-    else
-        wszPath[0] = '\0';
-    PathAddBackslashW(wszPath);
-    wszPathsList = build_paths_list(wszPath, cidl, apidl);
+        ret = StrRetToBufW(&strretFrom, NULL, wszListPos, MAX_PATH);
+        if (FAILED(ret))
+            goto cleanup;
+
+        wszListPos += lstrlenW(wszListPos) + 1;
+    }
+    /* Append final null. */
+    *wszListPos=0;
 
     ZeroMemory(&op, sizeof(op));
     op.hwnd = GetActiveWindow();
@@ -1287,29 +1263,7 @@ ISFHelper_fnDeleteItems (ISFHelper * iface, UINT cidl, LPCITEMIDLIST * apidl)
     else
         ret = S_OK;
 
-    /* we currently need to manually send the notifies */
-    wszCurrentPath = wszPathsList;
-    for (i = 0; i < cidl; i++)
-    {
-        LONG wEventId;
-
-        if (_ILIsFolder(apidl[i]))
-            wEventId = SHCNE_RMDIR;
-        else if (_ILIsValue(apidl[i]))
-            wEventId = SHCNE_DELETE;
-        else
-            continue;
-
-        /* check if file exists */
-        if (GetFileAttributesW(wszCurrentPath) == INVALID_FILE_ATTRIBUTES)
-        {
-            LPITEMIDLIST pidl = ILCombine(This->pidlRoot, apidl[i]);
-            SHChangeNotify(wEventId, SHCNF_IDLIST, pidl, NULL);
-            ILFree(pidl);
-        }
-
-        wszCurrentPath += lstrlenW(wszCurrentPath)+1;
-    }
+cleanup:
     heap_free(wszPathsList);
     return ret;
 }
@@ -1323,48 +1277,51 @@ static HRESULT WINAPI
 ISFHelper_fnCopyItems (ISFHelper * iface, IShellFolder * pSFFrom, UINT cidl,
                        LPCITEMIDLIST * apidl)
 {
-    HRESULT ret=E_FAIL;
-    IPersistFolder2 *ppf2 = NULL;
-    WCHAR wszSrcPathRoot[MAX_PATH],
-      wszDstPath[MAX_PATH+1];
-    WCHAR *wszSrcPathsList;
     IGenericSFImpl *This = impl_from_ISFHelper(iface);
-
+    HRESULT ret;
+    WCHAR wszDstPath[MAX_PATH+1];
+    WCHAR *wszSrcPathsList = heap_alloc(MAX_PATH * sizeof(WCHAR) * cidl + 1);
+    WCHAR *wszListPos = wszSrcPathsList;
+    STRRET strretFrom;
     SHFILEOPSTRUCTW fop;
 
-    TRACE ("(%p)->(%p,%u,%p)\n", This, pSFFrom, cidl, apidl);
+    /* Build double null terminated list of C strings */
+    for (UINT i = 0; i < cidl; i++) {
+        ret = IShellFolder_GetDisplayNameOf(pSFFrom, apidl[i], SHGDN_FORPARSING, &strretFrom);
+        if (FAILED(ret))
+            goto cleanup;
 
-    IShellFolder_QueryInterface (pSFFrom, &IID_IPersistFolder2,
-     (LPVOID *) & ppf2);
-    if (ppf2) {
-        LPITEMIDLIST pidl;
+        ret = StrRetToBufW(&strretFrom, NULL, wszListPos, MAX_PATH);
+        if (FAILED(ret))
+            goto cleanup;
 
-        if (SUCCEEDED (IPersistFolder2_GetCurFolder (ppf2, &pidl))) {
-            SHGetPathFromIDListW (pidl, wszSrcPathRoot);
-            if (This->sPathTarget)
-                lstrcpynW(wszDstPath, This->sPathTarget, MAX_PATH);
-            else
-                wszDstPath[0] = 0;
-            PathAddBackslashW(wszSrcPathRoot);
-            PathAddBackslashW(wszDstPath);
-            wszSrcPathsList = build_paths_list(wszSrcPathRoot, cidl, apidl);
-            ZeroMemory(&fop, sizeof(fop));
-            fop.hwnd = GetActiveWindow();
-            fop.wFunc = FO_COPY;
-            fop.pFrom = wszSrcPathsList;
-            fop.pTo = wszDstPath;
-            fop.fFlags = FOF_ALLOWUNDO;
-            ret = S_OK;
-            if(SHFileOperationW(&fop))
-            {
-                WARN("Copy failed\n");
-                ret = E_FAIL;
-            }
-            heap_free(wszSrcPathsList);
-        }
-        SHFree(pidl);
-        IPersistFolder2_Release(ppf2);
+        wszListPos += lstrlenW(wszListPos) + 1;
     }
+    /* Append final null. */
+    *wszListPos=0;
+
+    if (This->sPathTarget)
+      lstrcpynW(wszDstPath, This->sPathTarget, MAX_PATH);
+    else
+      wszDstPath[0] = 0;
+
+    PathAddBackslashW(wszDstPath);
+
+    ZeroMemory(&fop, sizeof(fop));
+    fop.hwnd = GetActiveWindow();
+    fop.wFunc = FO_COPY;
+    fop.pFrom = wszSrcPathsList;
+    fop.pTo = wszDstPath;
+    fop.fFlags = FOF_ALLOWUNDO;
+    ret = S_OK;
+
+    if(SHFileOperationW(&fop)) {
+        WARN("Copy failed\n");
+        ret = E_FAIL;
+    }
+
+cleanup:
+    heap_free(wszSrcPathsList);
     return ret;
 }
 
