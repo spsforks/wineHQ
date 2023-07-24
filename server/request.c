@@ -592,6 +592,25 @@ static void socket_cleanup(void)
     if (!do_it_once++) unlink( server_socket_name );
 }
 
+/* try stat a directory */
+static int try_dir( const char *name, struct stat *st, int per_user )
+{
+    if (lstat( name, st ) == -1) return 1;
+    if (!S_ISDIR( st->st_mode ))
+    {
+        errno = ENOTDIR;
+        return 2;
+    }
+    if (per_user)
+    {
+        if (st->st_uid != getuid()) return 3;
+        if (st->st_mode & 077) return 4;
+        if ((st->st_mode & 0700) != 0700) return 5;
+    }
+
+    return 0;
+}
+
 /* create a directory and check its permissions */
 static void create_dir( const char *name, struct stat *st )
 {
@@ -607,15 +626,18 @@ static void create_dir( const char *name, struct stat *st )
     if (!S_ISDIR(st->st_mode)) fatal_error( "%s is not a directory\n", name );
     if (st->st_uid != getuid()) fatal_error( "%s is not owned by you\n", name );
     if (st->st_mode & 077) fatal_error( "%s must not be accessible by other users\n", name );
+    if ((st->st_mode & 0700) != 0700) fatal_error( "%s must be writeable by you\n", name );
 }
 
 /* create the server directory and chdir to it */
 static char *create_server_dir( int force )
 {
     const char *prefix = getenv( "WINEPREFIX" );
-    char *p, *config_dir;
+    char *p, *config_dir, *server_root_dir;
     struct stat st, st2;
-    size_t len = sizeof("/server-") + 2 * sizeof(st.st_dev) + 2 * sizeof(st.st_ino) + 2;
+    size_t len, len2;
+
+    len = sizeof("/server-") + 2 * sizeof(st.st_dev) + 2 * sizeof(st.st_ino) + 2;
 
     /* open the configuration directory */
 
@@ -662,12 +684,109 @@ static char *create_server_dir( int force )
     if (!(server_dir = malloc( len ))) fatal_error( "out of memory\n" );
     strcpy( server_dir, config_dir );
     strcat( server_dir, "/.wineserver" );
+    create_dir( server_dir, &st2 );
 #else
+
+    /*
+     * try following locations for wineserver directory:
+     * - ${XDG_RUNTIME_DIR}/wine
+     * - /run/user/${uid}/wine
+     * - ${TMPDIR}/wine - only if ${TMPDIR} is per-user
+     * - ${TMPDIR}/.wine-${uid}
+     * - /tmp/.wine-${uid}
+     */
+
+    server_dir = NULL;
+
+    /* try "${XDG_RUNTIME_DIR}/wine" */
+
+#ifdef HAVE_SECURE_GETENV
+    server_root_dir = secure_getenv( "XDG_RUNTIME_DIR" );
+#else
+    server_root_dir = getenv( "XDG_RUNTIME_DIR" );
+#endif
+
+    if (!server_root_dir)
+        goto server_dir_at_run;
+
+    if (try_dir( server_root_dir, &st2, 1 ))
+        goto server_dir_at_run;
+
+    len += strlen(server_root_dir) + sizeof("/wine") + 2;
+    if (!(server_dir = malloc( len ))) fatal_error( "out of memory\n" );
+    sprintf( server_dir, "%s/wine", server_root_dir );
+    create_dir( server_dir, &st2 );
+    goto server_dir_done;
+
+server_dir_at_run:
+
+    /* try "/run/user/${uid}/wine" */
+
+    len2 = len + sizeof("/run/user/") + sizeof("/wine") + 12;
+    if (!(server_dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+    sprintf( server_dir, "%s%u", "/run/user/", getuid() );
+    if (try_dir( server_dir, &st2, 1 ))
+    {
+        free( server_dir );
+        server_dir = NULL;
+        goto server_dir_at_env_tmpdir;
+    }
+
+    strcat( server_dir, "/wine" );
+    create_dir( server_dir, &st2 );
+    len = len2;
+    goto server_dir_done;
+
+server_dir_at_env_tmpdir:
+
+    /* try somewhere in ${TMPDIR}/ */
+
+#ifdef HAVE_SECURE_GETENV
+    server_root_dir = secure_getenv( "TMPDIR" );
+#else
+    server_root_dir = getenv( "TMPDIR" );
+#endif
+
+    if (!server_root_dir)
+        goto server_dir_at_tmp;
+
+    if (try_dir( server_root_dir, &st2, 0 ))
+        goto server_dir_at_tmp;
+
+    len2 = len + strlen(server_root_dir);
+    if (try_dir( server_root_dir, &st2, 1 ))
+    {
+        /* try "${TMPDIR}/.wine-${uid}" because ${TMPDIR} is not per-user */
+
+        len2 += sizeof("/.wine-") + 12;
+        if (!(server_dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+        sprintf( server_dir, "%s/.wine-%u", server_root_dir, getuid() );
+    }
+    else
+    {
+        /* try "${TMPDIR}/wine" because ${TMPDIR} is per-user */
+
+        len2 += sizeof("/wine") + 2;
+        if (!(server_dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+        sprintf( server_dir, "%s/wine", server_root_dir );
+    }
+
+    create_dir( server_dir, &st2 );
+    len = len2;
+    goto server_dir_done;
+
+server_dir_at_tmp:
+
+    /* try "/tmp/.wine-${uid}" - last resort */
+
     len += sizeof("/tmp/.wine-") + 12;
     if (!(server_dir = malloc( len ))) fatal_error( "out of memory\n" );
     sprintf( server_dir, "/tmp/.wine-%u", getuid() );
-#endif
     create_dir( server_dir, &st2 );
+
+server_dir_done:
+
+#endif
 
     /* now create the server directory */
 

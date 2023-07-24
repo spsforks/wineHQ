@@ -20011,6 +20011,12 @@ then :
   printf "%s\n" "#define HAVE_SCHED_YIELD 1" >>confdefs.h
 
 fi
+ac_fn_c_check_func "$LINENO" "secure_getenv" "ac_cv_func_secure_getenv"
+if test "x$ac_cv_func_secure_getenv" = xyes
+then :
+  printf "%s\n" "#define HAVE_SECURE_GETENV 1" >>confdefs.h
+
+fi
 ac_fn_c_check_func "$LINENO" "setproctitle" "ac_cv_func_setproctitle"
 if test "x$ac_cv_func_setproctitle" = xyes
 then :
