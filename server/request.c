@@ -700,12 +700,7 @@ static char *create_server_dir( int force )
 
     /* try "${XDG_RUNTIME_DIR}/wine" */
 
-#ifdef HAVE_SECURE_GETENV
-    server_root_dir = secure_getenv( "XDG_RUNTIME_DIR" );
-#else
     server_root_dir = getenv( "XDG_RUNTIME_DIR" );
-#endif
-
     if (!server_root_dir)
         goto server_dir_at_run;
 
@@ -741,12 +736,7 @@ server_dir_at_env_tmpdir:
 
     /* try somewhere in ${TMPDIR}/ */
 
-#ifdef HAVE_SECURE_GETENV
-    server_root_dir = secure_getenv( "TMPDIR" );
-#else
     server_root_dir = getenv( "TMPDIR" );
-#endif
-
     if (!server_root_dir)
         goto server_dir_at_tmp;
 

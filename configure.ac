@@ -2049,7 +2049,6 @@ AC_CHECK_FUNCS(\
 	prctl \
 	proc_pidinfo \
 	sched_yield \
-	secure_getenv \
 	setproctitle \
 	setprogname \
 	sigprocmask \
