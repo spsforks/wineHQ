@@ -2497,7 +2497,6 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
     {
         RECT virtual_rect = NtUserGetVirtualScreenRect();
         if (!EqualRect( &monitor_info.rcMonitor, &virtual_rect )) return FALSE;
-        if (is_virtual_desktop()) return FALSE;
     }
 
     TRACE( "win %p clipping fullscreen\n", hwnd );
