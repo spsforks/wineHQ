@@ -2470,6 +2470,7 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
 {
     struct user_thread_info *thread_info = get_user_thread_info();
     MONITORINFO monitor_info = {.cbSize = sizeof(MONITORINFO)};
+    HWND captured;
     RECT rect;
     HMONITOR monitor;
     DWORD style;
@@ -2486,7 +2487,7 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
 
     if (!NtUserGetWindowRect( hwnd, &rect )) return FALSE;
     if (!NtUserIsWindowRectFullScreen( &rect )) return FALSE;
-    if (get_capture()) return FALSE;
+    if ((captured = get_capture()) && captured != hwnd) return FALSE;
     if (NtGetTickCount() - thread_info->clipping_reset < 1000) return FALSE;
     if (!reset && clipping_cursor && thread_info->clipping_cursor) return FALSE;  /* already clipping */
 
@@ -2496,7 +2497,6 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
     {
         RECT virtual_rect = NtUserGetVirtualScreenRect();
         if (!EqualRect( &monitor_info.rcMonitor, &virtual_rect )) return FALSE;
-        if (is_virtual_desktop()) return FALSE;
     }
 
     TRACE( "win %p clipping fullscreen\n", hwnd );
