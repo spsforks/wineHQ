@@ -26,11 +26,14 @@ static NTSTATUS (WINAPI *pNtCreateThreadEx)( HANDLE *, ACCESS_MASK, OBJECT_ATTRI
                                              ULONG, ULONG_PTR, SIZE_T, SIZE_T, PS_ATTRIBUTE_LIST * );
 static int * (CDECL *p_errno)(void);
 
+NTSTATUS (WINAPI *pNtTerminateThread)( HANDLE handle, LONG exit_code );
+
 static void init_function_pointers(void)
 {
     HMODULE hntdll = GetModuleHandleA( "ntdll.dll" );
 #define GET_FUNC(name) p##name = (void *)GetProcAddress( hntdll, #name );
     GET_FUNC( NtCreateThreadEx );
+    GET_FUNC( NtTerminateThread );
     GET_FUNC( _errno );
 #undef GET_FUNC
 }
@@ -197,6 +200,33 @@ static void test_errno(void)
     ok( val == 0xbeef, "wrong value %x\n", val );
 }
 
+DWORD WINAPI test_ntterminatethread_proc( void *arg )
+{
+    DWORD status = (UINT_PTR)arg;
+
+    status = pNtTerminateThread(0, status);
+
+    return status;
+}
+
+/* verifies NtTerminateThread accepts NULL handle */
+static void test_terminate_thread(void)
+{
+    HANDLE thread;
+    DWORD exitcode;
+    NTSTATUS status;
+
+    status = pNtCreateThreadEx( &thread, THREAD_ALL_ACCESS, NULL, GetCurrentProcess(),
+        (PRTL_THREAD_START_ROUTINE)test_ntterminatethread_proc, (void*)0x1234, 0, 0, 0, 0, NULL );
+
+    ok( status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status );
+
+    WaitForSingleObject(thread, INFINITE);
+    GetExitCodeThread(thread, &exitcode);
+    ok( exitcode == 0x1234, "NtTerminateThread failed exitcode = %lx\n", (long)exitcode);
+}
+
+
 START_TEST(thread)
 {
     init_function_pointers();
@@ -204,4 +234,5 @@ START_TEST(thread)
     test_dbg_hidden_thread_creation();
     test_unique_teb();
     test_errno();
+    test_terminate_thread();
 }
