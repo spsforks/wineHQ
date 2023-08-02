@@ -20,5 +20,6 @@
 
 /* Place Holder */
 
+HRESULT wined3dx_get_image_info(const void *data, SIZE_T size, void *img_info);
 
 #endif
