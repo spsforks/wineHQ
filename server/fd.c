@@ -2607,13 +2607,6 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
             goto failed;
         }
 
-        /* can't replace directories or special files */
-        if (!S_ISREG( st.st_mode ))
-        {
-            set_error( STATUS_ACCESS_DENIED );
-            goto failed;
-        }
-
         /* read-only files cannot be replaced */
         if (!(st.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH)) &&
             !(flags & FILE_RENAME_IGNORE_READONLY_ATTRIBUTE))
@@ -2622,23 +2615,68 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
             goto failed;
         }
 
-        /* can't replace an opened file */
-        if ((inode = get_inode( st.st_dev, st.st_ino, -1 )))
+        if (flags & FILE_RENAME_POSIX_SEMANTICS)
         {
-            int is_empty = list_empty( &inode->open );
-            release_object( inode );
-            if (!is_empty)
+            /* can't replace a file with a directory with FILE_RENAME_POSIX_SEMANTICS */
+            if (S_ISDIR( st2.st_mode ) && !S_ISDIR( st.st_mode ))
+            {
+                set_error( STATUS_NOT_A_DIRECTORY );
+                goto failed;
+            }
+
+            /* can't replace an open file that was not opened with FILE_SHARE_DELETE */
+            if ((inode = get_inode( st.st_dev, st.st_ino, -1 )))
+            {
+                unsigned int sharing, access;
+                get_inode_open_sharing( NULL, inode, &sharing, &access );
+                release_object( inode );
+
+                if (!(sharing & FILE_SHARE_DELETE)) {
+                    set_error( STATUS_SHARING_VIOLATION );
+                    goto failed;
+                }
+            }
+
+            /* link() expects that the target doesn't exist */
+            /* rename() cannot replace files with directories */
+            if (S_ISDIR( st2.st_mode ) && S_ISDIR( st.st_mode ))
+            {
+                if (rmdir( name ))
+                {
+                    file_set_error();
+                    goto failed;
+                }
+            }
+            else if ((create_link || S_ISDIR( st2.st_mode )) && unlink(name))
+            {
+                file_set_error();
+                goto failed;
+            }
+        }
+        else
+        {
+            /* can't replace directories or special files */
+            if (!S_ISREG( st.st_mode ))
             {
                 set_error( STATUS_ACCESS_DENIED );
                 goto failed;
             }
-        }
 
-        /* link() expects that the target doesn't exist */
-        /* rename() cannot replace files with directories */
-        if (create_link || S_ISDIR( st2.st_mode ))
-        {
-            if (unlink( name ))
+            /* can't replace an opened file without FILE_RENAME_POSIX_SEMANTICS */
+            if ((inode = get_inode( st.st_dev, st.st_ino, -1 )))
+            {
+                int is_empty = list_empty( &inode->open );
+                release_object( inode );
+                if (!is_empty)
+                {
+                    set_error( STATUS_ACCESS_DENIED );
+                    goto failed;
+                }
+            }
+
+            /* link() expects that the target doesn't exist */
+            /* rename() cannot replace files with directories */
+            if ((create_link || S_ISDIR( st2.st_mode )) && unlink( name ))
             {
                 file_set_error();
                 goto failed;

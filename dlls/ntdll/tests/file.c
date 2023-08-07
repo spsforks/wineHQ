@@ -2336,10 +2336,10 @@ static void test_file_rename_information_ex(void)
 
     io.Status = 0xdeadbeef;
     res = pNtSetInformationFile( handle, &io, fri, sizeof(FILE_RENAME_INFORMATION) + fri->FileNameLength, FileRenameInformationEx );
-    todo_wine ok( io.Status == STATUS_SUCCESS, "io.Status expected STATUS_SUCCESS, got %lx\n", io.Status );
-    todo_wine ok( res == STATUS_SUCCESS, "res expected STATUS_SUCCESS, got %lx\n", res );
+    ok( io.Status == STATUS_SUCCESS, "io.Status expected STATUS_SUCCESS, got %lx\n", io.Status );
+    ok( res == STATUS_SUCCESS, "res expected STATUS_SUCCESS, got %lx\n", res );
     fileDeleted = GetFileAttributesW( oldpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
-    todo_wine ok( fileDeleted, "file should not exist\n" );
+    ok( fileDeleted, "file should not exist\n" );
     fileDeleted = GetFileAttributesW( newpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
     ok( !fileDeleted, "file should exist\n" );
 
@@ -2377,8 +2377,8 @@ static void test_file_rename_information_ex(void)
     res = pNtSetInformationFile( handle, &io, fri, sizeof(FILE_RENAME_INFORMATION) + fri->FileNameLength, FileRenameInformationEx );
     todo_wine ok( io.Status == STATUS_SUCCESS || io.Status == 0xdeadbeef,
                   "io.Status expected STATUS_SUCCESS or 0xdeadbeef, got %lx\n", io.Status );
-    todo_wine ok( res == STATUS_SUCCESS || res == STATUS_NOT_A_DIRECTORY,
-                  "res expected STATUS_SUCCESS or STATUS_NOT_A_DIRECTORY, got %lx\n", res );
+    ok( res == STATUS_SUCCESS || res == STATUS_NOT_A_DIRECTORY,
+        "res expected STATUS_SUCCESS or STATUS_NOT_A_DIRECTORY, got %lx\n", res );
 
     fileDeleted = GetFileAttributesW( oldpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
     if (res == STATUS_SUCCESS)
@@ -2425,8 +2425,8 @@ static void test_file_rename_information_ex(void)
 
     io.Status = 0xdeadbeef;
     res = pNtSetInformationFile( handle, &io, fri, sizeof(FILE_RENAME_INFORMATION) + fri->FileNameLength, FileRenameInformationEx );
-    todo_wine ok( io.Status == STATUS_SUCCESS || io.Status == 0xdeadbeef,
-                  "io.Status expected STATUS_SUCCESS or 0xdeadbeef, got %lx\n", io.Status );
+    ok( io.Status == STATUS_SUCCESS || io.Status == 0xdeadbeef,
+        "io.Status expected STATUS_SUCCESS or 0xdeadbeef, got %lx\n", io.Status );
     ok( res == STATUS_SUCCESS || res == STATUS_ACCESS_DENIED,
         "res expected STATUS_SUCCESS or STATUS_ACCESS_DENIED, got %lx\n", res );
 
@@ -3355,8 +3355,8 @@ static void test_file_link_information_ex(void)
     io.Status = 0xdeadbeef;
     res = pNtSetInformationFile( handle, &io, fli, sizeof(FILE_LINK_INFORMATION) + fli->FileNameLength, FileLinkInformationEx );
     todo_wine ok( io.Status == 0xdeadbeef, "io.Status expected 0xdeadbeef, got %lx\n", io.Status );
-    todo_wine ok( res == STATUS_SHARING_VIOLATION || res == STATUS_NOT_SUPPORTED,
-                  "res expected STATUS_SHARING_VIOLATION or STATUS_NOT_SUPPORTED, got %lx\n", res );
+    ok( res == STATUS_SHARING_VIOLATION || res == STATUS_NOT_SUPPORTED,
+        "res expected STATUS_SHARING_VIOLATION or STATUS_NOT_SUPPORTED, got %lx\n", res );
     fileDeleted = GetFileAttributesW( oldpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
     ok( !fileDeleted, "file should exist\n" );
     fileDeleted = GetFileAttributesW( newpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
@@ -3392,10 +3392,10 @@ static void test_file_link_information_ex(void)
 
     io.Status = 0xdeadbeef;
     res = pNtSetInformationFile( handle, &io, fli, sizeof(FILE_LINK_INFORMATION) + fli->FileNameLength, FileLinkInformationEx );
-    todo_wine ok( io.Status == 0xdeadbeef || io.Status == STATUS_SUCCESS,
-                  "io.Status expected 0xdeadbeef or STATUS_SUCCESS, got %lx\n", io.Status );
-    todo_wine ok( res == STATUS_SUCCESS || res == STATUS_NOT_SUPPORTED,
-                  "res expected STATUS_SUCCESS or STATUS_NOT_SUPPORTED, got %lx\n", res );
+    ok( io.Status == 0xdeadbeef || io.Status == STATUS_SUCCESS,
+        "io.Status expected 0xdeadbeef or STATUS_SUCCESS, got %lx\n", io.Status );
+    ok( res == STATUS_SUCCESS || res == STATUS_NOT_SUPPORTED,
+        "res expected STATUS_SUCCESS or STATUS_NOT_SUPPORTED, got %lx\n", res );
     fileDeleted = GetFileAttributesW( oldpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
     ok( !fileDeleted, "file should exist\n" );
     fileDeleted = GetFileAttributesW( newpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
@@ -3515,8 +3515,8 @@ static void test_file_link_information_ex(void)
     io.Status = 0xdeadbeef;
     res = pNtSetInformationFile( handle, &io, fli, sizeof(FILE_LINK_INFORMATION) + fli->FileNameLength, FileLinkInformationEx );
     todo_wine ok( io.Status == 0xdeadbeef, "io.Status expected 0xdeadbeef, got %lx\n", io.Status );
-    todo_wine ok( res == STATUS_FILE_IS_A_DIRECTORY || res == STATUS_NOT_SUPPORTED,
-                  "res expected STATUS_FILE_IS_A_DIRECTORY or STATUS_NOT_SUPPORTED, got %lx\n", res );
+    ok( res == STATUS_FILE_IS_A_DIRECTORY || res == STATUS_NOT_SUPPORTED,
+        "res expected STATUS_FILE_IS_A_DIRECTORY or STATUS_NOT_SUPPORTED, got %lx\n", res );
     fileDeleted = GetFileAttributesW( oldpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
     ok( !fileDeleted, "file should exist\n" );
     fileDeleted = GetFileAttributesW( newpath ) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND;
