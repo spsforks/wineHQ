@@ -808,7 +808,7 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
         hRgn = CreateRoundRectRgn(0,
                                   (infoPtr->bToolBelow ? BALLOON_STEMHEIGHT : 0),
                                   rect.right - rect.left,
-                                  (infoPtr->bToolBelow ? rect.bottom - rect.top : rect.bottom - rect.top - BALLOON_STEMHEIGHT),
+                                  (infoPtr->bToolBelow ? rect.bottom - rect.top : rect.bottom - rect.top - BALLOON_STEMHEIGHT + 1),
                                   BALLOON_ROUNDEDNESS, BALLOON_ROUNDEDNESS);
 
         CombineRgn(hRgn, hRgn, hrStem, RGN_OR);

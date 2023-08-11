@@ -701,6 +701,9 @@ HRGN WINAPI NtGdiCreateRoundRectRgn( INT left, INT top, INT right, INT bottom,
 
     if (left > right) { INT tmp = left; left = right; right = tmp; }
     if (top > bottom) { INT tmp = top; top = bottom; bottom = tmp; }
+    /* the region is for the rectangle interior, but only at right and bottom for some reason */
+    right--;
+    bottom--;
 
     ellipse_width = min( right - left, abs( ellipse_width ));
     ellipse_height = min( bottom - top, abs( ellipse_height ));
