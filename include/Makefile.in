@@ -857,6 +857,7 @@ SOURCES = \
 	windows.ui.core.idl \
 	windows.ui.idl \
 	windows.ui.viewmanagement.idl \
+	windows.ui.xaml.hosting.desktopwindowxamlsource.idl \
 	windowscontracts.idl \
 	windowsx.h \
 	wine/afd.h \
@@ -982,6 +983,7 @@ SOURCES = \
 	xact2wb.h \
 	xact3.h \
 	xact3wb.h \
+	xamlom.idl \
 	xapo.idl \
 	xapofx.h \
 	xaudio2.idl \
