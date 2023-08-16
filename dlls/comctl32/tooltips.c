@@ -22,11 +22,11 @@
  *
  * This code was audited for completeness against the documented features
  * of Comctl32.dll version 6.0 on Sep. 08, 2004, by Robert Shearman.
- *
+ * 
  * Unless otherwise noted, we believe this code to be complete, as per
  * the specification mentioned above.
  * If you discover missing features or bugs please note them below.
- *
+ * 
  * TODO:
  *   - Custom draw support.
  *   - Animation.
@@ -307,7 +307,7 @@ TOOLTIPS_Refresh (const TOOLTIPS_INFO *infoPtr, HDC hdc)
             HFONT prevFont;
 
             /* draw icon */
-            icon_present = infoPtr->hTitleIcon &&
+            icon_present = infoPtr->hTitleIcon && 
                 DrawIconEx(hdc, rc.left, rc.top, infoPtr->hTitleIcon,
                            ICON_WIDTH, ICON_HEIGHT, 0, NULL, DI_NORMAL);
             if (icon_present)
@@ -804,7 +804,7 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
         }
 
         hrStem = CreatePolygonRgn(pts, ARRAY_SIZE(pts), ALTERNATE);
-
+        
         hRgn = CreateRoundRectRgn(0,
                                   (infoPtr->bToolBelow ? BALLOON_STEMHEIGHT : 0),
                                   rect.right - rect.left,
@@ -815,7 +815,7 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
         DeleteObject(hrStem);
 
         SetWindowRgn(infoPtr->hwndSelf, hRgn, FALSE);
-        /* we don't free the region handle as the system deletes it when
+        /* we don't free the region handle as the system deletes it when 
          * it is no longer needed */
     }
 
