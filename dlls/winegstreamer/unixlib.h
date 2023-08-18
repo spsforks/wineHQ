@@ -207,6 +207,7 @@ enum wg_parser_type
 typedef UINT64 wg_parser_t;
 typedef UINT64 wg_parser_stream_t;
 typedef UINT64 wg_transform_t;
+typedef UINT64 wg_source_t;
 
 struct wg_parser_create_params
 {
@@ -363,6 +364,11 @@ struct wg_transform_get_status_params
     UINT32 accepts_input;
 };
 
+struct wg_source_create_params
+{
+    wg_source_t source;
+};
+
 enum unix_funcs
 {
     unix_wg_init_gstreamer,
@@ -402,6 +408,9 @@ enum unix_funcs
     unix_wg_transform_get_status,
     unix_wg_transform_drain,
     unix_wg_transform_flush,
+
+    unix_wg_source_create,
+    unix_wg_source_destroy,
 };
 
 #endif /* __WINE_WINEGSTREAMER_UNIXLIB_H */

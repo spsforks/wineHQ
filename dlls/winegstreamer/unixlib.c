@@ -31,6 +31,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
+#include <gst/base/base.h>
 #include <gst/tag/tag.h>
 
 #include "ntstatus.h"

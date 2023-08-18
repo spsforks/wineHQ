@@ -57,6 +57,11 @@ extern NTSTATUS wg_transform_get_status(void *args) DECLSPEC_HIDDEN;
 extern NTSTATUS wg_transform_drain(void *args) DECLSPEC_HIDDEN;
 extern NTSTATUS wg_transform_flush(void *args) DECLSPEC_HIDDEN;
 
+/* wg_source.c */
+
+extern NTSTATUS wg_source_create(void *args) DECLSPEC_HIDDEN;
+extern NTSTATUS wg_source_destroy(void *args) DECLSPEC_HIDDEN;
+
 /* wg_allocator.c */
 
 static inline BYTE *wg_sample_data(struct wg_sample *sample)

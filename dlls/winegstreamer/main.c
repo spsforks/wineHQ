@@ -456,6 +456,31 @@ HRESULT wg_transform_flush(wg_transform_t transform)
     return S_OK;
 }
 
+HRESULT wg_source_create(wg_source_t *out)
+{
+    struct wg_source_create_params params = {0};
+    NTSTATUS status;
+
+    TRACE("out %p\n", out);
+
+    if ((status = WINE_UNIX_CALL(unix_wg_source_create, &params)))
+        WARN("wg_source_create returned status %#lx\n", status);
+    else
+    {
+        TRACE("Returning source %#I64x.\n", params.source);
+        *out = params.source;
+    }
+
+    return HRESULT_FROM_NT(status);
+}
+
+void wg_source_destroy(wg_source_t source)
+{
+    TRACE("source %#I64x.\n", source);
+
+    WINE_UNIX_CALL(unix_wg_source_destroy, &source);
+}
+
 #define ALIGN(n, alignment) (((n) + (alignment) - 1) & ~((alignment) - 1))
 
 unsigned int wg_format_get_stride(const struct wg_format *format)
