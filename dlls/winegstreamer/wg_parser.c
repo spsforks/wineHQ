@@ -2155,6 +2155,28 @@ NTSTATUS wow64_wg_transform_read_data(void *args)
     return ret;
 }
 
+NTSTATUS wow64_wg_source_create(void *args)
+{
+    struct
+    {
+        PTR32 url;
+        PTR32 data;
+        UINT32 size;
+        wg_source_t source;
+    } *params32 = args;
+    struct wg_source_create_params params =
+    {
+        .url = ULongToPtr(params32->url),
+        .data = ULongToPtr(params32->data),
+        .size = params32->size,
+    };
+    NTSTATUS ret;
+
+    ret = wg_source_create(&params);
+    params32->source = params.source;
+    return ret;
+}
+
 const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
 #define X64(name) [unix_ ## name] = wow64_ ## name
@@ -2196,7 +2218,7 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
     X(wg_transform_drain),
     X(wg_transform_flush),
 
-    X(wg_source_create),
+    X64(wg_source_create),
     X(wg_source_destroy),
 };
 

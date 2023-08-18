@@ -366,6 +366,9 @@ struct wg_transform_get_status_params
 
 struct wg_source_create_params
 {
+    const char *url;
+    const void *data;
+    UINT32 size;
     wg_source_t source;
 };
 

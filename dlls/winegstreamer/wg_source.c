@@ -53,9 +53,15 @@ NTSTATUS wg_source_create(void *args)
 {
     struct wg_source_create_params *params = args;
     struct wg_source *source;
+    GstCaps *src_caps;
 
-    if (!(source = calloc(1, sizeof(*source))))
+    if (!(src_caps = detect_caps_from_data(params->url, params->data, params->size)))
         return STATUS_UNSUCCESSFUL;
+    if (!(source = calloc(1, sizeof(*source))))
+    {
+        gst_caps_unref(src_caps);
+        return STATUS_UNSUCCESSFUL;
+    }
 
     if (!(source->container = gst_bin_new("wg_source")))
         goto error;
@@ -63,6 +69,8 @@ NTSTATUS wg_source_create(void *args)
     gst_element_set_state(source->container, GST_STATE_PAUSED);
     if (!gst_element_get_state(source->container, NULL, NULL, -1))
         goto error;
+
+    gst_caps_unref(src_caps);
 
     params->source = (wg_source_t)(ULONG_PTR)source;
     GST_INFO("Created winegstreamer source %p.", source);
@@ -75,6 +83,8 @@ error:
         gst_object_unref(source->container);
     }
     free(source);
+
+    gst_caps_unref(src_caps);
 
     GST_ERROR("Failed to create winegstreamer source.");
     return STATUS_UNSUCCESSFUL;
