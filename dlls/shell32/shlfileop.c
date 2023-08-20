@@ -1353,9 +1353,10 @@ static int delete_files(LPSHFILEOPSTRUCTW lpFileOp, const FILE_LIST *flFrom)
         if (bTrash)
         {
             BOOL bDelete;
-            if (trash_file(fileEntry->szFullPath))
+            if (trash_file(fileEntry->szFullPath)) {
+                SHChangeNotify(SHCNE_DELETE, SHCNF_PATHW, fileEntry->szFullPath, NULL);
                 continue;
-
+            }
             /* Note: Windows silently deletes the file in such a situation, we show a dialog */
             if (!(lpFileOp->fFlags & FOF_NOCONFIRMATION) || (lpFileOp->fFlags & FOF_WANTNUKEWARNING))
                 bDelete = SHELL_ConfirmDialogW(lpFileOp->hwnd, ASK_CANT_TRASH_ITEM, fileEntry->szFullPath, NULL);
@@ -1368,11 +1369,10 @@ static int delete_files(LPSHFILEOPSTRUCTW lpFileOp, const FILE_LIST *flFrom)
                 break;
             }
         }
-        
+
         /* delete the file or directory */
         if (IsAttribFile(fileEntry->attributes))
-            ret = DeleteFileW(fileEntry->szFullPath) ?
-                    ERROR_SUCCESS : GetLastError();
+            ret = SHNotifyDeleteFileW(fileEntry->szFullPath);
         else
             ret = SHELL_DeleteDirectoryW(lpFileOp->hwnd, fileEntry->szFullPath, FALSE);
 
