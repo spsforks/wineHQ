@@ -37,6 +37,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(cmd);
 extern int defaultColor;
 extern BOOL echo_mode;
 extern BOOL interactive;
+extern void handleExpansion(WCHAR *cmd, BOOL atExecute, BOOL delayed);
 
 struct env_stack *pushd_directories;
 const WCHAR inbuilt[][10] = {
@@ -1979,14 +1980,17 @@ static void WCMD_parse_line(CMD_LIST    *cmdStart,
   lasttoken = -1;
   nexttoken = WCMD_for_nexttoken(lasttoken, forf_tokens, &totalfound,
                                  &starfound, &thisduplicate);
-  varidx = FOR_VAR_IDX(variable);
+  varidx = get_FOR_var_index(variable);
 
   /* Empty out variables */
   for (varoffset=0;
-       varidx >= 0 && varoffset<totalfound && (((varidx%26) + varoffset) < 26);
+       varidx >= 0 && varoffset < totalfound && varidx+varoffset <= get_FOR_var_index_upper_boundary(varidx);
        varoffset++) {
     forloopcontext.variable[varidx + varoffset] = emptyW;
   }
+
+  /* Expand outer loop variables */
+  if (wcschr(buffer, '%')) handleExpansion(buffer, (context != NULL), FALSE);
 
   /* Loop extracting the tokens
      Note: nexttoken of 0 means there were no tokens requested, to handle
@@ -2003,7 +2007,7 @@ static void WCMD_parse_line(CMD_LIST    *cmdStart,
     if (varidx >=0) {
       if (parm) forloopcontext.variable[varidx + varoffset] = xstrdupW(parm);
       varoffset++;
-      if (((varidx%26)+varoffset) >= 26) break;
+      if (varidx+varoffset > get_FOR_var_index_upper_boundary(varidx)) break;
     }
 
     /* Find the next token */
@@ -2014,7 +2018,7 @@ static void WCMD_parse_line(CMD_LIST    *cmdStart,
 
   /* If all the rest of the tokens were requested, and there is still space in
      the variable range, write them now                                        */
-  if (!anyduplicates && starfound && varidx >= 0 && (((varidx%26) + varoffset) < 26)) {
+  if (!anyduplicates && starfound && varidx >= 0 && varidx+varoffset <= get_FOR_var_index_upper_boundary(varidx)) {
     nexttoken++;
     WCMD_parameter_with_delims(buffer, (nexttoken-1), &parm, FALSE, FALSE, forf_delims);
     WINE_TRACE("Parsed allremaining tokens (%d) as parameter %s\n",
@@ -2215,8 +2219,8 @@ void WCMD_for (WCHAR *p, CMD_LIST **cmdList) {
 
   /* Variable should follow */
   lstrcpyW(variable, thisArg);
-  WINE_TRACE("Variable identified as %s\n", wine_dbgstr_w(variable));
-  varidx = FOR_VAR_IDX(variable[1]);
+  varidx = get_FOR_var_index(variable[1]);
+  WINE_TRACE("Variable identified as %s (idx: %d)\n", wine_dbgstr_w(variable), varidx);
 
   /* Ensure line continues with IN */
   thisArg = WCMD_parameter(p, parameterNo++, NULL, FALSE, FALSE);
