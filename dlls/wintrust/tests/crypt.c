@@ -1421,7 +1421,6 @@ static void test_catalog_generated_indirect_data(void)
 
         membercount++;
     }
-    todo_wine
     ok(membercount == 1, "Expected 1 member, got %d\n", membercount);
 
     attr = NULL;
