@@ -4977,11 +4977,8 @@ static void test_control_set_symlink(void)
     ok( err == ERROR_SUCCESS, "RegOpenKeyEx failed error %lu\n", err );
     len = sizeof(buffer);
     err = RegQueryValueExA( key, "SymbolicLinkValue", NULL, &type, buffer, &len );
-    todo_wine
     ok( err == ERROR_SUCCESS, "RegQueryValueEx failed error %lu\n", err );
-    todo_wine
     ok( len == target_len - sizeof(WCHAR), "wrong len %lu\n", len );
-    todo_wine
     ok( !_wcsnicmp( (WCHAR*)buffer, target_pfxW, ARRAY_SIZE(target_pfxW) - 1 ) &&
         check_cs_number( (WCHAR*)buffer + ARRAY_SIZE(target_pfxW) - 1 ),
         "wrong link target\n" );
