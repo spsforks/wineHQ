@@ -516,6 +516,8 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
 
     if (ctrl && alt) return WCH_NONE;
     if (!ctrl && vkey == VK_ESCAPE) return VK_ESCAPE;
+    if (ctrl && vkey >= 'A' && vkey <= 'Z') return vkey - 'A' + 1;
+    if (ctrl) tables = &kbdus_tables;
 
     mod = caps_mod = kbd_tables_get_mod_num( tables, state, FALSE );
     if (caps) caps_mod = kbd_tables_get_mod_num( tables, state, TRUE );
@@ -531,7 +533,6 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
         }
     }
 
-    if (ctrl && vkey >= 'A' && vkey <= 'Z') return vkey - 'A' + 1;
     return WCH_NONE;
 }
 
