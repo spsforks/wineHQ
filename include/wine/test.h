@@ -80,10 +80,11 @@ extern void winetest_wait_child_process( HANDLE process );
 #endif
 
 extern int broken( int condition );
-extern int winetest_vok( int condition, const char *msg, va_list ap );
+extern int winetest_vok( int condition, BOOL trying, const char *msg, va_list ap );
 extern void winetest_vskip( const char *msg, va_list ap );
 
 extern void winetest_ok( int condition, const char *msg, ... ) __WINE_PRINTF_ATTR(2,3);
+extern void winetest_tryok( int condition, const char *msg, ... ) __WINE_PRINTF_ATTR(2,3);
 extern void winetest_skip( const char *msg, ... ) __WINE_PRINTF_ATTR(1,2);
 extern void winetest_win_skip( const char *msg, ... ) __WINE_PRINTF_ATTR(1,2);
 extern void winetest_trace( const char *msg, ... ) __WINE_PRINTF_ATTR(1,2);
@@ -91,27 +92,46 @@ extern void winetest_trace( const char *msg, ... ) __WINE_PRINTF_ATTR(1,2);
 extern void winetest_push_context( const char *fmt, ... ) __WINE_PRINTF_ATTR(1, 2);
 extern void winetest_pop_context(void);
 
+extern void winetest_start_attempt( int retries );
+extern int winetest_loop_attempt( void );
+extern void winetest_end_attempt( void );
+extern BOOL winetest_attempt_retry( BOOL condition );
+extern BOOL winetest_attempt_failed( void );
+
 #ifdef WINETEST_NO_LINE_NUMBERS
 # define subtest_(file, line)  (winetest_set_location(file, 0), 0) ? (void)0 : winetest_subtest
 # define ignore_exceptions_(file, line)  (winetest_set_location(file, 0), 0) ? (void)0 : winetest_ignore_exceptions
 # define ok_(file, line)       (winetest_set_location(file, 0), 0) ? (void)0 : winetest_ok
+# define tryok_(file, line)    (winetest_set_location(file, 0), 0) ? (void)0 : winetest_tryok
 # define skip_(file, line)     (winetest_set_location(file, 0), 0) ? (void)0 : winetest_skip
 # define win_skip_(file, line) (winetest_set_location(file, 0), 0) ? (void)0 : winetest_win_skip
 # define trace_(file, line)    (winetest_set_location(file, 0), 0) ? (void)0 : winetest_trace
 # define wait_child_process_(file, line) (winetest_set_location(file, 0), 0) ? (void)0 : winetest_wait_child_process
+# define start_attempt_(file, line) (winetest_set_location(file, 0), 0) ? (void)0 : winetest_start_attempt
+# define loop_attempt_(file, line) (winetest_set_location(file, 0), 0) ? 0 : winetest_loop_attempt
+# define end_attempt_(file, line) (winetest_set_location(file, 0), 0) ? (void)0 : winetest_end_attempt
+# define attempt_retry_(file, line) (winetest_set_location(file, 0), 0) ? 0 : winetest_attempt_retry
+# define attempt_failed_(file, line) (winetest_set_location(file, 0), 0) ? 0 : winetest_attempt_failed
 #else
 # define subtest_(file, line)  (winetest_set_location(file, line), 0) ? (void)0 : winetest_subtest
 # define ignore_exceptions_(file, line)  (winetest_set_location(file, line), 0) ? (void)0 : winetest_ignore_exceptions
 # define ok_(file, line)       (winetest_set_location(file, line), 0) ? (void)0 : winetest_ok
+# define tryok_(file, line)    (winetest_set_location(file, line), 0) ? (void)0 : winetest_tryok
 # define skip_(file, line)     (winetest_set_location(file, line), 0) ? (void)0 : winetest_skip
 # define win_skip_(file, line) (winetest_set_location(file, line), 0) ? (void)0 : winetest_win_skip
 # define trace_(file, line)    (winetest_set_location(file, line), 0) ? (void)0 : winetest_trace
 # define wait_child_process_(file, line) (winetest_set_location(file, line), 0) ? (void)0 : winetest_wait_child_process
+# define start_attempt_(file, line) (winetest_set_location(file, line), 0) ? (void)0 : winetest_start_attempt
+# define loop_attempt_(file, line) (winetest_set_location(file, line), 0) ? 0 : winetest_loop_attempt
+# define end_attempt_(file, line) (winetest_set_location(file, line), 0) ? (void)0 : winetest_end_attempt
+# define attempt_retry_(file, line) (winetest_set_location(file, line), 0) ? 0 : winetest_attempt_retry
+# define attempt_failed_(file, line) (winetest_set_location(file, line), 0) ? 0 : winetest_attempt_failed
 #endif
 
 #define subtest  subtest_(__FILE__, __LINE__)
 #define ignore_exceptions  ignore_exceptions_(__FILE__, __LINE__)
 #define ok       ok_(__FILE__, __LINE__)
+#define tryok    tryok_(__FILE__, __LINE__)
 #define skip     skip_(__FILE__, __LINE__)
 #define win_skip win_skip_(__FILE__, __LINE__)
 #define trace    trace_(__FILE__, __LINE__)
@@ -129,6 +149,17 @@ extern void winetest_pop_context(void);
                               winetest_end_todo())
 #define todo_wine               todo_if(!strcmp(winetest_platform, "wine"))
 #define todo_wine_if(is_todo)   todo_if((is_todo) && !strcmp(winetest_platform, "wine"))
+
+#define start_attempt    start_attempt_(__FILE__, __LINE__)
+#define loop_attempt     loop_attempt_(__FILE__, __LINE__)
+#define end_attempt      end_attempt_(__FILE__, __LINE__)
+#define attempt_retry    attempt_retry_(__FILE__, __LINE__)
+#define attempt_failed   attempt_failed_(__FILE__, __LINE__)
+#define LOOP_ON_FLAKY_TESTS(count) for (start_attempt((count) - 1); \
+                                        loop_attempt(); \
+                                        end_attempt())
+#define LOOP_ON_FLAKY_WINDOWS_TESTS(count) LOOP_ON_FLAKY_TESTS(strcmp(winetest_platform, "windows") == 0 ? (count) : 1)
+#define LOOP_ON_FLAKY_WINE_TESTS(count) LOOP_ON_FLAKY_TESTS(strcmp(winetest_platform, "windows") == 0 ? 1 : (count))
 
 
 #ifndef ARRAY_SIZE
@@ -202,6 +233,12 @@ static LONG muted_todo_successes; /* same as todo_successes but silent */
 /* counts how many times a given line printed a message */
 static LONG line_counters[16384];
 
+#define ATTEMPT_NONE     0
+#define ATTEMPT_STARTED  1
+#define ATTEMPT_RETRY    2
+#define ATTEMPT_BADOK    4
+#define ATTEMPT_FAILED   (ATTEMPT_RETRY | ATTEMPT_BADOK)
+
 /* The following data must be kept track of on a per-thread basis */
 struct tls_data
 {
@@ -215,6 +252,8 @@ struct tls_data
     char strings[2000];              /* buffer for debug strings */
     char context[8][128];            /* data to print before messages */
     unsigned int context_count;      /* number of context prefixes */
+    int attempt_status;
+    int attempt_retries;
 };
 static DWORD tls_index;
 
@@ -229,6 +268,8 @@ static struct tls_data *get_tls_data(void)
     {
         data = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*data));
         data->str_pos = data->strings;
+        data->attempt_status = ATTEMPT_NONE;
+        data->attempt_retries = 0;
         TlsSetValue(tls_index,data);
     }
     SetLastError(last_error);
@@ -242,6 +283,13 @@ static void exit_process( int code )
 }
 
 
+/* Records the location of the next check.
+ * See the xxx_(file, line) macros.
+ *
+ * Parameters:
+ *   - file - source file name of the check
+ *   - line - source line number of the check
+ */
 void winetest_set_location( const char* file, int line )
 {
     struct tls_data *data = get_tls_data();
@@ -353,16 +401,18 @@ static LONG winetest_add_line( void )
 }
 
 /*
- * Checks condition.
+ * Checks that a condition has the expected value, that is true except if
+ * preceded by a todo indicating the check is expected to fail.
+ *
  * Parameters:
- *   - condition - condition to check;
- *   - msg test description;
- *   - file - test application source code file name of the check
- *   - line - test application source code file line number of the check
+ *   - condition - true if the check succeeded, false otherwise;
+ *   - trying - if non-zero the failure may be ignored if in an attempt loop;
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
  * Return:
  *   0 if condition does not have the expected value, 1 otherwise
  */
-int winetest_vok( int condition, const char *msg, va_list args )
+int winetest_vok( int condition, BOOL trying, const char *msg, va_list args )
 {
     struct tls_data *data = get_tls_data();
 
@@ -371,12 +421,23 @@ int winetest_vok( int condition, const char *msg, va_list args )
         if (condition)
         {
             winetest_print_lock();
-            if (data->flaky_level)
+            if (trying && data->attempt_retries > 0)
+            {
+                if (winetest_report_success ||
+                    (winetest_time && GetTickCount() >= winetest_last_time + 1000))
+                {
+                    winetest_print_context( data->flaky_level ? "Retry successful test inside flaky todo block: " : "Retry successful test inside todo block: ");
+                    vprintf(msg, args);
+                }
+                data->attempt_status |= ATTEMPT_RETRY;
+            }
+            else if (data->flaky_level)
             {
                 if (winetest_color) printf( color_dark_purple );
                 winetest_print_context( "Test succeeded inside flaky todo block: " );
                 vprintf(msg, args);
                 InterlockedIncrement(&flaky_failures);
+                data->attempt_status |= ATTEMPT_BADOK;
             }
             else
             {
@@ -384,6 +445,7 @@ int winetest_vok( int condition, const char *msg, va_list args )
                 winetest_print_context( "Test succeeded inside todo block: " );
                 vprintf(msg, args);
                 InterlockedIncrement(&todo_failures);
+                data->attempt_status |= ATTEMPT_BADOK;
             }
             if (winetest_color) printf( color_reset );
             winetest_print_unlock();
@@ -415,12 +477,23 @@ int winetest_vok( int condition, const char *msg, va_list args )
         if (!condition)
         {
             winetest_print_lock();
-            if (data->flaky_level)
+            if (trying && data->attempt_retries > 0)
+            {
+                if (winetest_report_success ||
+                    (winetest_time && GetTickCount() >= winetest_last_time + 1000))
+                {
+                    winetest_print_context( data->flaky_level ? "Retry flaky test: " : "Retry failed test: ");
+                    vprintf(msg, args);
+                }
+                data->attempt_status |= ATTEMPT_RETRY;
+            }
+            else if (data->flaky_level)
             {
                 if (winetest_color) printf( color_bright_purple );
                 winetest_print_context( "Test marked flaky: " );
                 vprintf(msg, args);
                 InterlockedIncrement(&flaky_failures);
+                data->attempt_status |= ATTEMPT_BADOK;
             }
             else
             {
@@ -428,6 +501,7 @@ int winetest_vok( int condition, const char *msg, va_list args )
                 winetest_print_context( "Test failed: " );
                 vprintf(msg, args);
                 InterlockedIncrement(&failures);
+                data->attempt_status |= ATTEMPT_BADOK;
             }
             if (winetest_color) printf( color_reset );
             winetest_print_unlock();
@@ -455,7 +529,7 @@ void winetest_ok( int condition, const char *msg, ... )
     va_list valist;
 
     va_start(valist, msg);
-    winetest_vok(condition, msg, valist);
+    winetest_vok(condition, FALSE, msg, valist);
     va_end(valist);
 }
 
@@ -478,6 +552,14 @@ void winetest_trace( const char *msg, ... )
         InterlockedIncrement(&muted_traces);
 }
 
+/*
+ * Prints a message to indicate that a group of tests is being skipped
+ * because the requirements for running them are not met.
+ *
+ * Parameters:
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
+ */
 void winetest_vskip( const char *msg, va_list args )
 {
     if (winetest_add_line() < winetest_mute_threshold)
@@ -502,6 +584,10 @@ void winetest_skip( const char *msg, ... )
     va_end(valist);
 }
 
+/* Same as winetest_skip() on Windows and a test failure otherwise. Typically
+ * used when a required Windows API or functionality is missing, since those
+ * should not be missing in Wine.
+ */
 void winetest_win_skip( const char *msg, ... )
 {
     va_list valist;
@@ -509,10 +595,169 @@ void winetest_win_skip( const char *msg, ... )
     if (strcmp(winetest_platform, "windows") == 0)
         winetest_vskip(msg, valist);
     else
-        winetest_vok(0, msg, valist);
+        winetest_vok(0, FALSE, msg, valist);
     va_end(valist);
 }
 
+/* Starts a group of tests that has a low but non-zero probability of failing
+ * due to unavoidable outside interference. This means it may be necessary
+ * to retry a few times to get a successful run.
+ *
+ * Parameters:
+ * - retries - The number of times this group of tests should be retried if it
+ *             fails.
+ *
+ * Remarks:
+ * - Nesting attempts is not allowed and results in a failure.
+ * - As a corollary, do not break out of an attempt loop.
+ * - This is not meant to paper over race conditions within the test itself.
+ *   Those are bugs and should be fixed.
+ * - The failures should be rare to start with. If a test fails 25% of the time
+ *   or needs to be repeated more than a handful of times to succeed reliably
+ *   it is probably wrong.
+ *
+ * Examples:
+ *
+ *   LOOP_ON_FLAKY_TESTS(3)
+ *   {
+ *       ...
+ *       // ok() failures are never ignored and not retried
+ *       ok(..., "check 1", ...);
+ *
+ *       // ignore tryok() failures except on the last attempt
+ *       tryok(..., "check 2", ...);
+ *       ...
+ *   }
+ *
+ *   LOOP_ON_FLAKY_TESTS(5)
+ *   {
+ *       ...
+ *       // if the conditions for running the remaining tests are not met,
+ *       // pass true to indicate this attempt failed and a new one should
+ *       // be made. attempt_retry() will return true if that is possible.
+ *       if (attempt_retry(condition))
+ *          continue;
+ *       ok(..., "check 1", ...);
+ *
+ *       ...
+ *       // skip if an ok() or tryok() failed already
+ *       if (attempt_failed()) continue;
+ *       ...
+ *   }
+ */
+void winetest_start_attempt( int retries )
+{
+    struct tls_data *data = get_tls_data();
+
+    if (data->attempt_status & ATTEMPT_STARTED)
+         winetest_ok(0, "nesting attempt blocks is not allowed (%x/%d)\n", data->attempt_status, data->attempt_retries);
+    data->attempt_retries = retries;
+    data->attempt_status = ATTEMPT_STARTED | ATTEMPT_RETRY;
+}
+
+int winetest_loop_attempt( void )
+{
+    struct tls_data *data = get_tls_data();
+
+    if (!(data->attempt_status & ATTEMPT_FAILED) || /* no failure */
+        (data->attempt_status & ATTEMPT_BADOK) || /* unrecoverable failure */
+        data->attempt_retries < 0) /* no retries left */
+    {
+        data->attempt_status = ATTEMPT_NONE;
+        data->attempt_retries = 0;
+        return FALSE; /* exit loop */
+    }
+
+    winetest_push_context("r%d", data->attempt_retries);
+    data->attempt_status = ATTEMPT_STARTED;
+    return TRUE;
+}
+
+void winetest_end_attempt( void )
+{
+    struct tls_data *data = get_tls_data();
+
+    winetest_pop_context();
+    data->attempt_retries--;
+}
+
+/* Marks the current attempt as failed if condition is true and returns
+ * whether another attempt is needed and possible.
+ *
+ * Parameters:
+ * - condition - True to indicate that the conditions for running the
+ *               remaining tests are not met and a new attempt should be made.
+ *               This never counts as a test failure.
+ *
+ * Return:
+ *   True if the current attempt failed and a new attempt can be made.
+ *   The current attempt is considered to be failed if either condition is
+ *   true or a tryok() call failed already.
+ *
+ * Remarks:
+ * - A new attempt is needed if either condition is true, or a tryok() call
+ *   failed.
+ * - Plain ok() failures are final so no new attempt is needed after those.
+ * - This always returns false if not in an attempt loop.
+ */
+BOOL winetest_attempt_retry( BOOL condition )
+{
+    struct tls_data *data = get_tls_data();
+
+    if (!(data->attempt_status & ATTEMPT_STARTED) || /* not in a retry loop */
+        (data->attempt_status & ATTEMPT_BADOK) || /* unrecoverable failure */
+        !data->attempt_retries || /* no retries left */
+        (!condition && !(data->attempt_status & ATTEMPT_RETRY))) /* no need to retry */
+        return FALSE;
+    data->attempt_status |= ATTEMPT_RETRY;
+    return TRUE;
+}
+
+/* Returns true if the current attempt failed, whether because of a tryok()
+ * or a plain ok() call.
+ *
+ * Remarks:
+ * - This always returns false if not in an attempt loop.
+ */
+BOOL winetest_attempt_failed( void )
+{
+    struct tls_data *data = get_tls_data();
+
+    return (data->attempt_status & ATTEMPT_STARTED) &&
+           (data->attempt_status & ATTEMPT_FAILED);
+}
+
+
+/* Performs a check that may need to be repeated to avoid failures caused by
+ * race conditions. See winetest_start_attempt() for details.
+ *
+ * Parameters: see winetest_ok()
+ *
+ * Remarks:
+ * - If not in an attempt loop this behaves the same as a regular ok() call.
+ */
+void winetest_tryok( int condition, const char *msg, ... )
+{
+    struct tls_data *data = get_tls_data();
+    va_list valist;
+
+    va_start(valist, msg);
+    winetest_vok(condition, data->attempt_status & ATTEMPT_STARTED, msg, valist);
+    va_end(valist);
+}
+
+/* If is_flaky is true, indicates that the next test may occasionally fail due
+ * to unavoidable outside race conditions. Such failures will be flagged as
+ * flaky so they can be ignored by automated testing tools.
+ *
+ * Remarks:
+ * - This is not meant to paper over race conditions within the test itself.
+ *   Those are bugs and should be fixed.
+ * - This is not meant to be used for tests that normally succeed but
+ *   systematically fail on a specific platform or locale.
+ * - The failures should be rare to start with. If a test fails 25% of the time
+ *   it is probably wrong.
+ */
 void winetest_start_flaky( int is_flaky )
 {
     struct tls_data *data = get_tls_data();
@@ -534,6 +779,13 @@ void winetest_end_flaky(void)
     data->flaky_level >>= 1;
 }
 
+/* If is_todo is true, indicates that the next test is expected to fail on this
+ * platform. This is used to identify tests that are known to fail in Wine.
+ *
+ * Remarks:
+ * - is_todo should never be true on Windows. To ensure this, always use
+ *   todo_wine_if().
+ */
 void winetest_start_todo( int is_todo )
 {
     struct tls_data *data = get_tls_data();
@@ -555,6 +807,31 @@ void winetest_end_todo(void)
     data->todo_level >>= 1;
 }
 
+/* Adds a string to be prepended to the test traces and failure messages.
+ * This must be paired with a winetest_pop_context() call.
+ *
+ * Parameters:
+ *   - msg - failure message format;
+ *   - args - arguments for the failure message
+ *
+ * Remarks:
+ * - Failure messages must always make it possible to figure out what was being
+ *   tested. While not ideal the line number can usually be used for that
+ *   purpose except when the test loops on a list of test parameters. In such
+ *   cases either the test parameters or the loop index should be added to the
+ *   context.
+ *
+ * Example:
+ *
+ *   for (i = 0; i < ARRAY_SIZE(test_parameters); i++)
+ *   {
+ *       winetest_push_context("%d", i);
+ *       ...
+ *       ok(WinAPI(test_parameters[i]), ...);
+ *       ...
+ *       winetest_pop_context();
+ *   }
+ */
 void winetest_push_context( const char *fmt, ... )
 {
     struct tls_data *data = get_tls_data();

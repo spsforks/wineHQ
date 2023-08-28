@@ -1317,7 +1317,8 @@ static void test_file_full_size_information(void)
         "[ffsi] TotalAllocationUnits error fsi:0x%s, ffsi:0x%s\n",
         wine_dbgstr_longlong(fsi.TotalAllocationUnits.QuadPart),
         wine_dbgstr_longlong(ffsi.TotalAllocationUnits.QuadPart));
-    ok(ffsi.CallerAvailableAllocationUnits.QuadPart == fsi.AvailableAllocationUnits.QuadPart,
+    /* Other processes may have allocated or freed disk space */
+    tryok(ffsi.CallerAvailableAllocationUnits.QuadPart == fsi.AvailableAllocationUnits.QuadPart,
         "[ffsi] CallerAvailableAllocationUnits error fsi:0x%s, ffsi: 0x%s\n",
         wine_dbgstr_longlong(fsi.AvailableAllocationUnits.QuadPart),
         wine_dbgstr_longlong(ffsi.CallerAvailableAllocationUnits.QuadPart));
@@ -5666,7 +5667,7 @@ START_TEST(file)
     test_file_all_information();
     test_file_both_information();
     test_file_name_information();
-    test_file_full_size_information();
+    LOOP_ON_FLAKY_TESTS(3) test_file_full_size_information();
     test_file_all_name_information();
     test_file_rename_information();
     test_file_link_information();

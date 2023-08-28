@@ -63,7 +63,7 @@ static void WINAPIV __WINE_PRINTF_ATTR(2, 3) test_child_ok(int condition, const 
     va_list valist;
 
     va_start(valist, msg);
-    winetest_vok(condition, msg, valist);
+    winetest_vok(condition, 0, msg, valist);
     va_end(valist);
     if (!condition) ++child_failures;
 }
