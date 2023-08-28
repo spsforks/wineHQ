@@ -271,7 +271,7 @@ static DIRECTORY_STACK *WCMD_list_directory (DIRECTORY_STACK *inputparms, int le
         if (fd == NULL) {
           FindClose (hff);
           WINE_ERR("Out of memory\n");
-          errorlevel = 1;
+          WCMD_set_errorlevel(1);
           return parms->next;
         }
       } while (FindNextFileW(hff, &fd[entry_count]) != 0);
@@ -494,7 +494,7 @@ static DIRECTORY_STACK *WCMD_list_directory (DIRECTORY_STACK *inputparms, int le
   if ((file_total + dir_total == 0) && (level == 0)) {
     SetLastError (ERROR_FILE_NOT_FOUND);
     WCMD_print_error ();
-    errorlevel = 1;
+    WCMD_set_errorlevel(1);
   }
 
   return parms;
@@ -549,7 +549,7 @@ void WCMD_directory (WCHAR *args)
   WCHAR fname[MAX_PATH];
   WCHAR ext[MAX_PATH];
 
-  errorlevel = 0;
+  WCMD_set_errorlevel(0);
 
   /* Prefill quals with (uppercased) DIRCMD env var */
   if (GetEnvironmentVariableW(L"DIRCMD", string, ARRAY_SIZE(string))) {
@@ -635,7 +635,7 @@ void WCMD_directory (WCHAR *args)
               } else {
                 SetLastError(ERROR_INVALID_PARAMETER);
                 WCMD_print_error();
-                errorlevel = 1;
+                WCMD_set_errorlevel(1);
                 return;
               }
               break;
@@ -655,7 +655,7 @@ void WCMD_directory (WCHAR *args)
                 default:
                     SetLastError(ERROR_INVALID_PARAMETER);
                     WCMD_print_error();
-                    errorlevel = 1;
+                    WCMD_set_errorlevel(1);
                     return;
                 }
                 p++;
@@ -686,7 +686,7 @@ void WCMD_directory (WCHAR *args)
                 default:
                     SetLastError(ERROR_INVALID_PARAMETER);
                     WCMD_print_error();
-                    errorlevel = 1;
+                    WCMD_set_errorlevel(1);
                     return;
                 }
 
@@ -705,7 +705,7 @@ void WCMD_directory (WCHAR *args)
     default:
               SetLastError(ERROR_INVALID_PARAMETER);
               WCMD_print_error();
-              errorlevel = 1;
+              WCMD_set_errorlevel(1);
               return;
     }
     p = p + 1;
@@ -840,7 +840,7 @@ void WCMD_directory (WCHAR *args)
          status = WCMD_volume (0, drive);
          trailerReqd = TRUE;
          if (!status) {
-           errorlevel = 1;
+           WCMD_set_errorlevel(1);
            goto exit;
          }
       }
@@ -849,7 +849,7 @@ void WCMD_directory (WCHAR *args)
     }
 
     /* Clear any errors from previous invocations, and process it */
-    errorlevel = 0;
+    WCMD_set_errorlevel(0);
     prevEntry = thisEntry;
     thisEntry = WCMD_list_directory (thisEntry, 0);
   }

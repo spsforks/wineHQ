@@ -1046,7 +1046,7 @@ void WCMD_run_program (WCHAR *command, BOOL called)
   if (!firstParam) return;
 
   if (!firstParam[0]) {
-      errorlevel = 0;
+      WCMD_set_errorlevel(0);
       return;
   }
 
@@ -1244,8 +1244,13 @@ void WCMD_run_program (WCHAR *command, BOOL called)
            or for console applications                                    */
         if (!interactive || (console && !HIWORD(console)))
             WaitForSingleObject (pe.hProcess, INFINITE);
-        GetExitCodeProcess (pe.hProcess, &errorlevel);
-        if (errorlevel == STILL_ACTIVE) errorlevel = 0;
+
+        {
+          DWORD exitCode = 0;
+          GetExitCodeProcess (pe.hProcess, &exitCode);
+          if (exitCode == STILL_ACTIVE) WCMD_set_errorlevel(0);
+          else WCMD_set_errorlevel(exitCode);
+        }
 
         CloseHandle(pe.hProcess);
         CloseHandle(pe.hThread);
@@ -1271,7 +1276,7 @@ void WCMD_run_program (WCHAR *command, BOOL called)
 
   /* If a command fails to launch, it sets errorlevel 9009 - which
      does not seem to have any associated constant definition     */
-  errorlevel = 9009;
+  WCMD_set_errorlevel(9009);
   return;
 
 }

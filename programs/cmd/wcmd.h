@@ -204,6 +204,11 @@ extern BATCH_CONTEXT *context;
 extern FOR_CONTEXT forloopcontext;
 extern BOOL delayedsubst;
 
+static inline void WCMD_set_errorlevel(DWORD newValue)
+{
+  errorlevel = newValue;
+}
+
 #endif /* !RC_INVOKED */
 
 /*
