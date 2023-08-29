@@ -131,4 +131,15 @@ static inline void ascii_to_unicode( WCHAR *dst, const char *src, size_t len )
 extern TEB_FLS_DATA *fls_alloc_data(void) DECLSPEC_HIDDEN;
 extern void heap_thread_detach(void) DECLSPEC_HIDDEN;
 
+typedef struct
+{
+    ULONG64 len;
+    DWORD h[8];
+    UCHAR buf[64];
+} SHA256_CTX;
+
+void sha256_init(SHA256_CTX *ctx) DECLSPEC_HIDDEN;
+void sha256_update(SHA256_CTX *ctx, const UCHAR *buffer, ULONG len) DECLSPEC_HIDDEN;
+void sha256_finalize(SHA256_CTX *ctx, UCHAR *buffer) DECLSPEC_HIDDEN;
+
 #endif
