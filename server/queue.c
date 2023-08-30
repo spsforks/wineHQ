@@ -1999,6 +1999,10 @@ static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, c
     message_code = (input->kbd.flags & KEYEVENTF_KEYUP) ? WM_KEYUP : WM_KEYDOWN;
     switch (vkey)
     {
+    case VK_PAUSE:
+        if (desktop->keystate[VK_CONTROL] & 0x80) vkey = VK_CANCEL;
+        break;
+
     case VK_LMENU:
     case VK_RMENU:
         if (input->kbd.flags & KEYEVENTF_KEYUP)

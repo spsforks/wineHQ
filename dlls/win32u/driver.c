@@ -715,6 +715,11 @@ static SHORT nulldrv_VkKeyScanEx( WCHAR ch, HKL layout )
     return -256; /* use default implementation */
 }
 
+static KBDTABLES *nulldrv_KbdLayerDescriptor( HKL layout )
+{
+    return NULL;
+}
+
 static UINT nulldrv_ImeProcessKey( HIMC himc, UINT wparam, UINT lparam, const BYTE *state )
 {
     return 0;
@@ -1087,6 +1092,11 @@ static SHORT loaderdrv_VkKeyScanEx( WCHAR ch, HKL layout )
     return load_driver()->pVkKeyScanEx( ch, layout );
 }
 
+static KBDTABLES *loaderdrv_KbdLayerDescriptor( HKL layout )
+{
+    return load_driver()->pKbdLayerDescriptor( layout );
+}
+
 static UINT loaderdrv_ImeProcessKey( HIMC himc, UINT wparam, UINT lparam, const BYTE *state )
 {
     return load_driver()->pImeProcessKey( himc, wparam, lparam, state );
@@ -1213,6 +1223,7 @@ static const struct user_driver_funcs lazy_load_driver =
     loaderdrv_ToUnicodeEx,
     loaderdrv_UnregisterHotKey,
     loaderdrv_VkKeyScanEx,
+    loaderdrv_KbdLayerDescriptor,
     loaderdrv_ImeProcessKey,
     loaderdrv_ImeToAsciiEx,
     loaderdrv_NotifyIMEStatus,
@@ -1296,6 +1307,7 @@ void __wine_set_user_driver( const struct user_driver_funcs *funcs, UINT version
     SET_USER_FUNC(ToUnicodeEx);
     SET_USER_FUNC(UnregisterHotKey);
     SET_USER_FUNC(VkKeyScanEx);
+    SET_USER_FUNC(KbdLayerDescriptor);
     SET_USER_FUNC(ImeProcessKey);
     SET_USER_FUNC(ImeToAsciiEx);
     SET_USER_FUNC(NotifyIMEStatus);

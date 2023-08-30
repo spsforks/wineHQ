@@ -204,14 +204,10 @@ extern BOOL X11DRV_UnrealizePalette( HPALETTE hpal ) DECLSPEC_HIDDEN;
 
 extern BOOL X11DRV_ActivateKeyboardLayout( HKL hkl, UINT flags ) DECLSPEC_HIDDEN;
 extern void X11DRV_Beep(void) DECLSPEC_HIDDEN;
-extern INT X11DRV_GetKeyNameText( LONG lparam, LPWSTR buffer, INT size ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_MapVirtualKeyEx( UINT code, UINT map_type, HKL hkl ) DECLSPEC_HIDDEN;
-extern INT X11DRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
-                               LPWSTR bufW, int bufW_size, UINT flags, HKL hkl ) DECLSPEC_HIDDEN;
 extern UINT X11DRV_ImeToAsciiEx( UINT vkey, UINT vsc, const BYTE *state,
                                  COMPOSITIONSTRING *compstr, HIMC himc ) DECLSPEC_HIDDEN;
-extern SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status ) DECLSPEC_HIDDEN;
+extern KBDTABLES *X11DRV_KbdLayerDescriptor( HKL hkl ) DECLSPEC_HIDDEN;
 extern void X11DRV_DestroyCursorIcon( HCURSOR handle ) DECLSPEC_HIDDEN;
 extern void X11DRV_SetCursor( HWND hwnd, HCURSOR handle ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_SetCursorPos( INT x, INT y ) DECLSPEC_HIDDEN;
@@ -382,6 +378,7 @@ struct x11drv_thread_data
     XEvent  *current_event;        /* event currently being processed */
     HWND     grab_hwnd;            /* window that currently grabs the mouse */
     HWND     last_focus;           /* last window that had focus */
+    HKL      last_layout;          /* last input keyboard layout */
     XIM      xim;                  /* input method */
     HWND     last_xic_hwnd;        /* last xic window */
     XFontSet font_set;             /* international text drawing font set */
@@ -516,6 +513,7 @@ enum x11drv_atoms
     XATOM__GTK_WORKAREAS_D0,
     XATOM__XEMBED,
     XATOM__XEMBED_INFO,
+    XATOM__XKB_RULES_NAMES,
     XATOM_XdndAware,
     XATOM_XdndEnter,
     XATOM_XdndPosition,

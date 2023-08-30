@@ -516,6 +516,8 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
 
     if (ctrl && alt) return WCH_NONE;
     if (!ctrl && vkey == VK_ESCAPE) return VK_ESCAPE;
+    if (ctrl && vkey >= 'A' && vkey <= 'Z') return vkey - 'A' + 1;
+    if (ctrl) tables = &kbdus_tables;
 
     mod = caps_mod = kbd_tables_get_mod_num( tables, state, FALSE );
     if (caps) caps_mod = kbd_tables_get_mod_num( tables, state, TRUE );
@@ -531,7 +533,6 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
         }
     }
 
-    if (ctrl && vkey >= 'A' && vkey <= 'Z') return vkey - 'A' + 1;
     return WCH_NONE;
 }
 
@@ -1016,12 +1017,14 @@ BOOL WINAPI NtUserSetKeyboardState( BYTE *state )
  */
 WORD WINAPI NtUserVkKeyScanEx( WCHAR chr, HKL layout )
 {
-    const KBDTABLES *kbd_tables = &kbdus_tables;
+    const KBDTABLES *kbd_tables;
     SHORT ret;
 
     TRACE_(keyboard)( "chr %s, layout %p\n", debugstr_wn(&chr, 1), layout );
 
     if ((ret = user_driver->pVkKeyScanEx( chr, layout )) != -256) return ret;
+
+    if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
     ret = kbd_tables_wchar_to_vkey( kbd_tables, chr );
 
     TRACE_(keyboard)( "ret %04x\n", ret );
@@ -1034,16 +1037,15 @@ WORD WINAPI NtUserVkKeyScanEx( WCHAR chr, HKL layout )
  */
 UINT WINAPI NtUserMapVirtualKeyEx( UINT code, UINT type, HKL layout )
 {
-    const KBDTABLES *kbd_tables = &kbdus_tables;
     BYTE vsc2vk[0x300], vk2char[0x100];
+    const KBDTABLES *kbd_tables;
     UINT ret;
 
     TRACE_(keyboard)( "code %u, type %u, layout %p.\n", code, type, layout );
 
     if ((ret = user_driver->pMapVirtualKeyEx( code, type, layout )) != -1) return ret;
 
-    kbd_tables_init_vsc2vk( kbd_tables, vsc2vk );
-    kbd_tables_init_vk2char( kbd_tables, vk2char );
+    if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
 
     switch (type)
     {
@@ -1067,6 +1069,7 @@ UINT WINAPI NtUserMapVirtualKeyEx( UINT code, UINT type, HKL layout )
         case VK_DECIMAL: code = VK_DELETE; break;
         }
 
+        kbd_tables_init_vsc2vk( kbd_tables, vsc2vk );
         for (ret = 0; ret < ARRAY_SIZE(vsc2vk); ++ret) if (vsc2vk[ret] == code) break;
         if (ret >= ARRAY_SIZE(vsc2vk)) ret = 0;
 
@@ -1079,6 +1082,8 @@ UINT WINAPI NtUserMapVirtualKeyEx( UINT code, UINT type, HKL layout )
         break;
     case MAPVK_VSC_TO_VK:
     case MAPVK_VSC_TO_VK_EX:
+        kbd_tables_init_vsc2vk( kbd_tables, vsc2vk );
+
         if (code & 0xe000) code -= 0xdf00;
         if (code >= ARRAY_SIZE(vsc2vk)) ret = 0;
         else ret = vsc2vk[code];
@@ -1094,6 +1099,7 @@ UINT WINAPI NtUserMapVirtualKeyEx( UINT code, UINT type, HKL layout )
         }
         break;
     case MAPVK_VK_TO_CHAR:
+        kbd_tables_init_vk2char( kbd_tables, vk2char );
         if (code >= ARRAY_SIZE(vk2char)) ret = 0;
         else if (code >= 'A' && code <= 'Z') ret = code;
         else ret = vk2char[code];
@@ -1113,19 +1119,21 @@ UINT WINAPI NtUserMapVirtualKeyEx( UINT code, UINT type, HKL layout )
 INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
 {
     INT code = ((lparam >> 16) & 0x1ff), vkey, len;
-    const KBDTABLES *kbd_tables = &kbdus_tables;
+    HKL layout = NtUserGetKeyboardLayout( 0 );
+    const KBDTABLES *kbd_tables;
     VSC_LPWSTR *key_name;
-    BYTE vsc2vk[0x300];
 
     TRACE_(keyboard)( "lparam %#x, buffer %p, size %d.\n", (int)lparam, buffer, size );
 
     if (!buffer || !size) return 0;
     if ((len = user_driver->pGetKeyNameText( lparam, buffer, size )) >= 0) return len;
 
-    kbd_tables_init_vsc2vk( kbd_tables, vsc2vk );
+    if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
 
     if (lparam & 0x2000000)
     {
+        BYTE vsc2vk[0x300];
+        kbd_tables_init_vsc2vk( kbd_tables, vsc2vk );
         switch ((vkey = vsc2vk[code]))
         {
         case VK_RSHIFT:
@@ -1141,7 +1149,7 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
     else key_name = kbd_tables->pKeyNamesExt;
     while (key_name->vsc && key_name->vsc != (BYTE)code) key_name++;
 
-    if (key_name->vsc == (BYTE)code)
+    if (key_name->vsc == (BYTE)code && key_name->pwsz)
     {
         len = min( size - 1, wcslen( key_name->pwsz ) );
         memcpy( buffer, key_name->pwsz, len * sizeof(WCHAR) );
@@ -1165,7 +1173,7 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
 INT WINAPI NtUserToUnicodeEx( UINT virt, UINT scan, const BYTE *state,
                               WCHAR *str, int size, UINT flags, HKL layout )
 {
-    const KBDTABLES *kbd_tables = &kbdus_tables;
+    const KBDTABLES *kbd_tables;
     WCHAR buffer[2] = {0};
     INT len;
 
@@ -1173,9 +1181,9 @@ INT WINAPI NtUserToUnicodeEx( UINT virt, UINT scan, const BYTE *state,
                       virt, scan, state, str, size, flags, layout );
 
     if (!state) return 0;
-    if ((len = user_driver->pToUnicodeEx( virt, scan, state, str, size, flags, layout )) >= -1)
-        return len;
+    if ((len = user_driver->pToUnicodeEx( virt, scan, state, str, size, flags, layout )) >= -1) return len;
 
+    if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
     if (scan & 0x8000) buffer[0] = 0; /* key up */
     else buffer[0] = kbd_tables_vkey_to_wchar( kbd_tables, virt, state );
 
