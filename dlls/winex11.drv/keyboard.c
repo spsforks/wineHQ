@@ -2069,8 +2069,7 @@ BOOL X11DRV_ActivateKeyboardLayout(HKL hkl, UINT flags)
  */
 BOOL X11DRV_MappingNotify( HWND dummy, XEvent *event )
 {
-    XRefreshKeyboardMapping(&event->xmapping);
-    X11DRV_InitKeyboard( event->xmapping.display );
+    XRefreshKeyboardMapping( &event->xmapping );
     return FALSE;
 }
 
