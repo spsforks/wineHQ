@@ -1,5 +1,5 @@
 TESTDLL   = ws2_32.dll
-IMPORTS   = iphlpapi ws2_32 user32
+IMPORTS   = iphlpapi ws2_32 user32 oleaut32 ole32 advapi32 shlwapi
 
 C_SRCS = \
 	afd.c \
