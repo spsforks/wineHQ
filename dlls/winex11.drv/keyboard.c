@@ -2069,16 +2069,9 @@ BOOL X11DRV_ActivateKeyboardLayout(HKL hkl, UINT flags)
  */
 BOOL X11DRV_MappingNotify( HWND dummy, XEvent *event )
 {
-    HWND hwnd;
-
     XRefreshKeyboardMapping(&event->xmapping);
     X11DRV_InitKeyboard( event->xmapping.display );
-
-    hwnd = get_focus();
-    if (!hwnd) hwnd = get_active_window();
-    NtUserPostMessage( hwnd, WM_INPUTLANGCHANGEREQUEST,
-                       0 /*FIXME*/, (LPARAM)NtUserGetKeyboardLayout(0) );
-    return TRUE;
+    return FALSE;
 }
 
 
