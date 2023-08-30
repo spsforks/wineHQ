@@ -1485,6 +1485,8 @@ void WCMD_echo (const WCHAR *args)
   const WCHAR *origcommand = args;
   WCHAR *trimmed;
 
+  WCMD_set_lastCmdStatus(TRUE);
+
   if (   args[0]==' ' || args[0]=='\t' || args[0]=='.'
       || args[0]==':' || args[0]==';'  || args[0]=='/')
     args++;
@@ -2723,6 +2725,8 @@ void WCMD_pushd (const WCHAR *args)
 void WCMD_popd (void) {
     struct env_stack *temp = pushd_directories;
 
+    WCMD_set_lastCmdStatus(FALSE);
+
     if (!pushd_directories)
       return;
 
@@ -2731,6 +2735,7 @@ void WCMD_popd (void) {
     SetCurrentDirectoryW(temp->strings);
     LocalFree (temp->strings);
     LocalFree (temp);
+    WCMD_set_lastCmdStatus(TRUE);
 }
 
 /*******************************************************************
@@ -3084,6 +3089,8 @@ void WCMD_pause (void)
   WCMD_ReadFile(hIn, &key, 1, &count);
   if (have_console)
     SetConsoleMode(hIn, oldmode);
+
+  WCMD_set_lastCmdStatus(TRUE);
 }
 
 /****************************************************************************
@@ -3098,6 +3105,8 @@ void WCMD_remove_dir (WCHAR *args) {
   int   argsProcessed = 0;
   WCHAR *argN          = args;
 
+  WCMD_set_lastCmdStatus(TRUE);
+
   /* Loop through all args */
   while (argN) {
     WCHAR *thisArg = WCMD_parameter (args, argno++, &argN, FALSE, FALSE);
@@ -3109,7 +3118,10 @@ void WCMD_remove_dir (WCHAR *args) {
       /* If subdirectory search not supplied, just try to remove
          and report error if it fails (eg if it contains a file) */
       if (wcsstr(quals, L"/S") == NULL) {
-        if (!RemoveDirectoryW(thisArg)) WCMD_print_error ();
+        if (!RemoveDirectoryW(thisArg)) {
+          WCMD_set_lastCmdStatus(FALSE);
+          WCMD_print_error();
+        }
 
       /* Otherwise use ShFileOp to recursively remove a directory */
       } else {
@@ -3139,7 +3151,10 @@ void WCMD_remove_dir (WCHAR *args) {
         /* SHFileOperationW needs file list with a double null termination */
         thisArg[lstrlenW(thisArg) + 1] = 0x00;
 
-        if (SHFileOperationW(&lpDir)) WCMD_print_error ();
+        if (SHFileOperationW(&lpDir)) {
+          WCMD_set_lastCmdStatus(FALSE);
+          WCMD_print_error ();
+        }
       }
     }
   }
@@ -3349,6 +3364,8 @@ void WCMD_endlocal (void) {
   WCHAR *env, *old, *p;
   struct env_stack *temp;
   int len, n;
+
+  WCMD_set_lastCmdStatus(TRUE);
 
   /* setlocal does nothing outside of batch programs */
   if (!context) return;
@@ -4346,6 +4363,8 @@ void WCMD_setshow_time (void) {
 void WCMD_shift (const WCHAR *args) {
   int start;
 
+  WCMD_set_lastCmdStatus(TRUE);
+
   if (context != NULL) {
     WCHAR *pos = wcschr(args, '/');
     int   i;
@@ -4355,6 +4374,7 @@ void WCMD_shift (const WCHAR *args) {
     } else if (*(pos+1)>='0' && *(pos+1)<='8') {
       start = (*(pos+1) - '0');
     } else {
+      WCMD_set_lastCmdStatus(FALSE);
       SetLastError(ERROR_INVALID_PARAMETER);
       WCMD_print_error();
       return;
@@ -4498,6 +4518,7 @@ void WCMD_start(WCHAR *args)
  */
 void WCMD_title (const WCHAR *args) {
   SetConsoleTitleW(args);
+  WCMD_set_lastCmdStatus(TRUE);
 }
 
 /****************************************************************************
