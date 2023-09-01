@@ -290,7 +290,6 @@ NTSTATUS WINAPI RtlDosPathNameToNtPathName_U_WithStatus(const WCHAR *dos_path, U
         *file_part = ntpath->Buffer + ntpath->Length / sizeof(WCHAR) - wcslen(*file_part);
 
     /* FIXME: cd filling */
-
 out:
     if (ptr != local) RtlFreeHeap(GetProcessHeap(), 0, ptr);
     return nts;
@@ -309,6 +308,82 @@ BOOLEAN  WINAPI RtlDosPathNameToNtPathName_U(PCWSTR dos_path,
     return RtlDosPathNameToNtPathName_U_WithStatus(dos_path, ntpath, file_part, cd) == STATUS_SUCCESS;
 }
 
+
+
+/******************************************************************
+ *		collapse_path
+ *
+ * Helper for RtlGetFullPathName_U.
+ * Get rid of . and .. components in the path.
+ */
+static inline void collapse_path( WCHAR *path, UINT mark )
+{
+    WCHAR *p, *next;
+
+    /* convert every / into a \ */
+    for (p = path; *p; p++) if (*p == '/') *p = '\\';
+
+    /* collapse duplicate backslashes */
+    next = path + max( 1, mark );
+    for (p = next; *p; p++) if (*p != '\\' || next[-1] != '\\') *next++ = *p;
+    *next = 0;
+
+    p = path + mark;
+    while (*p)
+    {
+        if (*p == '.')
+        {
+            switch(p[1])
+            {
+            case '\\': /* .\ component */
+                next = p + 2;
+                memmove( p, next, (wcslen(next) + 1) * sizeof(WCHAR) );
+                continue;
+            case 0:  /* final . */
+                if (p > path + mark) p--;
+                *p = 0;
+                continue;
+            case '.':
+                if (p[2] == '\\')  /* ..\ component */
+                {
+                    next = p + 3;
+                    if (p > path + mark)
+                    {
+                        p--;
+                        while (p > path + mark && p[-1] != '\\') p--;
+                    }
+                    memmove( p, next, (wcslen(next) + 1) * sizeof(WCHAR) );
+                    continue;
+                }
+                else if (!p[2])  /* final .. */
+                {
+                    if (p > path + mark)
+                    {
+                        p--;
+                        while (p > path + mark && p[-1] != '\\') p--;
+                        if (p > path + mark) p--;
+                    }
+                    *p = 0;
+                    continue;
+                }
+                break;
+            }
+        }
+        /* skip to the next component */
+        while (*p && *p != '\\') p++;
+        if (*p == '\\')
+        {
+            /* remove last dot in previous dir name */
+            if (p > path + mark && p[-1] == '.') memmove( p-1, p, (wcslen(p) + 1) * sizeof(WCHAR) );
+            else p++;
+        }
+    }
+
+    /* remove trailing spaces and dots (yes, Windows really does that, don't ask) */
+    while (p > path + mark && (p[-1] == ' ' || p[-1] == '.')) p--;
+    *p = 0;
+}
+
 /**************************************************************************
  *        RtlDosPathNameToRelativeNtPathName_U_WithStatus [NTDLL.@]
  *
@@ -317,17 +392,83 @@ BOOLEAN  WINAPI RtlDosPathNameToNtPathName_U(PCWSTR dos_path,
 NTSTATUS WINAPI RtlDosPathNameToRelativeNtPathName_U_WithStatus(const WCHAR *dos_path,
     UNICODE_STRING *ntpath, WCHAR **file_part, RTL_RELATIVE_NAME *relative)
 {
+
+    NTSTATUS ret;
     TRACE("(%s,%p,%p,%p)\n", debugstr_w(dos_path), ntpath, file_part, relative);
+
+
+    ret = RtlDosPathNameToNtPathName_U_WithStatus(dos_path, ntpath, file_part, NULL);
 
     if (relative)
     {
-        FIXME("Unsupported parameter\n");
-        memset(relative, 0, sizeof(*relative));
+        DOS_PATHNAME_TYPE type = RtlDetermineDosPathNameType_U(dos_path);
+        DWORD dosdev = RtlIsDosDeviceName_U(dos_path);
+        
+        relative->RelativeName.Buffer = NULL;
+        relative->ContainerDirectory = 0;
+        relative->CurDirRef = NULL;
+
+        if (type == RELATIVE_PATH && !dosdev)
+        {
+            HANDLE handle;
+
+            IO_STATUS_BLOCK io;
+            OBJECT_ATTRIBUTES attr;
+            NTSTATUS ret_rel, nts;
+            UNICODE_STRING *cur_dir, cur_dir_nt;
+            int dos_path_len = wcslen(dos_path);
+            
+            WCHAR *converted_path = RtlAllocateHeap(GetProcessHeap(), 0, (dos_path_len+1) * sizeof(WCHAR));;
+            wcscpy(converted_path, dos_path);
+            collapse_path(converted_path, 0);
+        
+            /* RTL_Relative_name is filled for ./ and ... on real Windows for whatever reason, so we will make exceptions for these */
+            if (wcscmp(dos_path,L"./") && wcscmp(dos_path,L".\\") && wcscmp(dos_path,L"...") && wcslen(converted_path) == 0)   
+            {
+                /* Collapsed path is empty so don't bother */
+                memset(relative,0,sizeof(*relative));  
+                goto out;
+            }
+            
+            RtlInitUnicodeString(&(relative->RelativeName),converted_path);
+
+            if (NtCurrentTeb()->Tib.SubSystemTib)  /* FIXME: hack */
+                cur_dir = &((WIN16_SUBSYSTEM_TIB *)NtCurrentTeb()->Tib.SubSystemTib)->curdir.DosPath;
+            else
+                cur_dir = &NtCurrentTeb()->Peb->ProcessParameters->CurrentDirectory.DosPath;
+
+            /* FIXME: Better way besides invoking this function twice? Maybe a more direct way of getting current dir in nt path form? */
+            ret_rel = RtlDosPathNameToNtPathName_U_WithStatus(cur_dir->Buffer, &cur_dir_nt, NULL, NULL);
+            if (ret_rel == STATUS_SUCCESS)
+            {
+                attr.Length = sizeof(attr);
+                attr.RootDirectory = 0;
+                attr.Attributes = OBJ_CASE_INSENSITIVE;
+                attr.ObjectName = &cur_dir_nt;
+                attr.SecurityDescriptor = NULL;
+                attr.SecurityQualityOfService = NULL;
+
+                /* Give open directory handle */
+                nts = NtOpenFile(&handle, FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attr, &io,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+
+                if (nts == STATUS_SUCCESS)
+                    relative->ContainerDirectory = handle;
+                RtlFreeUnicodeString(&cur_dir_nt);
+            }
+
+            
+            /* FIXME: No idea what this does. Some reference count or something? */
+            relative->CurDirRef = NULL;
+        }
+        else
+        {
+            memset(relative,0,sizeof(*relative));
+        }
     }
-
-    /* FIXME: fill parameter relative */
-
-    return RtlDosPathNameToNtPathName_U_WithStatus(dos_path, ntpath, file_part, NULL);
+    out:
+        return ret;
 }
 
 /**************************************************************************
@@ -415,82 +556,6 @@ ULONG WINAPI RtlDosSearchPath_U(LPCWSTR paths, LPCWSTR search, LPCWSTR ext,
 
     return len;
 }
-
-
-/******************************************************************
- *		collapse_path
- *
- * Helper for RtlGetFullPathName_U.
- * Get rid of . and .. components in the path.
- */
-static inline void collapse_path( WCHAR *path, UINT mark )
-{
-    WCHAR *p, *next;
-
-    /* convert every / into a \ */
-    for (p = path; *p; p++) if (*p == '/') *p = '\\';
-
-    /* collapse duplicate backslashes */
-    next = path + max( 1, mark );
-    for (p = next; *p; p++) if (*p != '\\' || next[-1] != '\\') *next++ = *p;
-    *next = 0;
-
-    p = path + mark;
-    while (*p)
-    {
-        if (*p == '.')
-        {
-            switch(p[1])
-            {
-            case '\\': /* .\ component */
-                next = p + 2;
-                memmove( p, next, (wcslen(next) + 1) * sizeof(WCHAR) );
-                continue;
-            case 0:  /* final . */
-                if (p > path + mark) p--;
-                *p = 0;
-                continue;
-            case '.':
-                if (p[2] == '\\')  /* ..\ component */
-                {
-                    next = p + 3;
-                    if (p > path + mark)
-                    {
-                        p--;
-                        while (p > path + mark && p[-1] != '\\') p--;
-                    }
-                    memmove( p, next, (wcslen(next) + 1) * sizeof(WCHAR) );
-                    continue;
-                }
-                else if (!p[2])  /* final .. */
-                {
-                    if (p > path + mark)
-                    {
-                        p--;
-                        while (p > path + mark && p[-1] != '\\') p--;
-                        if (p > path + mark) p--;
-                    }
-                    *p = 0;
-                    continue;
-                }
-                break;
-            }
-        }
-        /* skip to the next component */
-        while (*p && *p != '\\') p++;
-        if (*p == '\\')
-        {
-            /* remove last dot in previous dir name */
-            if (p > path + mark && p[-1] == '.') memmove( p-1, p, (wcslen(p) + 1) * sizeof(WCHAR) );
-            else p++;
-        }
-    }
-
-    /* remove trailing spaces and dots (yes, Windows really does that, don't ask) */
-    while (p > path + mark && (p[-1] == ' ' || p[-1] == '.')) p--;
-    *p = 0;
-}
-
 
 /******************************************************************
  *		skip_unc_prefix
