@@ -1436,6 +1436,7 @@ enable_usp10
 enable_utildll
 enable_uxtheme
 enable_vbscript
+enable_vccorlib140
 enable_vcomp
 enable_vcomp100
 enable_vcomp110
@@ -1461,6 +1462,7 @@ enable_wevtsvc
 enable_wiaservc
 enable_wimgapi
 enable_win32u
+enable_wincorlib
 enable_windows_devices_bluetooth
 enable_windows_devices_enumeration
 enable_windows_devices_usb
@@ -21719,6 +21721,7 @@ wine_fn_config_makefile dlls/uxtheme enable_uxtheme
 wine_fn_config_makefile dlls/uxtheme/tests enable_tests
 wine_fn_config_makefile dlls/vbscript enable_vbscript
 wine_fn_config_makefile dlls/vbscript/tests enable_tests
+wine_fn_config_makefile dlls/vccorlib140 enable_vccorlib140
 wine_fn_config_makefile dlls/vcomp enable_vcomp
 wine_fn_config_makefile dlls/vcomp/tests enable_tests
 wine_fn_config_makefile dlls/vcomp100 enable_vcomp100
@@ -21768,6 +21771,7 @@ wine_fn_config_makefile dlls/win32u enable_win32u
 wine_fn_config_makefile dlls/win32u/tests enable_tests
 wine_fn_config_makefile dlls/win87em.dll16 enable_win16
 wine_fn_config_makefile dlls/winaspi.dll16 enable_win16
+wine_fn_config_makefile dlls/wincorlib enable_wincorlib
 wine_fn_config_makefile dlls/windebug.dll16 enable_win16
 wine_fn_config_makefile dlls/windows.devices.bluetooth enable_windows_devices_bluetooth
 wine_fn_config_makefile dlls/windows.devices.bluetooth/tests enable_tests

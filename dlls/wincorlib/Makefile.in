@@ -1,0 +1,4 @@
+MODULE = wincorlib.dll
+
+C_SRCS = \
+    main.c

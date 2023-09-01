@@ -139,6 +139,10 @@ my @dll_groups =
   "sppc",
   "slc",
  ],
+ [
+  "wincorlib",
+  "vccorlib140",
+ ],
 );
 
 my $update_flags = 0;
