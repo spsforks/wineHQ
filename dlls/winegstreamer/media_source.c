@@ -27,6 +27,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 
+#define SOURCE_BUFFER_SIZE (64 * 1024)
+
 struct object_context
 {
     IUnknown IUnknown_iface;
@@ -36,6 +38,9 @@ struct object_context
     IMFByteStream *stream;
     UINT64 file_size;
     WCHAR *url;
+
+    BYTE *buffer;
+    wg_source_t wg_source;
 };
 
 static struct object_context *impl_from_IUnknown(IUnknown *iface)
@@ -78,8 +83,11 @@ static ULONG WINAPI object_context_Release(IUnknown *iface)
 
     if (!refcount)
     {
+        if (context->wg_source)
+            wg_source_destroy(context->wg_source);
         IMFAsyncResult_Release(context->result);
         IMFByteStream_Release(context->stream);
+        free(context->buffer);
         free(context->url);
         free(context);
     }
@@ -94,15 +102,37 @@ static const IUnknownVtbl object_context_vtbl =
     object_context_Release,
 };
 
-static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const WCHAR *url,
-        QWORD file_size, IMFAsyncResult *result, IUnknown **out)
+static WCHAR *byte_stream_get_url(IMFByteStream *stream, const WCHAR *url)
 {
-    WCHAR *tmp_url = url ? wcsdup(url) : NULL;
+    IMFAttributes *attributes;
+    WCHAR buffer[MAX_PATH];
+    UINT32 size;
+    HRESULT hr;
+
+    if (SUCCEEDED(hr = IMFByteStream_QueryInterface(stream, &IID_IMFAttributes, (void **)&attributes)))
+    {
+        if (FAILED(hr = IMFAttributes_GetString(attributes, &MF_BYTESTREAM_ORIGIN_NAME,
+                buffer, ARRAY_SIZE(buffer), &size)))
+            WARN("Failed to get MF_BYTESTREAM_ORIGIN_NAME got size %#x, hr %#lx\n", size, hr);
+        else
+            url = buffer;
+        IMFAttributes_Release(attributes);
+    }
+
+    return url ? wcsdup(url) : NULL;
+}
+
+static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const WCHAR *url,
+        QWORD file_size, IMFAsyncResult *result, IUnknown **out, BYTE **out_buf)
+{
+    WCHAR *tmp_url = byte_stream_get_url(stream, url);
     struct object_context *context;
 
-    if (!(context = calloc(1, sizeof(*context))))
+    if (!(context = calloc(1, sizeof(*context)))
+            || !(context->buffer = malloc(SOURCE_BUFFER_SIZE)))
     {
         free(tmp_url);
+        free(context);
         return E_OUTOFMEMORY;
     }
 
@@ -116,6 +146,7 @@ static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const W
     IMFAsyncResult_AddRef(context->result);
 
     *out = &context->IUnknown_iface;
+    *out_buf = context->buffer;
     return S_OK;
 }
 
@@ -182,6 +213,7 @@ struct media_source
 
     CRITICAL_SECTION cs;
 
+    wg_source_t wg_source;
     UINT64 file_size;
     wg_parser_t wg_parser;
     UINT64 duration;
@@ -1359,6 +1391,7 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
         IMFMediaSource_Shutdown(iface);
         IMFMediaEventQueue_Release(source->event_queue);
         IMFByteStream_Release(source->byte_stream);
+        wg_source_destroy(source->wg_source);
         wg_parser_destroy(source->wg_parser);
         source->cs.DebugInfo->Spare[0] = 0;
         DeleteCriticalSection(&source->cs);
@@ -1637,6 +1670,9 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
     InitializeCriticalSection(&object->cs);
     object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
 
+    object->wg_source = context->wg_source;
+    context->wg_source = 0;
+
     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
         goto fail;
 
@@ -1716,6 +1752,8 @@ fail:
         WaitForSingleObject(object->read_thread, INFINITE);
         CloseHandle(object->read_thread);
     }
+    if (object->wg_source)
+        wg_source_destroy(object->wg_source);
     if (object->wg_parser)
         wg_parser_destroy(object->wg_parser);
     if (object->async_commands_queue)
@@ -1850,7 +1888,8 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
     struct stream_handler *handler = impl_from_IMFByteStreamHandler(iface);
     IMFAsyncResult *result;
     IUnknown *context;
-    QWORD file_size;
+    QWORD file_size, position;
+    BYTE *buffer;
     HRESULT hr;
     DWORD caps;
 
@@ -1879,13 +1918,16 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
 
     if (FAILED(hr = MFCreateAsyncResult(NULL, callback, state, &result)))
         return hr;
-    if (FAILED(hr = object_context_create(flags, stream, url, file_size, result, &context)))
-    {
-        IMFAsyncResult_Release(result);
-        return hr;
-    }
+    if (FAILED(hr = object_context_create(flags, stream, url, file_size, result, &context, &buffer)))
+        goto done;
 
-    hr = MFPutWorkItem(MFASYNC_CALLBACK_QUEUE_IO, &handler->IMFAsyncCallback_iface, context);
+    if (FAILED(hr = IMFByteStream_GetCurrentPosition(stream, &position)))
+        WARN("Failed to get byte stream position, hr %#lx\n", hr);
+    else if (position != 0 && FAILED(hr = IMFByteStream_SetCurrentPosition(stream, 0)))
+        WARN("Failed to set byte stream position, hr %#lx\n", hr);
+    else if (FAILED(hr = IMFByteStream_BeginRead(stream, buffer, min(SOURCE_BUFFER_SIZE, file_size),
+            &handler->IMFAsyncCallback_iface, context)))
+        WARN("Failed to queue byte stream async read, hr %#lx\n", hr);
     IUnknown_Release(context);
 
     if (SUCCEEDED(hr) && cancel_cookie)
@@ -1894,6 +1936,7 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
         IUnknown_AddRef(*cancel_cookie);
     }
 
+done:
     IMFAsyncResult_Release(result);
 
     return hr;
@@ -1993,12 +2036,19 @@ static HRESULT WINAPI stream_handler_callback_Invoke(IMFAsyncCallback *iface, IM
     IUnknown *object, *state = IMFAsyncResult_GetStateNoAddRef(result);
     struct object_context *context;
     struct result_entry *entry;
+    DWORD size = 0;
     HRESULT hr;
 
     if (!state || !(context = impl_from_IUnknown(state)))
         return E_INVALIDARG;
 
-    if (FAILED(hr = media_source_create(context, (IMFMediaSource **)&object)))
+    if (FAILED(hr = IMFByteStream_EndRead(context->stream, result, &size)))
+        WARN("Failed to complete stream read, hr %#lx\n", hr);
+    else if (FAILED(hr = wg_source_create(context->url, context->buffer, size, &context->wg_source)))
+        WARN("Failed to create wg_source, hr %#lx\n", hr);
+    else if (FAILED(hr = wg_source_push_data(context->wg_source, context->buffer, size)))
+        WARN("Failed to push initial data, hr %#lx\n", hr);
+    else if (FAILED(hr = media_source_create(context, (IMFMediaSource **)&object)))
         WARN("Failed to create media source, hr %#lx\n", hr);
     else
     {

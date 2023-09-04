@@ -39,6 +39,8 @@ extern GstElement *find_element(GstElementFactoryListType type, GstCaps *src_cap
 extern bool append_element(GstElement *container, GstElement *element, GstElement **first, GstElement **last) DECLSPEC_HIDDEN;
 extern bool link_src_to_element(GstPad *src_pad, GstElement *element) DECLSPEC_HIDDEN;
 extern bool link_element_to_sink(GstElement *element, GstPad *sink_pad) DECLSPEC_HIDDEN;
+extern GstCaps *detect_caps_from_data(const char *url, const void *data, guint size) DECLSPEC_HIDDEN;
+extern GstPad *create_pad_with_caps(GstPadDirection direction, GstCaps *caps) DECLSPEC_HIDDEN;
 
 /* wg_format.c */
 
@@ -56,6 +58,12 @@ extern NTSTATUS wg_transform_read_data(void *args) DECLSPEC_HIDDEN;
 extern NTSTATUS wg_transform_get_status(void *args) DECLSPEC_HIDDEN;
 extern NTSTATUS wg_transform_drain(void *args) DECLSPEC_HIDDEN;
 extern NTSTATUS wg_transform_flush(void *args) DECLSPEC_HIDDEN;
+
+/* wg_source.c */
+
+extern NTSTATUS wg_source_create(void *args) DECLSPEC_HIDDEN;
+extern NTSTATUS wg_source_destroy(void *args) DECLSPEC_HIDDEN;
+extern NTSTATUS wg_source_push_data(void *args) DECLSPEC_HIDDEN;
 
 /* wg_allocator.c */
 

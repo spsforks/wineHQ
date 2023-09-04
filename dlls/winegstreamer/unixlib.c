@@ -31,6 +31,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
+#include <gst/base/base.h>
 #include <gst/tag/tag.h>
 
 #include "ntstatus.h"
@@ -200,6 +201,47 @@ bool link_element_to_sink(GstElement *element, GstPad *sink_pad)
     }
     gst_object_unref(src_pad);
     return !ret;
+}
+
+GstCaps *detect_caps_from_data(const char *url, const void *data, guint size)
+{
+    const char *extension = url ? strrchr(url, '.') : NULL;
+    GstTypeFindProbability probability;
+    GstCaps *caps;
+    gchar *str;
+
+    if (!(caps = gst_type_find_helper_for_data_with_extension(NULL, data, size,
+            extension ? extension + 1 : NULL, &probability)))
+    {
+        GST_ERROR("Failed to detect caps for url %s, data %p, size %u", url, data, size);
+        return NULL;
+    }
+
+    str = gst_caps_to_string(caps);
+    if (probability > GST_TYPE_FIND_POSSIBLE)
+        GST_INFO("Detected caps %s with probability %u for url %s, data %p, size %u",
+                str, probability, url, data, size);
+    else
+        GST_FIXME("Detected caps %s with probability %u for url %s, data %p, size %u",
+                str, probability, url, data, size);
+    g_free(str);
+
+    return caps;
+}
+
+GstPad *create_pad_with_caps(GstPadDirection direction, GstCaps *caps)
+{
+    GstCaps *pad_caps = caps ? gst_caps_ref(caps) : gst_caps_new_any();
+    const char *name = direction == GST_PAD_SRC ? "src" : "sink";
+    GstPadTemplate *template;
+    GstPad *pad;
+
+    if (!pad_caps || !(template = gst_pad_template_new(name, direction, GST_PAD_ALWAYS, pad_caps)))
+        return NULL;
+    pad = gst_pad_new_from_template(template, "src");
+    g_object_unref(template);
+    gst_caps_unref(pad_caps);
+    return pad;
 }
 
 NTSTATUS wg_init_gstreamer(void *arg)

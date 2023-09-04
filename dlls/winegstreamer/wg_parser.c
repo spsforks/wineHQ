@@ -1544,8 +1544,6 @@ static void query_tags(struct wg_parser_stream *stream)
 
 static NTSTATUS wg_parser_connect(void *args)
 {
-    GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE("quartz_src",
-            GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS_ANY);
     const struct wg_parser_connect_params *params = args;
     struct wg_parser *parser = get_parser(params->parser);
     unsigned int i;
@@ -1563,7 +1561,7 @@ static NTSTATUS wg_parser_connect(void *args)
     parser->container = gst_bin_new(NULL);
     gst_element_set_bus(parser->container, parser->bus);
 
-    parser->my_src = gst_pad_new_from_static_template(&src_template, "quartz-src");
+    parser->my_src = create_pad_with_caps(GST_PAD_SRC, NULL);
     gst_pad_set_getrange_function(parser->my_src, src_getrange_cb);
     gst_pad_set_query_function(parser->my_src, src_query_cb);
     gst_pad_set_activatemode_function(parser->my_src, src_activate_mode_cb);
@@ -1945,6 +1943,10 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
     X(wg_transform_get_status),
     X(wg_transform_drain),
     X(wg_transform_flush),
+
+    X(wg_source_create),
+    X(wg_source_destroy),
+    X(wg_source_push_data),
 };
 
 #ifdef _WIN64
@@ -2152,6 +2154,46 @@ NTSTATUS wow64_wg_transform_read_data(void *args)
     return ret;
 }
 
+NTSTATUS wow64_wg_source_create(void *args)
+{
+    struct
+    {
+        PTR32 url;
+        PTR32 data;
+        UINT32 size;
+        wg_source_t source;
+    } *params32 = args;
+    struct wg_source_create_params params =
+    {
+        .url = ULongToPtr(params32->url),
+        .data = ULongToPtr(params32->data),
+        .size = params32->size,
+    };
+    NTSTATUS ret;
+
+    ret = wg_source_create(&params);
+    params32->source = params.source;
+    return ret;
+}
+
+NTSTATUS wow64_wg_source_push_data(void *args)
+{
+    struct
+    {
+        wg_source_t source;
+        PTR32 data;
+        UINT32 size;
+    } *params32 = args;
+    struct wg_source_push_data_params params =
+    {
+        .source = params32->source,
+        .data = ULongToPtr(params32->data),
+        .size = params32->size,
+    };
+
+    return wg_source_push_data(&params);
+}
+
 const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
 #define X64(name) [unix_ ## name] = wow64_ ## name
@@ -2192,6 +2234,10 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
     X(wg_transform_get_status),
     X(wg_transform_drain),
     X(wg_transform_flush),
+
+    X64(wg_source_create),
+    X(wg_source_destroy),
+    X64(wg_source_push_data),
 };
 
 #endif  /* _WIN64 */
