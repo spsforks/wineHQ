@@ -451,6 +451,7 @@ static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *ifac
         }
         texturetype = DWRITE_TEXTURE_CLEARTYPE_3x1;
     }
+    if (bbox_ret) *bbox_ret = bounds;
 
     if (IntersectRect(&target_rect, &target_rect, &bounds))
     {

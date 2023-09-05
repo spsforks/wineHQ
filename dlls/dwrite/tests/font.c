@@ -1225,6 +1225,7 @@ static void test_CreateBitmapRenderTarget(void)
     SIZE size;
     ULONG ref;
     UINT32 ch;
+    RECT box;
     HDC hdc;
     int ret;
 
@@ -1506,6 +1507,13 @@ static void test_CreateBitmapRenderTarget(void)
     hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
         &run, params, RGB(255, 0, 0), NULL);
     ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+
+    /* Got render bounds if not intersect to render target */
+    SetRectEmpty(&box);
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, -100.0f, -100.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
+       &run, params, RGB(255, 0, 0), &box);
+    ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+    ok(!IsRectEmpty(&box), "got empty rect\n");
 
     IDWriteRenderingParams_Release(params);
 
