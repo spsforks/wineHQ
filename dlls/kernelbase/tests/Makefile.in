@@ -4,6 +4,7 @@ C_SRCS = \
 	file.c \
 	path.c \
 	process.c \
+	security.c \
 	sync.c
 
 RC_SRCS = \
