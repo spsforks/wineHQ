@@ -259,5 +259,6 @@ static inline UINT win_get_flags( HWND hwnd )
 WND *get_win_ptr( HWND hwnd );
 BOOL is_child( HWND parent, HWND child );
 BOOL is_window( HWND hwnd );
+BOOL is_window_ever_activated( HWND hwnd );
 
 #endif /* __WINE_NTUSER_PRIVATE_H */

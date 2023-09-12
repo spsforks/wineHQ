@@ -13117,7 +13117,6 @@ static void test_activate(void)
     foreground_window = GetForegroundWindow();
     todo_wine_if(foreground_window != hwnd1)
     ok(GetForegroundWindow() == hwnd1, "Got unexpected foreground window.\n");
-    todo_wine
     ok(!hwnd3_got_wm_activate, "Expected WM_ACTIVATE not sent to hwnd3.\n");
 
     DestroyWindow(hwnd3);

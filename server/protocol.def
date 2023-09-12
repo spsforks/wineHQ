@@ -2411,6 +2411,7 @@ enum message_type
     thread_id_t    tid;         /* thread owning the window */
     atom_t         atom;        /* class atom */
     int            is_unicode;  /* ANSI or unicode */
+    int            is_ever_activated;  /* Ever activated */
     int            dpi;         /* window DPI */
     int            awareness;   /* DPI awareness */
 @END
