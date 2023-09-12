@@ -13064,6 +13064,67 @@ static void test_shell_tray(void)
     DestroyWindow(hwnd);
 }
 
+static BOOL hwnd3_got_wm_activate;
+
+static LRESULT WINAPI test_activate_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    if (msg == WM_ACTIVATE && wp)
+        hwnd3_got_wm_activate = TRUE;
+
+    return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
+static void test_activate(void)
+{
+    HWND hwnd1, hwnd2, hwnd3, next_window, foreground_window;
+    WNDCLASSA cls;
+
+    memset(&cls, 0, sizeof(cls));
+    cls.hInstance = GetModuleHandleA(0);
+    cls.hCursor = LoadCursorA(0, (LPCSTR)IDC_ARROW);
+    cls.hbrBackground = GetStockObject(WHITE_BRUSH);
+    cls.lpfnWndProc = test_activate_proc;
+    cls.lpszClassName = "test_activate_class";
+    RegisterClassA(&cls);
+
+    /* Test 1: a window that never gets activated is not a candidate for activation */
+    hwnd1 = CreateWindowA("static", "1", WS_POPUP | WS_VISIBLE, 200, 200, 100, 100, 0, 0, 0, NULL);
+    ok(!!hwnd1, "CreateWindowA failed, error %lu.\n", GetLastError());
+    hwnd2 = CreateWindowExA(WS_EX_TOPMOST, "static", "2", WS_POPUP | WS_VISIBLE, 300, 300, 100, 100, 0, 0, 0, NULL);
+    ok(!!hwnd2, "CreateWindowExA failed, error %lu.\n", GetLastError());
+
+    hwnd3 = CreateWindowA("test_activate_class", "3", WS_POPUP, 150, 150, 100, 100, 0, 0, 0, NULL);
+    ok(!!hwnd3, "CreateWindowA failed, error %lu.\n", GetLastError());
+    ShowWindow(hwnd3, SW_SHOWNOACTIVATE);
+    /* Even a SetWindowPos() with HWND_TOP doesn't qualify it */
+    SetWindowPos(hwnd3, HWND_TOP, 150, 150, 100, 100, SWP_NOACTIVATE);
+    flush_events(TRUE);
+
+    foreground_window = GetForegroundWindow();
+    todo_wine_if(foreground_window != hwnd2)
+    ok(foreground_window == hwnd2, "Got unexpected foreground window.\n");
+    /* The following confirms that hwnd3 is indeed the next window in z-order */
+    next_window = hwnd2;
+    do
+    {
+        next_window = GetWindow(next_window, GW_HWNDNEXT);
+    } while (next_window && next_window != hwnd1 && next_window != hwnd3);
+    ok(next_window == hwnd3, "Got unexpected next window.\n");
+
+    /* WM_ACTIVATE should not be sent to hwnd3 */
+    DestroyWindow(hwnd2);
+    flush_events(TRUE);
+    foreground_window = GetForegroundWindow();
+    todo_wine_if(foreground_window != hwnd1)
+    ok(GetForegroundWindow() == hwnd1, "Got unexpected foreground window.\n");
+    todo_wine
+    ok(!hwnd3_got_wm_activate, "Expected WM_ACTIVATE not sent to hwnd3.\n");
+
+    DestroyWindow(hwnd3);
+    DestroyWindow(hwnd1);
+    UnregisterClassA(cls.lpszClassName, GetModuleHandleA(0));
+}
+
 START_TEST(win)
 {
     char **argv;
@@ -13260,5 +13321,6 @@ START_TEST(win)
     test_topmost();
 
     test_shell_window();
+    test_activate();
     test_shell_tray();
 }
