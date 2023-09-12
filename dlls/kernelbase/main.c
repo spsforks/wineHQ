@@ -333,6 +333,8 @@ ULONG WINAPI PerfSetCounterRefValue(HANDLE provider, PERF_COUNTERSET_INSTANCE *i
         if (template->counter[i].CounterId == counterid) break;
 
     if (i == template->counterset.NumCounters) return ERROR_NOT_FOUND;
+    if (!(template->counter[i].Attrib & PERF_ATTRIB_BY_REFERENCE)) return ERROR_INVALID_PARAMETER;
+
     *(void **)((BYTE *)&inst->instance + sizeof(PERF_COUNTERSET_INSTANCE) + template->counter[i].Offset) = address;
 
     return STATUS_SUCCESS;
