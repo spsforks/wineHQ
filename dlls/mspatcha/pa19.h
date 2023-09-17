@@ -31,20 +31,19 @@ int normalize_old_file_image(
     const PATCH_IGNORE_RANGE *ignore_range_array, ULONG ignore_range_count,
     const PATCH_RETAIN_RANGE *retain_range_array, ULONG retain_range_count);
 
+BOOL progress_callback_wrapper(
+    PPATCH_PROGRESS_CALLBACK progress_fn, void *progress_ctx, ULONG current, ULONG maximum);
+
 DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG patch_file_size,
     const BYTE *old_file_view, ULONG old_file_size,
     BYTE **new_file_buf, const ULONG new_file_buf_size, ULONG *new_file_size,
     FILETIME *new_file_time,
     const ULONG apply_option_flags,
-    PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx,
-    const BOOL test_header_only);
+    PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx);
 
-BOOL apply_patch_to_file_by_handles(HANDLE patch_file_hndl, HANDLE old_file_hndl, HANDLE new_file_hndl,
-    const ULONG apply_option_flags,
-    PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx,
-    const BOOL test_header_only);
+BOOL apply_patch_to_file_by_handles(
+    HANDLE patch_file_hndl, HANDLE old_file_hndl, HANDLE new_file_hndl,
+    ULONG apply_option_flags, PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx);
 
 BOOL apply_patch_to_file(LPCWSTR patch_file_name, LPCWSTR old_file_name, LPCWSTR new_file_name,
-    const ULONG apply_option_flags,
-    PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx,
-    const BOOL test_header_only);
+    const ULONG apply_option_flags, PATCH_PROGRESS_CALLBACK *progress_fn, void *progress_ctx);

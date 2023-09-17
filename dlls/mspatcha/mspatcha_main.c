@@ -81,7 +81,8 @@ static inline void dword2hex(unsigned int value, char *hexstr)
 /*****************************************************
  *    TestApplyPatchToFileA (MSPATCHA.@)
  */
-BOOL WINAPI TestApplyPatchToFileA(LPCSTR patch_file, LPCSTR old_file, ULONG apply_flags)
+BOOL WINAPI TestApplyPatchToFileA(
+    LPCSTR patch_file, LPCSTR old_file, ULONG apply_option_flags)
 {
     BOOL ret;
     WCHAR *patch_fileW, *old_fileW = NULL;
@@ -92,36 +93,42 @@ BOOL WINAPI TestApplyPatchToFileA(LPCSTR patch_file, LPCSTR old_file, ULONG appl
         HeapFree(GetProcessHeap(), 0, patch_fileW);
         return FALSE;
     }
-    ret = apply_patch_to_file(patch_fileW, old_fileW, NULL, apply_flags, NULL, NULL, TRUE);
+
+    ret = apply_patch_to_file(patch_fileW, old_fileW, NULL,
+        apply_option_flags | APPLY_OPTION_TEST_ONLY, NULL, NULL);
+
     HeapFree(GetProcessHeap(), 0, patch_fileW);
     HeapFree(GetProcessHeap(), 0, old_fileW);
     return ret;
 }
 
-BOOL WINAPI TestApplyPatchToFileW(LPCWSTR patch_file_name, LPCWSTR old_file_name, ULONG apply_option_flags)
+BOOL WINAPI TestApplyPatchToFileW(
+    LPCWSTR patch_file_name, LPCWSTR old_file_name, ULONG apply_option_flags)
 {
-    return apply_patch_to_file(patch_file_name, old_file_name, NULL, apply_option_flags, NULL, NULL, TRUE);
+    return apply_patch_to_file(patch_file_name, old_file_name, NULL,
+        apply_option_flags | APPLY_OPTION_TEST_ONLY, NULL, NULL);
 }
 
-BOOL WINAPI TestApplyPatchToFileByHandles(HANDLE patch_file_hndl, HANDLE old_file_hndl, ULONG apply_option_flags)
+BOOL WINAPI TestApplyPatchToFileByHandles(
+    HANDLE patch_file_hndl, HANDLE old_file_hndl, ULONG apply_option_flags)
 {
     return apply_patch_to_file_by_handles(patch_file_hndl, old_file_hndl, NULL,
-        apply_option_flags, NULL, NULL, TRUE);
+        apply_option_flags | APPLY_OPTION_TEST_ONLY, NULL, NULL);
 }
 
-BOOL WINAPI TestApplyPatchToFileByBuffers(BYTE *patch_file_buf, ULONG patch_file_size,
+BOOL WINAPI TestApplyPatchToFileByBuffers(
+    BYTE *patch_file_buf, ULONG patch_file_size,
     BYTE *old_file_buf, ULONG old_file_size,
-    ULONG* new_file_size,
-    ULONG  apply_option_flags)
+    ULONG* new_file_size, ULONG apply_option_flags)
 {
     /* NOTE: windows preserves last error on success for this function, but no apps are known to depend on it */
 
-    DWORD err = apply_patch_to_file_by_buffers(patch_file_buf, patch_file_size,
-        old_file_buf, old_file_size,
-        NULL, 0, new_file_size, NULL,
-        apply_option_flags,
-        NULL, NULL,
-        TRUE);
+    DWORD err = apply_patch_to_file_by_buffers(
+                    patch_file_buf, patch_file_size,
+                    old_file_buf, old_file_size,
+                    NULL, 0, new_file_size, NULL,
+                    apply_option_flags | APPLY_OPTION_TEST_ONLY,
+                    NULL, NULL);
 
     SetLastError(err);
 
@@ -131,7 +138,8 @@ BOOL WINAPI TestApplyPatchToFileByBuffers(BYTE *patch_file_buf, ULONG patch_file
 /*****************************************************
  *    ApplyPatchToFileExA (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileExA(LPCSTR patch_file, LPCSTR old_file, LPCSTR new_file, ULONG apply_flags,
+BOOL WINAPI ApplyPatchToFileExA(
+    LPCSTR patch_file, LPCSTR old_file, LPCSTR new_file, ULONG apply_option_flags,
     PPATCH_PROGRESS_CALLBACK progress_fn, PVOID progress_ctx)
 {
     BOOL ret = FALSE;
@@ -145,7 +153,8 @@ BOOL WINAPI ApplyPatchToFileExA(LPCSTR patch_file, LPCSTR old_file, LPCSTR new_f
     if (!(new_fileW = strdupAW(new_file)))
         goto free_wstrs;
 
-    ret = apply_patch_to_file(patch_fileW, old_fileW, new_fileW, apply_flags, progress_fn, progress_ctx, FALSE);
+    ret = apply_patch_to_file(patch_fileW, old_fileW, new_fileW,
+                    apply_option_flags, progress_fn, progress_ctx);
 
     HeapFree(GetProcessHeap(), 0, new_fileW);
 free_wstrs:
@@ -157,7 +166,8 @@ free_wstrs:
 /*****************************************************
  *    ApplyPatchToFileA (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileA(LPCSTR patch_file, LPCSTR old_file, LPCSTR new_file, ULONG apply_flags)
+BOOL WINAPI ApplyPatchToFileA(
+    LPCSTR patch_file, LPCSTR old_file, LPCSTR new_file, ULONG apply_flags)
 {
     return ApplyPatchToFileExA(patch_file, old_file, new_file, apply_flags, NULL, NULL);
 }
@@ -165,11 +175,11 @@ BOOL WINAPI ApplyPatchToFileA(LPCSTR patch_file, LPCSTR old_file, LPCSTR new_fil
 /*****************************************************
  *    ApplyPatchToFileW (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileW(LPCWSTR patch_file_name, LPCWSTR old_file_name, LPCWSTR new_file_name,
-    ULONG apply_option_flags)
+BOOL WINAPI ApplyPatchToFileW(
+    LPCWSTR patch_file_name, LPCWSTR old_file_name, LPCWSTR new_file_name, ULONG apply_option_flags)
 {
-    return apply_patch_to_file(patch_file_name, old_file_name, new_file_name, apply_option_flags,
-        NULL, NULL, FALSE);
+    return apply_patch_to_file(patch_file_name, old_file_name, new_file_name,
+        apply_option_flags, NULL, NULL);
 }
 
 /*****************************************************
@@ -179,50 +189,45 @@ BOOL WINAPI ApplyPatchToFileByHandles(HANDLE patch_file_hndl, HANDLE old_file_hn
     ULONG apply_option_flags)
 {
     return apply_patch_to_file_by_handles(patch_file_hndl, old_file_hndl, new_file_hndl,
-        apply_option_flags, NULL, NULL, FALSE);
+        apply_option_flags, NULL, NULL);
 }
 
 /*****************************************************
  *    ApplyPatchToFileExW (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileExW(LPCWSTR patch_file_name, LPCWSTR old_file_name, LPCWSTR new_file_name,
-    ULONG apply_option_flags,
-    PPATCH_PROGRESS_CALLBACK progress_fn, PVOID progress_ctx)
+BOOL WINAPI ApplyPatchToFileExW(
+    LPCWSTR patch_file_name, LPCWSTR old_file_name, LPCWSTR new_file_name,
+    ULONG apply_option_flags, PPATCH_PROGRESS_CALLBACK progress_fn, PVOID progress_ctx)
 {
-    return apply_patch_to_file(patch_file_name, old_file_name, new_file_name, apply_option_flags,
-        progress_fn, progress_ctx, FALSE);
+    return apply_patch_to_file(patch_file_name, old_file_name, new_file_name,
+        apply_option_flags, progress_fn, progress_ctx);
 }
 
 /*****************************************************
  *    ApplyPatchToFileByHandlesEx (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileByHandlesEx(HANDLE patch_file_hndl, HANDLE old_file_hndl, HANDLE new_file_hndl,
-    ULONG apply_option_flags,
-    PPATCH_PROGRESS_CALLBACK progress_fn,
-    PVOID progress_ctx)
+BOOL WINAPI ApplyPatchToFileByHandlesEx(
+    HANDLE patch_file_hndl, HANDLE old_file_hndl, HANDLE new_file_hndl,
+    ULONG apply_option_flags, PPATCH_PROGRESS_CALLBACK progress_fn, PVOID progress_ctx)
 {
     return apply_patch_to_file_by_handles(patch_file_hndl, old_file_hndl, new_file_hndl,
-        apply_option_flags, progress_fn, progress_ctx, FALSE);
+        apply_option_flags, progress_fn, progress_ctx);
 }
 
 /*****************************************************
  *    ApplyPatchToFileByBuffers (MSPATCHA.@)
  */
-BOOL WINAPI ApplyPatchToFileByBuffers(PBYTE patch_file_view, ULONG  patch_file_size,
-    PBYTE  old_file_view, ULONG  old_file_size,
-    PBYTE* new_file_buf, ULONG  new_file_buf_size, ULONG* new_file_size,
-    FILETIME* new_file_time,
-    ULONG  apply_option_flags,
-    PPATCH_PROGRESS_CALLBACK progress_fn, PVOID  progress_ctx)
+BOOL WINAPI ApplyPatchToFileByBuffers(
+    PBYTE patch_file_view, ULONG patch_file_size, PBYTE old_file_view, ULONG  old_file_size,
+    PBYTE* new_file_buf, ULONG new_file_buf_size, ULONG* new_file_size, FILETIME* new_file_time,
+    ULONG  apply_option_flags, PPATCH_PROGRESS_CALLBACK progress_fn, PVOID progress_ctx)
 {
     /* NOTE: windows preserves last error on success for this function, but no apps are known to depend on it */
 
     DWORD err = apply_patch_to_file_by_buffers(patch_file_view, patch_file_size,
         old_file_view, old_file_size,
         new_file_buf, new_file_buf_size, new_file_size, new_file_time,
-        apply_option_flags,
-        progress_fn, progress_ctx,
-        FALSE);
+        apply_option_flags, progress_fn, progress_ctx);
 
     SetLastError(err);
 

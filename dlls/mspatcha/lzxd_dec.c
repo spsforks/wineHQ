@@ -29,6 +29,7 @@
 #include "wine/debug.h"
 
 #include "patchapi.h"
+#include "pa19.h"
 
 #include "lzxd_dec.h"
 
@@ -680,9 +681,6 @@ DWORD decode_lzxd_stream(const BYTE *src, const size_t input_size,
     if (input_size == 0)
         return (output_size == 0) ?  ERROR_SUCCESS : ERROR_PATCH_CORRUPT;
 
-    if (progress_fn != NULL && !progress_fn(progress_ctx, 0, (ULONG)output_size))
-        return ERROR_CANCELLED;
-
     dec = heap_alloc(sizeof(*dec));
     if (dec == NULL)
         return ERROR_OUTOFMEMORY;
@@ -753,9 +751,9 @@ DWORD decode_lzxd_stream(const BYTE *src, const size_t input_size,
                 err = ERROR_PATCH_DECODE_FAILURE;
                 goto free_dec;
             }
-            if (progress_fn != NULL && !progress_fn(progress_ctx, (ULONG)(index - predef_size), (ULONG)output_size))
+            if (!progress_callback_wrapper(progress_fn, progress_ctx, (ULONG)(index - predef_size), (ULONG)output_size))
             {
-                err = ERROR_CANCELLED;
+                err = GetLastError();
                 goto free_dec;
             }
         }

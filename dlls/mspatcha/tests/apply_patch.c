@@ -960,13 +960,10 @@ static void test_ApplyPatchToFileByBuffers(void)
     result = pApplyPatchToFileByBuffers(patch_xfrm_patch_file, patch_xfrm_patch_file_len,
         patch_xfrm_old_file, patch_xfrm_old_file_len, &new_buf, 0, &new_size, &new_time, 0, NULL, NULL);
     SetLastError(0xdeadbeef);
-    todo_wine
     ok(result, "ApplyPatchToFileByBuffers: expected TRUE\n");
     err = GetLastError();
     ok(err == 0xdeadbeef || err == ERROR_SUCCESS, "Expected 0xdeadbeef or ERROR_SUCCESS, got 0x%lX\n", err);
-    todo_wine
     ok(new_buf != NULL, "Expected buffer returned, got NULL\n");
-    todo_wine
     ok(new_size == patch_xfrm_new_file_len, "Expected size %lu, got %lu\n", patch_xfrm_new_file_len, new_size);
     if(new_buf != NULL)
         ok(memcmp(new_buf, patch_xfrm_new_file, new_size) == 0, "Expected data equal, got not equal\n");
