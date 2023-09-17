@@ -25,8 +25,6 @@
  *    used or the old file exceeds the lzxd window size.
  *  - APPLY_OPTION_FAIL_IF_CLOSE is ignored. Normalization of 32-bit PE files
  *    is required for checking this.
- *  - GetFilePatchSignature* and NormalizeFileForPatchSignature require a
- *    solution to the above 32-bit exe problem.
  */
 
 #include <stdarg.h>
@@ -34,9 +32,11 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winnls.h"
+#include "winternl.h"
 #include "patchapi.h"
 #include "wine/debug.h"
 
+#include "md5.h"
 #include "pa19.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mspatcha);
@@ -52,6 +52,30 @@ static WCHAR *strdupAW(const char *src)
             MultiByteToWideChar(CP_ACP, 0, src, -1, dst, len);
     }
     return dst;
+}
+
+static inline char nibble2char(unsigned char n)
+{
+    return (char)((n) < 0xA) ? ('0' + (n)) : ('a' + ((n) - 0xA));
+}
+
+static inline void bin2hex(const unsigned char *bin, char *hexstr, size_t maxcount)
+{
+    size_t i, n = 0;
+    for (i = 0; i < maxcount; i++) {
+        hexstr[n++] = nibble2char((bin[i] >> 4) & 0xf);
+        hexstr[n++] = nibble2char((bin[i] & 0xf));
+    }
+    hexstr[n] = '\0';
+}
+
+static inline void dword2hex(unsigned int value, char *hexstr)
+{
+    size_t i;
+    for (i = 8; i > 0; --i, value >>= 4) {
+        hexstr[i-1] = nibble2char((value & 0xf));
+    }
+    hexstr[8] = '\0';
 }
 
 /*****************************************************
@@ -208,54 +232,202 @@ BOOL WINAPI ApplyPatchToFileByBuffers(PBYTE patch_file_view, ULONG  patch_file_s
 /*****************************************************
  *    GetFilePatchSignatureA (MSPATCHA.@)
  */
-BOOL WINAPI GetFilePatchSignatureA(LPCSTR filename, ULONG flags, PVOID data, ULONG ignore_range_count,
-    PPATCH_IGNORE_RANGE ignore_range, ULONG retain_range_count,
-    PPATCH_RETAIN_RANGE retain_range, ULONG bufsize, LPSTR buffer)
+BOOL WINAPI GetFilePatchSignatureA(
+    LPCSTR filename, ULONG option_flags, PVOID option_data,
+    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range_array,
+    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range_array,
+    ULONG signature_bufsize, LPSTR signature_buf)
 {
-    FIXME("stub - %s, %lx, %p, %lu, %p, %lu, %p, %lu, %p\n", debugstr_a(filename), flags, data,
-        ignore_range_count, ignore_range, retain_range_count, retain_range, bufsize, buffer);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    BOOL success = FALSE;
+    HANDLE file_hndl;
+
+    file_hndl = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                            NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (file_hndl != INVALID_HANDLE_VALUE)
+    {
+        success = GetFilePatchSignatureByHandle(
+                    file_hndl, option_flags,option_data,
+                    ignore_range_count, ignore_range_array,
+                    retain_range_count, retain_range_array,
+                    signature_bufsize, signature_buf);
+
+        CloseHandle(file_hndl);
+    }
+
+    return success;
 }
 
 /*****************************************************
  *    GetFilePatchSignatureW (MSPATCHA.@)
  */
-BOOL WINAPI GetFilePatchSignatureW(LPCWSTR filename, ULONG flags, PVOID data, ULONG ignore_range_count,
-    PPATCH_IGNORE_RANGE ignore_range, ULONG retain_range_count,
-    PPATCH_RETAIN_RANGE retain_range, ULONG bufsize, LPWSTR buffer)
+BOOL WINAPI GetFilePatchSignatureW(
+    LPCWSTR filename, ULONG option_flags, PVOID option_data,
+    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range_array,
+    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range_array,
+    ULONG signature_bufsize, LPWSTR signature_buf)
 {
-    FIXME("stub - %s, %lx, %p, %lu, %p, %lu, %p, %lu, %p\n", debugstr_w(filename), flags, data,
-        ignore_range_count, ignore_range, retain_range_count, retain_range, bufsize, buffer);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    BOOL success = FALSE;
+    HANDLE file_hndl;
+    char ascii_buffer[40];
+
+    file_hndl = CreateFileW(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                            NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (file_hndl != INVALID_HANDLE_VALUE) 
+    {
+        success = GetFilePatchSignatureByHandle(
+                    file_hndl, option_flags,option_data,
+                    ignore_range_count, ignore_range_array,
+                    retain_range_count, retain_range_array,
+                    sizeof(ascii_buffer), ascii_buffer);
+
+        if (success) {
+            if ((signature_bufsize / sizeof(WCHAR)) >= (strlen(ascii_buffer) + 1)) {
+                success = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED,
+                    ascii_buffer, -1, signature_buf, signature_bufsize / sizeof(WCHAR)) != 0;
+
+            } else {
+                SetLastError(ERROR_INSUFFICIENT_BUFFER);
+                success = FALSE;
+            }
+        }
+
+        CloseHandle(file_hndl);
+    }
+
+    return success;
 }
 
 /*****************************************************
  *    GetFilePatchSignatureByHandle (MSPATCHA.@)
  */
-BOOL WINAPI GetFilePatchSignatureByHandle(HANDLE handle, ULONG flags, PVOID options, ULONG ignore_range_count,
-    PPATCH_IGNORE_RANGE ignore_range, ULONG retain_range_count,
-    PPATCH_RETAIN_RANGE retain_range, ULONG bufsize, LPSTR buffer)
+BOOL WINAPI GetFilePatchSignatureByHandle(
+    HANDLE file_handle, ULONG option_flags, PVOID option_data,
+    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range_array,
+    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range_array,
+    ULONG signature_bufsize, LPSTR signature_buf)
 {
-    FIXME("stub - %p, %lx, %p, %lu, %p, %lu, %p, %lu, %p\n", handle, flags, options,
-        ignore_range_count, ignore_range, retain_range_count, retain_range, bufsize, buffer);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    BOOL success = FALSE;
+    HANDLE file_writable_mapping = NULL;
+    PVOID file_writable_buf = NULL;
+    DWORD file_size = 0;
+    DWORD file_size_hi = 0;
+
+    file_size = GetFileSize(file_handle, &file_size_hi);
+
+    /* Cannot support files over 4GiB in size. */
+    if (file_size == 0xFFFFFFFF) {
+        if (GetLastError() == ERROR_SUCCESS) {
+            SetLastError(ERROR_FILE_TOO_LARGE);
+        }
+        return FALSE;
+
+    } else if (file_size_hi != 0) {
+        SetLastError(ERROR_FILE_TOO_LARGE);
+        return FALSE;
+    }
+
+    /* No file size? Nothing to do; return success.*/
+    if (file_size == 0) {
+        return TRUE;
+    }
+
+    /* Create a writable file mapping for the given file handle. */
+    file_writable_mapping = CreateFileMappingA(file_handle, NULL, PAGE_WRITECOPY, 0, 0, NULL);
+    if (file_writable_mapping) {
+        file_writable_buf = MapViewOfFile(file_writable_mapping, FILE_MAP_COPY, 0, 0, 0);
+        CloseHandle(file_writable_mapping);
+        if (file_writable_buf) {
+            success = TRUE;
+        }
+    }
+
+    if (success)
+    {
+        /* Get the file patch signature for the mapped file. */
+        success = GetFilePatchSignatureByBuffer(
+                    file_writable_buf, file_size,
+                    option_flags, option_data,
+                    ignore_range_count, ignore_range_array,
+                    retain_range_count, retain_range_array,
+                    signature_bufsize, signature_buf);
+
+        /* Unmapped the writable file buffer. */
+        UnmapViewOfFile(file_writable_buf);
+    }
+
+    /* Handle errors appropriately. */
+    if (!success) {
+        if (GetLastError() == ERROR_SUCCESS) {
+            SetLastError(ERROR_EXTENDED_ERROR);
+        }
+    }
+
+    return success;
 }
 
 /*****************************************************
  *    GetFilePatchSignatureByBuffer (MSPATCHA.@)
  */
-BOOL WINAPI GetFilePatchSignatureByBuffer(PBYTE file_buf, ULONG file_size, ULONG flags, PVOID options,
-    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range,
-    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range,
-    ULONG bufsize, LPSTR buffer)
+BOOL WINAPI GetFilePatchSignatureByBuffer(
+    PBYTE file_buffer, ULONG file_size,
+    ULONG option_flags, PVOID option_data,
+    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range_array,
+    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range_array,
+    ULONG signature_bufsize, LPSTR signature_buf)
 {
-    FIXME("stub - %p, %lu, %lx, %p, %lu, %p, %lu, %p, %lu, %p\n", file_buf, file_size, flags, options,
-        ignore_range_count, ignore_range, retain_range_count, retain_range, bufsize, buffer);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    BOOL success;
+    INT result;
+    UINT32 filecrc;
+    unsigned char filehash[MD5DIGESTLEN];
+
+    TRACE("getting file patch signature for buffer 0x%p of size 0x%lX", file_buffer, file_size);
+
+    /* Normalize the given mapped file image. */
+    result = NormalizeFileForPatchSignature(
+        file_buffer, file_size,
+        option_flags, option_data,
+        0x10000000, 0x10000000,
+        ignore_range_count, ignore_range_array,
+        retain_range_count, retain_range_array);
+
+    if (result == NORMALIZE_RESULT_FAILURE) {
+        success = FALSE;
+    } else {
+        success = TRUE;
+    }
+
+    if (success) {
+        if (option_flags & PATCH_OPTION_SIGNATURE_MD5) {
+            if (signature_bufsize >= (MD5DIGESTLEN*2+1)) {
+                /* calculate MD5 hash of file buffer. */
+                ComputeMD5Hash(file_buffer, (unsigned int)file_size, filehash);
+                bin2hex(filehash, signature_buf, MD5DIGESTLEN);
+
+            } else {
+                SetLastError(ERROR_INSUFFICIENT_BUFFER);
+                success = FALSE;
+            }
+
+        } else {
+            if (signature_bufsize >= (sizeof(UINT32)*2+1)) {
+                /* calculate CRC32 checksum of file buffer. */
+                filecrc = RtlComputeCrc32(0, file_buffer, file_size);
+                dword2hex(filecrc, signature_buf);
+
+            } else {
+                SetLastError(ERROR_INSUFFICIENT_BUFFER);
+                success = FALSE;
+            }
+        }
+    }
+
+    if (!success) {
+        if (GetLastError() == ERROR_SUCCESS) {
+            SetLastError(ERROR_EXTENDED_ERROR);
+        }
+    }
+
+    return success;
 }
 
 /*****************************************************

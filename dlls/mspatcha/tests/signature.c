@@ -346,9 +346,7 @@ static void test_signature_by_buffer(void)
     memset(array, 0xcc, 8);
     buf[0] = '\0';
     result = pGetFilePatchSignatureByBuffer(array, 8, 0, NULL, 0, NULL, 0, NULL, 9, buf);
-    todo_wine
     ok(result == TRUE, "Expected %d, got %d\n", TRUE, result);
-    todo_wine
     ok(!strcmp(buf, "58ea8bb8"), "Expected %s, got %s\n", "58ea8bb8", buf);
 
     /* Test CRC32 signature w/ insufficient buffer */
@@ -358,7 +356,6 @@ static void test_signature_by_buffer(void)
     result = pGetFilePatchSignatureByBuffer(array, 8, 0, NULL, 0, NULL, 0, NULL, 8, buf);
     err = GetLastError();
     ok(result == FALSE, "Expected %d, got %d\n", FALSE, result);
-    todo_wine
     ok(err == ERROR_INSUFFICIENT_BUFFER, "Expected ERROR_INSUFFICIENT_BUFFER, got %#lx\n", err);
     ok(!buf[0], "Got unexpected %s\n", buf);
 
@@ -367,9 +364,7 @@ static void test_signature_by_buffer(void)
     buf[0] = '\0';
     result = pGetFilePatchSignatureByBuffer(array, 8, PATCH_OPTION_SIGNATURE_MD5, NULL,
         0, NULL, 0, NULL, 33, buf);
-    todo_wine
     ok(result == TRUE, "Expected %d, got %d\n", TRUE, result);
-    todo_wine
     ok(!strcmp(buf, "7bffa66e1c861fcbf38426d134508908"), "Expected %s, got %s\n",
         "7bffa66e1c861fcbf38426d134508908", buf);
 
@@ -381,7 +376,6 @@ static void test_signature_by_buffer(void)
         0, NULL, 0, NULL, 32, buf);
     err = GetLastError();
     ok(result == FALSE, "Expected %d, got %d\n", FALSE, result);
-    todo_wine
     ok(err == ERROR_INSUFFICIENT_BUFFER, "Expected ERROR_INSUFFICIENT_BUFFER, got %#lx\n", err);
     ok(!buf[0], "Got unexpected %s\n", buf);
 
@@ -392,17 +386,12 @@ static void test_signature_by_buffer(void)
     header->OptionalHeader.CheckSum = 0xdeadbeef;
     header->OptionalHeader.ImageBase = 0x400000;
     result = pGetFilePatchSignatureByBuffer(array, 1024, 0, NULL, 0, NULL, 0, NULL, 9, buf);
-    todo_wine
     ok(result == TRUE, "Expected %d, got %d\n", TRUE, result);
-    todo_wine
     ok(!strcmp(buf, "f953f764"), "Expected %s, got %s\n", "f953f764", buf);
-    todo_wine
     ok(header->FileHeader.TimeDateStamp == 0x10000000, "Expected %#x, got %#lx\n",
         0x10000000, header->FileHeader.TimeDateStamp);
-    todo_wine
     ok(header->OptionalHeader.CheckSum == 0x9dd2, "Expected %#x, got %#lx\n",
         0x9dd2, header->OptionalHeader.CheckSum);
-    todo_wine
     ok(header->OptionalHeader.ImageBase == 0x10000000, "Expected %#x, got %#lx\n",
         0x10000000, header->OptionalHeader.ImageBase);
 }
