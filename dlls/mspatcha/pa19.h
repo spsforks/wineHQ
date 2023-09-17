@@ -18,6 +18,19 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+enum NORMALIZE_RESULT {
+    NORMALIZE_RESULT_FAILURE = 0,
+    NORMALIZE_RESULT_SUCCESS = 1,
+    NORMALIZE_RESULT_SUCCESS_MODIFIED = 2
+};
+
+int normalize_old_file_image(
+    BYTE *old_file_mapped, ULONG old_file_size,
+    ULONG option_flags, PATCH_OPTION_DATA *option_data,
+    ULONG new_image_base, ULONG new_image_time,
+    const PATCH_IGNORE_RANGE *ignore_range_array, ULONG ignore_range_count,
+    const PATCH_RETAIN_RANGE *retain_range_array, ULONG retain_range_count);
+
 DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG patch_file_size,
     const BYTE *old_file_view, ULONG old_file_size,
     BYTE **new_file_buf, const ULONG new_file_buf_size, ULONG *new_file_size,

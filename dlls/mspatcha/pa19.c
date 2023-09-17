@@ -621,6 +621,463 @@ static DWORD compute_target_crc32(struct input_file_info *fi, const BYTE *new_fi
     return crc32;
 }
 
+static void DECLSPEC_NORETURN throw_pe_fmt_exception(void)
+{
+    RaiseException(0xE0000001, 0, 0, NULL);
+    for (;;) { /* silence compiler warning */ }
+}
+
+static IMAGE_NT_HEADERS32 UNALIGNED *image_get_nt_headers(const void *image_base, size_t image_size)
+{
+    IMAGE_DOS_HEADER UNALIGNED *dos_hdr;
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers;
+    const UCHAR *const image_end = (PUCHAR)image_base + image_size;
+
+    if (image_size >= 0x200) {
+        dos_hdr = (IMAGE_DOS_HEADER *)image_base;
+        if (dos_hdr->e_magic == IMAGE_DOS_SIGNATURE && dos_hdr->e_lfanew < image_size) {
+            nt_headers = (IMAGE_NT_HEADERS32 *)((ULONG_PTR)dos_hdr + dos_hdr->e_lfanew);
+            if (((PUCHAR)nt_headers + sizeof(IMAGE_NT_HEADERS32)) <= image_end) {
+                if (nt_headers->Signature == IMAGE_NT_SIGNATURE
+                    && nt_headers->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+                    return nt_headers;
+                }
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static ULONG image_rva_to_file_offset(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, ULONG rva, PUCHAR image_base, ULONG image_size)
+{
+    IMAGE_SECTION_HEADER UNALIGNED *section_table;
+    ULONG section_count;
+    ULONG i;
+
+    if ( rva < nt_headers->OptionalHeader.SizeOfHeaders ) {
+        return rva;
+    }
+
+    section_table = IMAGE_FIRST_SECTION(nt_headers);
+    section_count = nt_headers->FileHeader.NumberOfSections;
+    for (i = 0; i < section_count; i++) {
+        if ((PUCHAR)&section_table[i] < image_base
+            || ((PUCHAR)&section_table[i] + sizeof(IMAGE_SECTION_HEADER)) > &image_base[image_size]) {
+            throw_pe_fmt_exception();
+        }
+
+        if (rva >= section_table[i].VirtualAddress
+            && rva < (section_table[i].VirtualAddress + section_table[i].SizeOfRawData)) {
+            return (section_table[i].PointerToRawData + (rva - section_table[i].VirtualAddress));
+        }
+    }
+
+    return 0;
+}
+
+static ULONG image_directory_rva_and_size(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, USHORT directory_entry, ULONG *directory_size,
+    PUCHAR image_base, ULONG image_size)
+{
+    IMAGE_DATA_DIRECTORY UNALIGNED *data_directory;
+
+    if (directory_entry >= nt_headers->OptionalHeader.NumberOfRvaAndSizes) {
+        return 0;
+    }
+
+    data_directory = &nt_headers->OptionalHeader.DataDirectory[directory_entry];
+    if ((PUCHAR)data_directory < image_base
+        || ((PUCHAR)data_directory + sizeof(IMAGE_DATA_DIRECTORY)) > &image_base[image_size]) {
+        throw_pe_fmt_exception();
+    }
+
+    if (directory_size != NULL) {
+        *directory_size = data_directory->Size;
+    }
+    return data_directory->VirtualAddress;
+}
+
+static PVOID image_rva_to_mapped_address(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, ULONG rva, PVOID image_base, ULONG image_size)
+{
+    const ULONG offset = image_rva_to_file_offset(nt_headers, rva, image_base, image_size);
+    if (offset && offset < image_size) {
+        return (PVOID)((PUCHAR)image_base + offset);
+    }
+    return NULL;
+}
+
+static PVOID image_directory_mapped_address(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, USHORT directory_entry, ULONG *directory_size,
+    PUCHAR image_base, ULONG image_size)
+{
+    ULONG dir_rva;
+    ULONG dir_size;
+    PVOID mapped_address;
+
+    dir_rva = image_directory_rva_and_size(nt_headers, directory_entry, &dir_size, image_base, image_size);
+    if (!dir_rva) {
+        return NULL;
+    }
+
+    mapped_address = image_rva_to_mapped_address(nt_headers, dir_rva, image_base, image_size);
+    if (!mapped_address) {
+        return NULL;
+    }
+
+    if (((PUCHAR)mapped_address + dir_size) < (PUCHAR)mapped_address) {
+        throw_pe_fmt_exception();
+    }
+
+    if (((PUCHAR)mapped_address + dir_size) > &image_base[image_size]) {
+        return NULL;
+    }
+
+    if (directory_size != NULL) {
+        *directory_size = dir_size;
+    }
+
+    return mapped_address;
+}
+
+/* Fixup a given mapped image's relocation table for a new image base. */
+static BOOL rebase_image(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers,
+    PUCHAR mapped_image_base, ULONG mapped_image_size, ULONG new_image_base)
+{
+    BOOL result;
+    IMAGE_BASE_RELOCATION UNALIGNED *reloc_block;
+    IMAGE_BASE_RELOCATION UNALIGNED *reloc_block_base;
+    PUCHAR reloc_fixup;
+    LONG delta;
+    LONG reloc_dir_remaining;
+    ULONG reloc_dir_size;
+    USHORT UNALIGNED *reloc;
+    ULONG reloc_count;
+    PUCHAR mapped_image_end;
+
+    result = FALSE;
+    mapped_image_end = &mapped_image_base[mapped_image_size];
+    delta = (LONG)(new_image_base - nt_headers->OptionalHeader.ImageBase);
+
+    reloc_dir_size = 0;
+    reloc_block = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_BASERELOC,
+                                        &reloc_dir_size, mapped_image_base, mapped_image_size);
+    if (!reloc_block
+        || !reloc_dir_size
+        || ((PUCHAR)reloc_block > (mapped_image_end - sizeof(IMAGE_BASE_RELOCATION)))) {
+        return result;
+    }
+
+    nt_headers->OptionalHeader.ImageBase = (DWORD)new_image_base;
+    result = TRUE;
+
+    reloc_dir_remaining = (LONG)reloc_dir_size;
+    while (reloc_dir_remaining > 0
+        && reloc_block->SizeOfBlock <= (ULONG)reloc_dir_remaining
+        && reloc_block->SizeOfBlock > sizeof(IMAGE_BASE_RELOCATION))
+    {
+        reloc_block_base = (IMAGE_BASE_RELOCATION UNALIGNED *)(mapped_image_base +
+            image_rva_to_file_offset(nt_headers, reloc_block->VirtualAddress, mapped_image_base, mapped_image_size));
+        if (reloc_block_base)
+        {
+            reloc = (USHORT UNALIGNED *)((PUCHAR)reloc_block + sizeof(IMAGE_BASE_RELOCATION));
+            reloc_count = (reloc_block->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
+            while (reloc_count--) {
+                if ((PUCHAR)reloc > mapped_image_end) {
+                    break;
+                }
+
+                reloc_fixup = (PUCHAR)reloc_block_base + (*reloc & 0x0FFF);
+                if (reloc_fixup < mapped_image_end)
+                {
+                    switch (*reloc >> 12)
+                    {
+                    case IMAGE_REL_BASED_HIGH:
+                        *(USHORT UNALIGNED *)reloc_fixup = (USHORT)(((*(USHORT UNALIGNED *)reloc_fixup << 16) + delta) >> 16);
+                        break;
+                    case IMAGE_REL_BASED_LOW:
+                        *(USHORT UNALIGNED *)reloc_fixup = (USHORT)(*(SHORT UNALIGNED *)reloc_fixup + delta);
+                        break;
+                    case IMAGE_REL_BASED_HIGHLOW:
+                        if (reloc_fixup + sizeof(USHORT) <= mapped_image_end) {
+                            *(LONG UNALIGNED *)reloc_fixup += delta;
+                        }
+                        break;
+                    case IMAGE_REL_BASED_HIGHADJ:
+                        ++reloc;
+                        --reloc_count;
+                        if ((PUCHAR)reloc <= (mapped_image_end - sizeof(USHORT)))
+                            *(USHORT UNALIGNED *)reloc_fixup = (USHORT)(((*(USHORT UNALIGNED *)reloc_fixup << 16) + (SHORT)*reloc + delta + 0x8000) >> 16);
+                        break;
+                    default:
+
+                    }
+                }
+
+                ++reloc;
+            }
+        }
+
+        reloc_dir_remaining -= reloc_block->SizeOfBlock;
+        reloc_block = (IMAGE_BASE_RELOCATION UNALIGNED *)((PUCHAR)reloc_block + reloc_block->SizeOfBlock);
+
+        if ((PUCHAR)reloc_block > (mapped_image_end - sizeof(IMAGE_BASE_RELOCATION))) {
+            throw_pe_fmt_exception();
+        }
+    }
+
+    return result;
+}
+
+/* Remove all bound imports for a given mapped image. */
+static BOOL unbind_image(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, PUCHAR mapped_image, ULONG image_size)
+{
+    BOOL result;
+    PUCHAR mapped_image_end;
+    IMAGE_IMPORT_DESCRIPTOR UNALIGNED *import_desc;
+    IMAGE_BOUND_IMPORT_DESCRIPTOR UNALIGNED *bound_imports;
+    ULONG bound_imports_size;
+    IMAGE_DATA_DIRECTORY UNALIGNED *bound_import_data_dir;
+    IMAGE_THUNK_DATA32 UNALIGNED *original_thunk;
+    IMAGE_THUNK_DATA32 UNALIGNED *bound_thunk;
+    IMAGE_SECTION_HEADER UNALIGNED *section_table;
+    ULONG section_count;
+
+    result = FALSE;
+    mapped_image_end = mapped_image + image_size;
+
+    /* Erase bound import data directory. */
+    bound_imports = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT,
+                                                &bound_imports_size, mapped_image, image_size);
+    if (bound_imports)
+    {
+        memset(bound_imports, 0, bound_imports_size);
+
+        bound_import_data_dir = &nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT];
+        if ((PUCHAR)bound_import_data_dir < mapped_image
+            || (PUCHAR)bound_import_data_dir > (mapped_image_end - sizeof(IMAGE_DATA_DIRECTORY))) {
+            throw_pe_fmt_exception();
+        }
+
+        bound_import_data_dir->VirtualAddress = 0;
+        bound_import_data_dir->Size = 0;
+        result = TRUE;
+    }
+
+    /* Zero out needed import descriptor fields */
+    import_desc = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_IMPORT, NULL, mapped_image, image_size);
+    if (import_desc)
+    {
+        while ((PUCHAR)import_desc < (mapped_image_end - sizeof(IMAGE_IMPORT_DESCRIPTOR))
+                && import_desc->Characteristics)
+        {
+            /* TimeDateStamp field is -1 if bound */
+            if (import_desc->TimeDateStamp) {
+                import_desc->TimeDateStamp = 0;
+                result = TRUE;
+
+                original_thunk = image_rva_to_mapped_address(nt_headers, import_desc->OriginalFirstThunk, mapped_image, image_size);
+                bound_thunk = image_rva_to_mapped_address(nt_headers, import_desc->FirstThunk, mapped_image, image_size);
+                if (original_thunk && bound_thunk)
+                {
+                    for (; original_thunk->u1.AddressOfData; original_thunk++, bound_thunk++)
+                    {
+                        if ((PUCHAR)original_thunk >= mapped_image_end
+                            || (PUCHAR)bound_thunk >= mapped_image_end)
+                            break;
+                        *bound_thunk = *original_thunk;
+                    }
+                }
+            }
+
+            if (import_desc->ForwarderChain) {
+                import_desc->ForwarderChain = 0;
+                result = TRUE;
+            }
+
+            ++import_desc;
+        }
+    }
+
+    /* Mark the .idata section as writable */
+    section_table = IMAGE_FIRST_SECTION(nt_headers);
+    section_count = nt_headers->FileHeader.NumberOfSections;
+    for (ULONG i = 0; i < section_count; i++)
+    {
+        if ((PUCHAR)&section_table[i] < mapped_image
+            || (PUCHAR)&section_table[i] > (mapped_image_end - sizeof(IMAGE_SECTION_HEADER))) {
+            throw_pe_fmt_exception();
+        }
+
+        /* check for ".idata  " */
+        if (strnicmp((char *)section_table[i].Name, ".idata  ", IMAGE_SIZEOF_SHORT_NAME) == 0) {
+            if ((section_table[i].Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
+                result = TRUE;
+                section_table[i].Characteristics |= (IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE);
+            }
+
+            break;
+        }
+    }
+
+    return result;
+}
+
+/* Force all lock prefixes to the x86 LOCK (F0h) opcode in a given mapped image. */
+static BOOL normalize_lock_prefixes_in_image(
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers, PUCHAR mapped_image, ULONG image_size)
+{
+    BOOL result = FALSE;
+    PUCHAR mapped_image_end;
+    IMAGE_LOAD_CONFIG_DIRECTORY32 UNALIGNED *loadcfg;
+    ULONG UNALIGNED *lock_prefix_table;
+
+    mapped_image_end = &mapped_image[image_size];
+
+    loadcfg = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG,
+                                            NULL, mapped_image, image_size);
+    if (loadcfg && loadcfg->LockPrefixTable)
+    {
+        if (loadcfg->LockPrefixTable < nt_headers->OptionalHeader.ImageBase) {
+            throw_pe_fmt_exception();
+        }
+
+        lock_prefix_table = image_rva_to_mapped_address(nt_headers,
+            loadcfg->LockPrefixTable - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
+
+        if (lock_prefix_table)
+        {
+            while ((PUCHAR)lock_prefix_table <= (mapped_image_end - sizeof(ULONG))
+                    && *lock_prefix_table)
+            {
+                PUCHAR const p = image_rva_to_mapped_address(nt_headers,
+                    *lock_prefix_table - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
+
+                if (p && *p != 0xF0) {
+                    *p = 0xF0;
+                    result = TRUE;
+                }
+
+                ++lock_prefix_table;
+            }
+        }
+    }
+
+    return result;
+}
+
+/* derived from imagehlp for calculating a new coff image checksum. */
+static WORD calc_chksum(
+    ULONG initial_value, PUCHAR buffer, ULONG size_in_bytes)
+{
+    ULONG sum;
+    ULONG i;
+    ULONG word_count;
+    PUCHAR p;
+
+    sum = initial_value;
+    p = buffer;
+    word_count = size_in_bytes / sizeof(WORD);
+    for (i = 0; i < word_count; i++)
+    {
+        sum += *(WORD *)p;
+        if (HIWORD(sum) != 0) {
+            sum = LOWORD(sum) + HIWORD(sum);
+        }
+        p += sizeof(WORD);
+    }
+
+    if (size_in_bytes & 1) {
+        sum += *p;
+    }
+
+    return (WORD)(HIWORD(sum) + LOWORD(sum));
+}
+
+/* Normalizes a given 32-bit PE image to render a stream that is common. */
+int normalize_old_file_image(
+    BYTE *old_file_buffer, ULONG old_file_size,
+    ULONG option_flags,  PATCH_OPTION_DATA *option_data,
+    ULONG new_image_base, ULONG new_image_time,
+    const PATCH_IGNORE_RANGE *ignore_range_array, ULONG ignore_range_count,
+    const PATCH_RETAIN_RANGE *retain_range_array, ULONG retain_range_count)
+{
+    BOOL modified = FALSE;
+    ULONG i;
+    IMAGE_NT_HEADERS32 UNALIGNED *nt_headers;
+
+    TRACE("normalizing image at 0x%p with options 0x%lX, new base 0x%lX, new time %lu\n",
+        old_file_buffer, option_flags, new_image_base, new_image_time);
+
+    if (!old_file_buffer || !old_file_size) {
+        return NORMALIZE_RESULT_SUCCESS;
+    }
+
+    nt_headers = image_get_nt_headers(old_file_buffer, old_file_size);
+    if (nt_headers)
+    {
+        if ((option_flags & PATCH_OPTION_NO_REBASE) == 0) {
+            if (new_image_time != 0 && nt_headers->FileHeader.TimeDateStamp != new_image_time) {
+                nt_headers->FileHeader.TimeDateStamp = new_image_time;
+                modified = TRUE;
+            }
+
+            if (new_image_base != 0 && nt_headers->OptionalHeader.ImageBase != new_image_base) {
+                modified |= rebase_image(nt_headers, old_file_buffer, old_file_size, new_image_base);
+            }
+        }
+
+        if ((option_flags & PATCH_OPTION_NO_BINDFIX) == 0) {
+            modified |= unbind_image(nt_headers, old_file_buffer, old_file_size);
+        }
+
+        if ((option_flags & PATCH_OPTION_NO_LOCKFIX) == 0) {
+            modified |= normalize_lock_prefixes_in_image(nt_headers, old_file_buffer, old_file_size);
+        }
+
+        if ((option_flags & PATCH_OPTION_NO_CHECKSUM) != 0) {
+            if (nt_headers->OptionalHeader.CheckSum) {
+                nt_headers->OptionalHeader.CheckSum = 0;
+                modified = TRUE;
+            }
+
+        } else {
+            if (modified) {
+                nt_headers->OptionalHeader.CheckSum = 0;
+                nt_headers->OptionalHeader.CheckSum = calc_chksum(0, old_file_buffer, old_file_size) + old_file_size;
+            }
+        }
+    }
+
+    for (i = 0; i < ignore_range_count; ++i) {
+        if (ignore_range_array[i].OffsetInOldFile <= old_file_size
+            && (ignore_range_array[i].OffsetInOldFile + ignore_range_array[i].LengthInBytes) <= old_file_size)
+        {
+            memset(&old_file_buffer[ignore_range_array[i].OffsetInOldFile],
+                   0,
+                   ignore_range_array[i].LengthInBytes);
+            modified = TRUE;
+        }
+    }
+
+    for (i = 0; i < retain_range_count; ++i) {
+        if (retain_range_array[i].OffsetInOldFile <= old_file_size
+            && (retain_range_array[i].OffsetInOldFile + retain_range_array[i].LengthInBytes) <= old_file_size)
+        {
+            memset(&old_file_buffer[retain_range_array[i].OffsetInOldFile],
+                   0,
+                   retain_range_array[i].LengthInBytes);
+            modified = TRUE;
+        }
+    }
+
+    return modified ? NORMALIZE_RESULT_SUCCESS_MODIFIED : NORMALIZE_RESULT_SUCCESS;
+}
+
 DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG patch_file_size,
     const BYTE *old_file_view, ULONG old_file_size,
     BYTE **pnew_file_buf, const ULONG new_file_buf_size, ULONG *new_file_size,

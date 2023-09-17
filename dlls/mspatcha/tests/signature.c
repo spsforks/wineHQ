@@ -66,22 +66,18 @@ static void test_normalize_ignore_range(void)
     /* Skip partially out-of-bounds ignore */
     memcpy(array, "abcdefgh", 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  1, ir_bad_good,  0, NULL);
-    todo_wine
     ok(result == 1, "Expected %d, got %d\n", 1, result);
     ok(!memcmp(array, "abcdefgh", 8), "Buffer should not have been modified\n");
 
     /* Skip partially out-of-bounds ignore, apply in-bounds ignore */
     memcpy(array, "abcdefgh", 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  2, ir_bad_good,  0, NULL);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
-    todo_wine
     ok(!memcmp(array, "abc\0\0fgh", 8), "Buffer not modified correctly\n");
 
     /* Blanking a region already consisting of 0's is considered a change */
     memset(array, 0, 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  2, ir_bad_good,  0, NULL);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
     ok(!memcmp(array, "\0\0\0\0\0\0\0\0", 8), "Buffer should not have been modified\n");
 }
@@ -106,22 +102,18 @@ static void test_normalize_retain_range(void)
     /* Skip partially out-of-bounds retain */
     memcpy(array, "abcdefgh", 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  0, NULL,  1, rr_bad_good);
-    todo_wine
     ok(result == 1, "Expected %d, got %d\n", 1, result);
     ok(!memcmp(array, "abcdefgh", 8), "Buffer should not have been modified\n");
 
     /* Skip partially out-of-bounds retain, apply in-bounds retain */
     memcpy(array, "abcdefgh", 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  0, NULL,  2, rr_bad_good);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
-    todo_wine
     ok(!memcmp(array, "a\0\0defgh", 8), "Buffer not modified correctly\n");
 
     /* Blanking a region already consisting of 0's is considered a change */
     memset(array, 0, 8);
     result = pNormalizeFileForPatchSignature(array, 8,  0, NULL,  0, 0,  0, NULL,  2, rr_bad_good);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
     ok(!memcmp(array, "\0\0\0\0\0\0\0\0", 8), "Buffer should not have been modified\n");
 }
@@ -270,13 +262,10 @@ static void test_normalize_flags(void)
         result = pNormalizeFileForPatchSignature(array, td[i].buffer_size, td[i].flags, NULL,
             td[i].image_base, td[i].timestamp, 0, NULL, 0, NULL);
 
-        todo_wine
         ok(result == td[i].exp_result, "Expected %d, got %d\n", td[i].exp_result, result);
-        todo_wine_if(td[i].exp_timestamp != td[i].init_timestamp)
         ok(header->FileHeader.TimeDateStamp == td[i].exp_timestamp,
             "Expected timestamp %#lx, got %#lx\n",
             td[i].exp_timestamp, header->FileHeader.TimeDateStamp);
-        todo_wine_if(td[i].exp_checksum != td[i].init_checksum)
         ok(header->OptionalHeader.CheckSum == td[i].exp_checksum,
             "Expected checksum %#lx, got %#lx\n",
             td[i].exp_checksum, header->OptionalHeader.CheckSum);
@@ -306,12 +295,9 @@ static void test_normalize_rebase(void)
     *reloc_target = reloc_target_value;
     reloc_target_exp = reloc_target_value + (image_base_new - header->OptionalHeader.ImageBase);
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
-    todo_wine
     ok(header->OptionalHeader.ImageBase == image_base_new, "Expected %#lx, got %#lx\n",
         image_base_new, header->OptionalHeader.ImageBase);
-    todo_wine
     ok(*reloc_target == reloc_target_exp, "Expected %#lx, got %#lx\n", reloc_target_exp, *reloc_target);
 
     /* Relocation table extends beyond virtual size, but within raw data size */
@@ -319,9 +305,7 @@ static void test_normalize_rebase(void)
     setup_pe_with_sections(array, &header, NULL);
     header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress += 0xf4;
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
-    todo_wine
     ok(result == 2, "Expected %d, got %d\n", 2, result);
-    todo_wine
     ok(header->OptionalHeader.ImageBase == image_base_new, "Expected %#lx, got %#lx\n",
         image_base_new, header->OptionalHeader.ImageBase);
 
@@ -331,7 +315,6 @@ static void test_normalize_rebase(void)
     image_base_initial = header->OptionalHeader.ImageBase;
     header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress += 0xf8;
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
-    todo_wine
     ok(result == 1, "Expected %d, got %d\n", 2, result);
     ok(header->OptionalHeader.ImageBase == image_base_initial, "Expected %#lx, got %#lx\n",
         image_base_initial, header->OptionalHeader.ImageBase);
@@ -341,7 +324,6 @@ static void test_normalize_rebase(void)
     setup_pe_with_sections(array, &header, NULL);
     image_base_initial = header->OptionalHeader.ImageBase;
     result = pNormalizeFileForPatchSignature(array, 779, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
-    todo_wine
     ok(result == 1, "Expected %d, got %d\n", 1, result);
     ok(header->OptionalHeader.ImageBase == image_base_initial, "Expected %#lx, got %#lx\n",
         image_base_initial, header->OptionalHeader.ImageBase);

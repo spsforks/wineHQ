@@ -261,12 +261,16 @@ BOOL WINAPI GetFilePatchSignatureByBuffer(PBYTE file_buf, ULONG file_size, ULONG
 /*****************************************************
  *    NormalizeFileForPatchSignature (MSPATCHA.@)
  */
-INT WINAPI NormalizeFileForPatchSignature(PVOID file_buffer, ULONG file_size, ULONG flags, PATCH_OPTION_DATA *options,
-    ULONG new_coff_base, ULONG new_coff_time, ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range,
-    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range)
+INT WINAPI NormalizeFileForPatchSignature(
+    PVOID file_buffer, ULONG file_size,
+    ULONG option_flags, PATCH_OPTION_DATA *option_data,
+    ULONG new_coff_base, ULONG new_coff_time,
+    ULONG ignore_range_count, PPATCH_IGNORE_RANGE ignore_range_array,
+    ULONG retain_range_count, PPATCH_RETAIN_RANGE retain_range_array)
 {
-    FIXME("stub - %p, %lu, %lx, %p, %lu, %lu, %lu, %p, %lu, %p\n", file_buffer, file_size, flags, options, new_coff_base,
-        new_coff_time, ignore_range_count, ignore_range, retain_range_count, retain_range);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return 0;
+    return normalize_old_file_image(file_buffer, file_size,
+                                    option_flags, option_data,
+                                    new_coff_base, new_coff_time,
+                                    ignore_range_array, ignore_range_count,
+                                    retain_range_array, retain_range_count);
 }
