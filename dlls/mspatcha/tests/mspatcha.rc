@@ -21,6 +21,15 @@
 
 #include "winuser.h"
 
+/* @makedep: patch_xfrm_old_file.bin */
+patch_xfrm_old_file.bin RCDATA patch_xfrm_old_file.bin
+
+/* @makedep: patch_xfrm_new_file.bin */
+patch_xfrm_new_file.bin RCDATA patch_xfrm_new_file.bin
+
+/* @makedep: patch_xfrm_patch_file.bin */
+patch_xfrm_patch_file.bin RCDATA patch_xfrm_patch_file.bin
+
 /* Vista and later assume that any executable file containing an installer-related
  * word like "patch" in its name must need admin privileges unless manifested otherwise */
 
