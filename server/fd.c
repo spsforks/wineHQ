@@ -1567,6 +1567,31 @@ static void fd_destroy( struct object *obj )
     }
 }
 
+static void get_inode_open_sharing(struct fd *fd, struct inode *inode,
+    unsigned int *sharing, unsigned int *access )
+{
+    static const unsigned int all_access = FILE_READ_DATA | FILE_EXECUTE | FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE;
+
+    struct list *ptr;
+
+    *sharing = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    *access = 0;
+
+    if (!inode)
+        inode = fd->inode;
+
+    LIST_FOR_EACH( ptr, &inode->open )
+    {
+        struct fd *fd_ptr = LIST_ENTRY( ptr, struct fd, inode_entry );
+        if (fd_ptr != fd)
+        {
+            /* if access mode is 0, sharing mode is ignored */
+            if (fd_ptr->access & all_access) *sharing &= fd_ptr->sharing;
+            *access |= fd_ptr->access;
+        }
+    }
+}
+
 /* check if the desired access is possible without violating */
 /* the sharing mode of other opens of the same file */
 static unsigned int check_sharing( struct fd *fd, unsigned int access, unsigned int sharing,
@@ -1577,23 +1602,12 @@ static unsigned int check_sharing( struct fd *fd, unsigned int access, unsigned 
     const unsigned int write_access = FILE_WRITE_DATA | FILE_APPEND_DATA;
     const unsigned int all_access = read_access | write_access | DELETE;
 
-    unsigned int existing_sharing = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-    unsigned int existing_access = 0;
-    struct list *ptr;
+    unsigned int existing_sharing, existing_access;
 
     fd->access = access;
     fd->sharing = sharing;
 
-    LIST_FOR_EACH( ptr, &fd->inode->open )
-    {
-        struct fd *fd_ptr = LIST_ENTRY( ptr, struct fd, inode_entry );
-        if (fd_ptr != fd)
-        {
-            /* if access mode is 0, sharing mode is ignored */
-            if (fd_ptr->access & all_access) existing_sharing &= fd_ptr->sharing;
-            existing_access |= fd_ptr->access;
-        }
-    }
+    get_inode_open_sharing(fd, NULL, &existing_sharing, &existing_access);
 
     if (((access & read_access) && !(existing_sharing & FILE_SHARE_READ)) ||
         ((access & write_access) && !(existing_sharing & FILE_SHARE_WRITE)) ||
