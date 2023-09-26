@@ -84,7 +84,7 @@ GstElement *find_element(GstElementFactoryListType type, GstCaps *src_caps, GstC
     GList *tmp, *transforms;
     const gchar *name;
 
-    if (!(transforms = gst_element_factory_list_get_elements(type, GST_RANK_MARGINAL)))
+    if (!(transforms = gst_element_factory_list_get_elements(type, GST_RANK_NONE)))
         goto done;
 
     if (src_caps)
