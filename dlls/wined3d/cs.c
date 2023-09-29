@@ -501,6 +501,7 @@ struct wined3d_cs_update_sub_resource
     struct wined3d_box box;
     struct upload_bo bo;
     unsigned int row_pitch, slice_pitch;
+    uint8_t data[1];
 };
 
 struct wined3d_cs_add_dirty_texture_region
@@ -2719,15 +2720,59 @@ void wined3d_device_context_emit_update_sub_resource(struct wined3d_device_conte
         struct wined3d_resource *resource, unsigned int sub_resource_idx, const struct wined3d_box *box,
         const void *data, unsigned int row_pitch, unsigned int slice_pitch)
 {
+    const struct wined3d_format *format = resource->format;
     struct wined3d_cs_update_sub_resource *op;
     struct wined3d_map_desc map_desc;
     struct wined3d_box dummy_box;
     struct upload_bo bo;
+    size_t size;
 
     /* If we are replacing the whole resource, the CS thread might discard and
      * rename the buffer object, in which case ours is no longer valid. */
     if (resource->type == WINED3D_RTYPE_BUFFER && box->right - box->left == resource->size)
         invalidate_client_address(resource);
+
+    wined3d_format_calculate_pitch(format, 1, box->right - box->left,
+            box->bottom - box->top, &map_desc.row_pitch, &map_desc.slice_pitch);
+
+    size = (box->back - box->front - 1) * map_desc.slice_pitch
+            + ((box->bottom - box->top - 1) / format->block_height) * map_desc.row_pitch
+            + ((box->right - box->left + format->block_width - 1) / format->block_width) * format->block_byte_count;
+
+    if (size <= 4096)
+    {
+        /* For small data, make a copy, schedule an in-band update and go home. The copy is placed on the
+         * CS buffer itself to avoid malloc/free in this performance critical path.
+         *
+         * The 4k are based on the maximum d3d9 push constant size.
+         *
+         * The reason why this code is here and not in map_upload_bo is that map_upload_bo needs to
+         * preserve existing data in the cases where this special handling might be of interest. It can
+         * only throw away data in case of DISCARD maps, which are already handled. Otherwise, even in
+         * case of a synchronous write-only map, it needs to preserve existing data because there is no
+         * guarantee that the application will overwrite every single byte.
+         *
+         * TODO: It might be faster to use the WINED3D_CS_QUEUE_MAP codepath below if the resource is
+         * already idle. There is no guarantee of that though. It would eliminate one copy, but copying
+         * 4k is fast, whereas cs_finish(QUEUE_MAP) does a round-trip to the other thread. */
+        op = wined3d_device_context_require_space(context,
+                offsetof(struct wined3d_cs_update_sub_resource, data[size]), WINED3D_CS_QUEUE_DEFAULT);
+        op->opcode = WINED3D_CS_OP_UPDATE_SUB_RESOURCE;
+        op->resource = resource;
+        op->sub_resource_idx = sub_resource_idx;
+        op->box = *box;
+        op->bo.addr.buffer_object = 0;
+        op->bo.addr.addr = op->data;
+        op->bo.flags = 0;
+        op->row_pitch = row_pitch;
+        op->slice_pitch = slice_pitch;
+
+        wined3d_format_copy_data(resource->format, data, row_pitch, slice_pitch, op->data, map_desc.row_pitch,
+                map_desc.slice_pitch, box->right - box->left, box->bottom - box->top, box->back - box->front);
+
+        wined3d_device_context_submit(context, WINED3D_CS_QUEUE_DEFAULT);
+        return;
+    }
 
     if (context->ops->map_upload_bo(context, resource, sub_resource_idx, &map_desc, box, WINED3D_MAP_WRITE))
     {
@@ -2741,7 +2786,8 @@ void wined3d_device_context_emit_update_sub_resource(struct wined3d_device_conte
 
     wined3d_resource_wait_idle(resource);
 
-    op = wined3d_device_context_require_space(context, sizeof(*op), WINED3D_CS_QUEUE_MAP);
+    op = wined3d_device_context_require_space(context,
+            offsetof(struct wined3d_cs_update_sub_resource, data[0]), WINED3D_CS_QUEUE_MAP);
     op->opcode = WINED3D_CS_OP_UPDATE_SUB_RESOURCE;
     op->resource = resource;
     op->sub_resource_idx = sub_resource_idx;
@@ -2753,8 +2799,7 @@ void wined3d_device_context_emit_update_sub_resource(struct wined3d_device_conte
     op->slice_pitch = slice_pitch;
 
     wined3d_device_context_submit(context, WINED3D_CS_QUEUE_MAP);
-    /* The data pointer may go away, so we need to wait until it is read.
-     * Copying the data may be faster if it's small. */
+    /* The data pointer may go away, so we need to wait until it is read. */
     wined3d_device_context_finish(context, WINED3D_CS_QUEUE_MAP);
 }
 
