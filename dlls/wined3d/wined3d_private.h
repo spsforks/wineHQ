@@ -2518,6 +2518,12 @@ bool wined3d_driver_info_init(struct wined3d_driver_info *driver_info,
         const struct wined3d_gpu_description *gpu_description, enum wined3d_feature_level feature_level,
         UINT64 vram_bytes, UINT64 sysmem_bytes) DECLSPEC_HIDDEN;
 
+/* If RENAME_ON_UNMAP or FREE_ON_UNMAP are used, then the "const" qualifier in addr is wrong. In the
+ * first case the destination d3d buffer takes ownership of the BO (either GL/vulkan BO or sysmem
+ * allocation), in the second case the sysmem allocation is freed.
+ *
+ * But the code has to be able to deal with genuine const pointers in case of update_sub_resource.
+ * It must not modify the contents in this case. */
 #define UPLOAD_BO_UPLOAD_ON_UNMAP   0x1
 #define UPLOAD_BO_RENAME_ON_UNMAP   0x2
 #define UPLOAD_BO_FREE_ON_UNMAP     0x4

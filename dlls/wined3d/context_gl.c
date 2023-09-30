@@ -3138,8 +3138,12 @@ void wined3d_context_gl_copy_bo_address(struct wined3d_context_gl *context_gl,
             wined3d_context_gl_reference_bo(context_gl, dst_bo);
         }
     }
-    else
+    else if (dst->addr != src->addr)
     {
+        /* Copies between the same address can happen if we NOOVERWRITE mapped into heap_memory
+         * and buffer_get_location picked the sysmem location to copy the new data to (e.g. because
+         * the buffer has been invalidated after DISCARD. This function will get called again on
+         * the next draw to copy the data into the BO. */
         for (i = 0; i < range_count; ++i)
             memcpy(dst->addr + ranges[i].offset, src->addr + ranges[i].offset, ranges[i].size);
     }
