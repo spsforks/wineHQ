@@ -3066,95 +3066,33 @@ static void wined3d_cs_st_finish(struct wined3d_device_context *context, enum wi
 static bool wined3d_cs_map_upload_bo(struct wined3d_device_context *context, struct wined3d_resource *resource,
         unsigned int sub_resource_idx, struct wined3d_map_desc *map_desc, const struct wined3d_box *box, uint32_t flags)
 {
+    const struct wined3d_d3d_info *d3d_info = &context->device->adapter->d3d_info;
     struct wined3d_client_resource *client = &resource->client;
-    const struct wined3d_format *format = resource->format;
+    struct wined3d_device *device = context->device;
+    struct wined3d_bo_address addr;
+    struct wined3d_bo *bo;
+    uint8_t *map_ptr;
     size_t size;
 
-    if (flags & (WINED3D_MAP_DISCARD | WINED3D_MAP_NOOVERWRITE))
+    if (!(flags & (WINED3D_MAP_DISCARD | WINED3D_MAP_NOOVERWRITE)))
     {
-        const struct wined3d_d3d_info *d3d_info = &context->device->adapter->d3d_info;
-        struct wined3d_device *device = context->device;
-        struct wined3d_bo_address addr;
-        struct wined3d_bo *bo;
-        uint8_t *map_ptr;
+        const struct wined3d_format *format = resource->format;
 
-        /* We can't use persistent maps if we might need to do vertex attribute
-         * conversion; that will cause the CS thread to invalidate the BO. */
-        if (!d3d_info->xyzrhw || !d3d_info->vertex_bgra || !d3d_info->ffp_generic_attributes)
+        wined3d_format_calculate_pitch(format, 1, box->right - box->left,
+                box->bottom - box->top, &map_desc->row_pitch, &map_desc->slice_pitch);
+
+        size = (box->back - box->front - 1) * map_desc->slice_pitch
+                + ((box->bottom - box->top - 1) / format->block_height) * map_desc->row_pitch
+                + ((box->right - box->left + format->block_width - 1) / format->block_width) * format->block_byte_count;
+
+        if (!(map_desc->data = _aligned_malloc(size, RESOURCE_ALIGNMENT)))
         {
-            TRACE("Not returning a persistent buffer because we might need to do vertex attribute conversion.\n");
+            WARN_(d3d_perf)("Failed to allocate a heap memory buffer.\n");
             return false;
         }
-
-        if (resource->pin_sysmem)
-        {
-            TRACE("Not allocating an upload buffer because system memory is pinned for this resource.\n");
-            return false;
-        }
-
-        if ((flags & WINED3D_MAP_NOOVERWRITE) && client->addr.buffer_object == CLIENT_BO_DISCARDED)
-            flags = (flags & ~WINED3D_MAP_NOOVERWRITE) | WINED3D_MAP_DISCARD;
-
-        if (flags & WINED3D_MAP_DISCARD)
-        {
-            if (!device->adapter->adapter_ops->adapter_alloc_bo(device, resource, sub_resource_idx, &addr))
-                return false;
-
-            /* Limit NOOVERWRITE maps to buffers for now; there are too many
-             * ways that a texture can be invalidated to even count. */
-            if (resource->type == WINED3D_RTYPE_BUFFER)
-                client->addr = addr;
-        }
-        else
-        {
-            addr = client->addr;
-        }
-
-        map_ptr = NULL;
-        if ((bo = addr.buffer_object))
-        {
-            wined3d_device_bo_map_lock(device);
-            if ((map_ptr = bo->map_ptr))
-                ++bo->client_map_count;
-            wined3d_device_bo_map_unlock(device);
-
-            if (!map_ptr)
-            {
-                /* adapter_alloc_bo() should have given us a mapped BO if we are
-                 * discarding. */
-                assert(flags & WINED3D_MAP_NOOVERWRITE);
-                WARN_(d3d_perf)("Not accelerating a NOOVERWRITE map because the BO is not mapped.\n");
-                return false;
-            }
-        }
-        map_ptr += (uintptr_t)addr.addr;
-
-        if (!map_ptr)
-        {
-            assert(flags & WINED3D_MAP_NOOVERWRITE);
-            WARN_(d3d_perf)("Not accelerating a NOOVERWRITE map because the sub-resource has no valid address.\n");
-            return false;
-        }
-
-        wined3d_resource_get_sub_resource_map_pitch(resource, sub_resource_idx,
-                &map_desc->row_pitch, &map_desc->slice_pitch);
-
-        client->mapped_upload.addr = *wined3d_const_bo_address(&addr);
-        client->mapped_upload.flags = 0;
-        if (bo)
-        {
-            map_ptr += bo->memory_offset;
-            /* If we are not mapping all buffers persistently, use
-             * UPDATE_SUB_RESOURCE as a means of telling the CS thread to try
-             * to unmap the resource, so that we can free VA space. */
-            if (!bo->coherent || !wined3d_map_persistent())
-                client->mapped_upload.flags |= UPLOAD_BO_UPLOAD_ON_UNMAP;
-        }
-        map_desc->data = resource_offset_map_pointer(resource, sub_resource_idx, map_ptr, box);
-
-        if (flags & WINED3D_MAP_DISCARD)
-            client->mapped_upload.flags |= UPLOAD_BO_UPLOAD_ON_UNMAP | UPLOAD_BO_RENAME_ON_UNMAP;
-
+        client->mapped_upload.addr.buffer_object = 0;
+        client->mapped_upload.addr.addr = map_desc->data;
+        client->mapped_upload.flags = UPLOAD_BO_UPLOAD_ON_UNMAP | UPLOAD_BO_FREE_ON_UNMAP;
         client->mapped_box = *box;
 
         TRACE("Returning bo %s, flags %#x.\n", debug_const_bo_address(&client->mapped_upload.addr),
@@ -3162,22 +3100,87 @@ static bool wined3d_cs_map_upload_bo(struct wined3d_device_context *context, str
         return true;
     }
 
-    wined3d_format_calculate_pitch(format, 1, box->right - box->left,
-            box->bottom - box->top, &map_desc->row_pitch, &map_desc->slice_pitch);
-
-    size = (box->back - box->front - 1) * map_desc->slice_pitch
-            + ((box->bottom - box->top - 1) / format->block_height) * map_desc->row_pitch
-            + ((box->right - box->left + format->block_width - 1) / format->block_width) * format->block_byte_count;
-
-    if (!(map_desc->data = _aligned_malloc(size, RESOURCE_ALIGNMENT)))
+    /* We can't use persistent maps if we might need to do vertex attribute
+     * conversion; that will cause the CS thread to invalidate the BO. */
+    if (!d3d_info->xyzrhw || !d3d_info->vertex_bgra || !d3d_info->ffp_generic_attributes)
     {
-        WARN_(d3d_perf)("Failed to allocate a heap memory buffer.\n");
+        TRACE("Not returning a persistent buffer because we might need to do vertex attribute conversion.\n");
         return false;
     }
-    client->mapped_upload.addr.buffer_object = 0;
-    client->mapped_upload.addr.addr = map_desc->data;
-    client->mapped_upload.flags = UPLOAD_BO_UPLOAD_ON_UNMAP | UPLOAD_BO_FREE_ON_UNMAP;
+
+    if (resource->pin_sysmem)
+    {
+        TRACE("Not allocating an upload buffer because system memory is pinned for this resource.\n");
+        return false;
+    }
+
+    if ((flags & WINED3D_MAP_NOOVERWRITE) && client->addr.buffer_object == CLIENT_BO_DISCARDED)
+        flags = (flags & ~WINED3D_MAP_NOOVERWRITE) | WINED3D_MAP_DISCARD;
+
+    if (flags & WINED3D_MAP_DISCARD)
+    {
+        if (!device->adapter->adapter_ops->adapter_alloc_bo(device, resource, sub_resource_idx, &addr))
+            return false;
+
+        /* Limit NOOVERWRITE maps to buffers for now; there are too many
+         * ways that a texture can be invalidated to even count. */
+        if (resource->type == WINED3D_RTYPE_BUFFER)
+            client->addr = addr;
+    }
+    else
+    {
+        addr = client->addr;
+    }
+
+    map_ptr = NULL;
+    if ((bo = addr.buffer_object))
+    {
+        wined3d_device_bo_map_lock(device);
+        if ((map_ptr = bo->map_ptr))
+            ++bo->client_map_count;
+        wined3d_device_bo_map_unlock(device);
+
+        if (!map_ptr)
+        {
+            /* adapter_alloc_bo() should have given us a mapped BO if we are
+             * discarding. */
+            assert(flags & WINED3D_MAP_NOOVERWRITE);
+            WARN_(d3d_perf)("Not accelerating a NOOVERWRITE map because the BO is not mapped.\n");
+            return false;
+        }
+    }
+    map_ptr += (uintptr_t)addr.addr;
+
+    if (!map_ptr)
+    {
+        assert(flags & WINED3D_MAP_NOOVERWRITE);
+        WARN_(d3d_perf)("Not accelerating a NOOVERWRITE map because the sub-resource has no valid address.\n");
+        return false;
+    }
+
+    wined3d_resource_get_sub_resource_map_pitch(resource, sub_resource_idx,
+            &map_desc->row_pitch, &map_desc->slice_pitch);
+
+    client->mapped_upload.addr = *wined3d_const_bo_address(&addr);
+    client->mapped_upload.flags = 0;
+    if (bo)
+    {
+        map_ptr += bo->memory_offset;
+        /* If we are not mapping all buffers persistently, use
+         * UPDATE_SUB_RESOURCE as a means of telling the CS thread to try
+         * to unmap the resource, so that we can free VA space. */
+        if (!bo->coherent || !wined3d_map_persistent())
+            client->mapped_upload.flags |= UPLOAD_BO_UPLOAD_ON_UNMAP;
+    }
+    map_desc->data = resource_offset_map_pointer(resource, sub_resource_idx, map_ptr, box);
+
+    if (flags & WINED3D_MAP_DISCARD)
+        client->mapped_upload.flags |= UPLOAD_BO_UPLOAD_ON_UNMAP | UPLOAD_BO_RENAME_ON_UNMAP;
+
     client->mapped_box = *box;
+
+    TRACE("Returning bo %s, flags %#x.\n", debug_const_bo_address(&client->mapped_upload.addr),
+            client->mapped_upload.flags);
     return true;
 }
 
