@@ -2711,7 +2711,7 @@ static void wined3d_cs_exec_update_sub_resource(struct wined3d_cs *cs, const voi
         if (op->bo.addr.buffer_object)
             FIXME("Free BO address %s.\n", debug_const_bo_address(&op->bo.addr));
         else
-            heap_free((void *)op->bo.addr.addr);
+            _aligned_free((void *)op->bo.addr.addr);
     }
 }
 
@@ -3124,7 +3124,7 @@ static bool wined3d_cs_map_upload_bo(struct wined3d_device_context *context, str
             + ((box->bottom - box->top - 1) / format->block_height) * map_desc->row_pitch
             + ((box->right - box->left + format->block_width - 1) / format->block_width) * format->block_byte_count;
 
-    if (!(map_desc->data = heap_alloc(size)))
+    if (!(map_desc->data = _aligned_malloc(size, RESOURCE_ALIGNMENT)))
     {
         WARN_(d3d_perf)("Failed to allocate a heap memory buffer.\n");
         return false;
