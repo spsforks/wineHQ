@@ -400,6 +400,7 @@ void select_style( ME_Context *c, ME_Style *s )
         if (i < HFONT_CACHE_SIZE) /* found */
         {
             item = &c->editor->pFontCache[i];
+            s->script_cache = &c->editor->pScriptCache[i];
             TRACE_(richedit_style)( "font reused %d\n", i );
             item->nRefs++;
         }
@@ -407,10 +408,12 @@ void select_style( ME_Context *c, ME_Style *s )
         {
             assert(empty != -1);
             item = &c->editor->pFontCache[empty];
+            s->script_cache = &c->editor->pScriptCache[empty];
             if (item->hFont)
             {
                 TRACE_(richedit_style)( "font deleted %d\n", empty );
                 DeleteObject(item->hFont);
+                ScriptFreeCache(s->script_cache);
                 item->hFont = NULL;
             }
             item->hFont = CreateFontIndirectW( &lf );
@@ -447,7 +450,6 @@ void ME_DestroyStyle(ME_Style *s)
     release_font_cache( s->font_cache );
     s->font_cache = NULL;
   }
-  ScriptFreeCache( &s->script_cache );
   heap_free(s);
 }
 
@@ -534,7 +536,6 @@ void ME_SetDefaultCharFormat(ME_TextEditor *editor, CHARFORMAT2W *mod)
         release_font_cache( def->font_cache );
         def->font_cache = NULL;
     }
-    ScriptFreeCache( &def->script_cache );
     ME_ReleaseStyle( style );
     editor_mark_rewrap_all( editor );
 }
