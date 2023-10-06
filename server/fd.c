@@ -2532,11 +2532,14 @@ static void set_fd_disposition( struct fd *fd, unsigned int flags )
 
 /* set new name for the fd */
 static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, data_size_t len,
-                         struct unicode_str nt_name, int create_link, unsigned int flags )
+                         const char *file_case, data_size_t caselen, struct unicode_str nt_name,
+                         int create_link, unsigned int flags )
 {
+    size_t pathlen = 0, filenamelen;
     struct inode *inode;
     struct stat st, st2;
-    char *name;
+    int different_case;
+    char *name, *p;
     const unsigned int replace = flags & FILE_RENAME_REPLACE_IF_EXISTS;
 
     if (!fd->inode || !fd->unix_name)
@@ -2571,6 +2574,30 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
         name = combined_name;
     }
 
+    /* get path len up to last component, ignoring trailing slashes */
+    for (p = name; *p;)
+        if (*p++ == '/' && *p)
+            pathlen = p - name;
+
+    /* get filename ptr and len, without trailing slashes */
+    filenamelen = p - name - pathlen;
+    p = name + pathlen;
+    while (filenamelen && p[filenamelen - 1] == '/')
+        filenamelen--;
+
+    different_case = caselen && (filenamelen != caselen || memcmp( p, file_case, caselen ));
+
+    if (filenamelen < caselen)
+    {
+        p = realloc( name, pathlen + caselen + 1 );
+        if (!p)
+        {
+            set_error( STATUS_NO_MEMORY );
+            goto failed;
+        }
+        name = p;
+    }
+
     /* when creating a hard link, source cannot be a dir */
     if (create_link && !fstat( fd->unix_fd, &st ) && S_ISDIR( st.st_mode ))
     {
@@ -2583,53 +2610,67 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
         if (!fstat( fd->unix_fd, &st2 ) && st.st_ino == st2.st_ino && st.st_dev == st2.st_dev)
         {
             if (create_link && !replace) set_error( STATUS_OBJECT_NAME_COLLISION );
-            free( name );
-            return;
-        }
+            if (!different_case)
+            {
+                free( name );
+                return;
+            }
 
-        if (!replace)
-        {
-            set_error( STATUS_OBJECT_NAME_COLLISION );
-            goto failed;
+            /* creating a link with a different case on itself renames the file */
+            create_link = 0;
         }
-
-        /* can't replace directories or special files */
-        if (!S_ISREG( st.st_mode ))
+        else
         {
-            set_error( STATUS_ACCESS_DENIED );
-            goto failed;
-        }
+            if (!replace)
+            {
+                set_error( STATUS_OBJECT_NAME_COLLISION );
+                goto failed;
+            }
 
-        /* read-only files cannot be replaced */
-        if (!(st.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH)) &&
-            !(flags & FILE_RENAME_IGNORE_READONLY_ATTRIBUTE))
-        {
-            set_error( STATUS_ACCESS_DENIED );
-            goto failed;
-        }
-
-        /* can't replace an opened file */
-        if ((inode = get_inode( st.st_dev, st.st_ino, -1 )))
-        {
-            int is_empty = list_empty( &inode->open );
-            release_object( inode );
-            if (!is_empty)
+            /* can't replace directories or special files */
+            if (!S_ISREG( st.st_mode ))
             {
                 set_error( STATUS_ACCESS_DENIED );
                 goto failed;
             }
-        }
 
-        /* link() expects that the target doesn't exist */
-        /* rename() cannot replace files with directories */
-        if (create_link || S_ISDIR( st2.st_mode ))
-        {
-            if (unlink( name ))
+            /* read-only files cannot be replaced */
+            if (!(st.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH)) &&
+                !(flags & FILE_RENAME_IGNORE_READONLY_ATTRIBUTE))
             {
-                file_set_error();
+                set_error( STATUS_ACCESS_DENIED );
                 goto failed;
             }
+
+            /* can't replace an opened file */
+            if ((inode = get_inode( st.st_dev, st.st_ino, -1 )))
+            {
+                int is_empty = list_empty( &inode->open );
+                release_object( inode );
+                if (!is_empty)
+                {
+                    set_error( STATUS_ACCESS_DENIED );
+                    goto failed;
+                }
+            }
+
+            /* link() expects that the target doesn't exist */
+            /* rename() cannot replace files with directories */
+            if (create_link || S_ISDIR( st2.st_mode ) || different_case)
+            {
+                if (unlink( name ))
+                {
+                    file_set_error();
+                    goto failed;
+                }
+            }
         }
+    }
+
+    if (different_case)
+    {
+        memcpy( name + pathlen, file_case, caselen );
+        name[pathlen + caselen] = 0;
     }
 
     if (create_link)
@@ -2973,16 +3014,19 @@ DECL_HANDLER(set_fd_disp_info)
 /* set fd name information */
 DECL_HANDLER(set_fd_name_info)
 {
+    const char *fullname, *file_case;
     struct fd *fd, *root_fd = NULL;
     struct unicode_str nt_name;
 
-    if (req->namelen > get_req_data_size())
+    if (req->namelen > get_req_data_size() || get_req_data_size() - req->namelen < req->caselen)
     {
         set_error( STATUS_INVALID_PARAMETER );
         return;
     }
     nt_name.str = get_req_data();
     nt_name.len = (req->namelen / sizeof(WCHAR)) * sizeof(WCHAR);
+    file_case   = (const char *)get_req_data() + req->namelen;
+    fullname    = file_case + req->caselen;
 
     if (req->rootdir)
     {
@@ -2996,8 +3040,8 @@ DECL_HANDLER(set_fd_name_info)
 
     if ((fd = get_handle_fd_obj( current->process, req->handle, 0 )))
     {
-        set_fd_name( fd, root_fd, (const char *)get_req_data() + req->namelen,
-                     get_req_data_size() - req->namelen, nt_name, req->link, req->flags );
+        set_fd_name( fd, root_fd, fullname, (const char *)get_req_data() + get_req_data_size() - fullname,
+                     file_case, req->caselen, nt_name, req->link, req->flags );
         release_object( fd );
     }
     if (root_fd) release_object( root_fd );
