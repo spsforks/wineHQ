@@ -118,7 +118,7 @@ static void test_normalize_retain_range(void)
     ok(!memcmp(array, "\0\0\0\0\0\0\0\0", 8), "Buffer should not have been modified\n");
 }
 
-static void setup_pe(PVOID buffer, PIMAGE_NT_HEADERS32 *header)
+static void setup_pe(PVOID buffer, PIMAGE_NT_HEADERS32 *header, DWORD size_of_optional_header)
 {
     PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)buffer;
     PIMAGE_NT_HEADERS32 nt_header = (PIMAGE_NT_HEADERS32)(dos_header + 1);
@@ -128,7 +128,8 @@ static void setup_pe(PVOID buffer, PIMAGE_NT_HEADERS32 *header)
 
     nt_header->Signature = IMAGE_NT_SIGNATURE;
     nt_header->FileHeader.NumberOfSections = 0;
-    nt_header->FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER32);
+    nt_header->FileHeader.SizeOfOptionalHeader = size_of_optional_header ?
+                    size_of_optional_header : sizeof(IMAGE_OPTIONAL_HEADER32);
     nt_header->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
     nt_header->OptionalHeader.NumberOfRvaAndSizes = IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
 
@@ -136,7 +137,7 @@ static void setup_pe(PVOID buffer, PIMAGE_NT_HEADERS32 *header)
         *header = nt_header;
 }
 
-static void setup_pe_with_sections(PVOID buffer, PIMAGE_NT_HEADERS32 *header, PDWORD *reloc_target)
+static void setup_pe_with_sections(PVOID buffer, PIMAGE_NT_HEADERS32 *header, PDWORD *reloc_target, DWORD size_of_optional_header)
 {
     PIMAGE_SECTION_HEADER section_headers;
     PIMAGE_BASE_RELOCATION base_relocation;
@@ -150,13 +151,13 @@ static void setup_pe_with_sections(PVOID buffer, PIMAGE_NT_HEADERS32 *header, PD
     DWORD image_base_init = 0x400000;
     WORD reloc_target_offset = 0x30;
 
-    setup_pe(buffer, header);
+    setup_pe(buffer, header, size_of_optional_header);
 
     (*header)->FileHeader.NumberOfSections = 2;
     (*header)->OptionalHeader.ImageBase = image_base_init;
     (*header)->OptionalHeader.DataDirectory[dir_entry].VirtualAddress = reloc_rva_base;
     (*header)->OptionalHeader.DataDirectory[dir_entry].Size = 12;
-    section_headers = (PIMAGE_SECTION_HEADER)((*header) + 1);
+    section_headers = IMAGE_FIRST_SECTION(*header);
     memcpy(section_headers[0].Name, ".text\0\0\0", 8);
     section_headers[0].Misc.VirtualSize = 0xf2;
     section_headers[0].VirtualAddress = code_rva_base;
@@ -254,7 +255,7 @@ static void test_normalize_flags(void)
         winetest_push_context("%u", i);
 
         memset(array, 0xcc, 512);
-        setup_pe(array, &header);
+        setup_pe(array, &header, 0);
         if (td[i].init_magic_64)
             header->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
         header->FileHeader.TimeDateStamp = td[i].init_timestamp;
@@ -277,12 +278,15 @@ static void test_normalize_flags(void)
 static void test_normalize_rebase(void)
 {
     PIMAGE_NT_HEADERS32 header;
+    PIMAGE_SECTION_HEADER section_headers;
+    PIMAGE_BASE_RELOCATION base_relocation;
     BOOL result;
     PDWORD reloc_target;
     DWORD image_base_initial;
     DWORD image_base_new = 0x500000;
     DWORD reloc_target_value = 0x3fffffff;
     DWORD reloc_target_exp;
+    DWORD err;
 
     if (!pNormalizeFileForPatchSignature)
     {
@@ -291,7 +295,7 @@ static void test_normalize_rebase(void)
     }
 
     memset(array, 0, 1024);
-    setup_pe_with_sections(array, &header, &reloc_target);
+    setup_pe_with_sections(array, &header, &reloc_target, 0);
     *reloc_target = reloc_target_value;
     reloc_target_exp = reloc_target_value + (image_base_new - header->OptionalHeader.ImageBase);
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
@@ -302,7 +306,7 @@ static void test_normalize_rebase(void)
 
     /* Relocation table extends beyond virtual size, but within raw data size */
     memset(array, 0, 1024);
-    setup_pe_with_sections(array, &header, NULL);
+    setup_pe_with_sections(array, &header, NULL, 0);
     header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress += 0xf4;
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
     ok(result == 2, "Expected %d, got %d\n", 2, result);
@@ -311,7 +315,7 @@ static void test_normalize_rebase(void)
 
     /* Relocation table starts within raw data size, but ends beyond */
     memset(array, 0, 1024);
-    setup_pe_with_sections(array, &header, NULL);
+    setup_pe_with_sections(array, &header, NULL, 0);
     image_base_initial = header->OptionalHeader.ImageBase;
     header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress += 0xf8;
     result = pNormalizeFileForPatchSignature(array, 1024, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
@@ -321,12 +325,38 @@ static void test_normalize_rebase(void)
 
     /* Relocation table extends beyond end of file */
     memset(array, 0, 1024);
-    setup_pe_with_sections(array, &header, NULL);
+    setup_pe_with_sections(array, &header, NULL, 0);
     image_base_initial = header->OptionalHeader.ImageBase;
     result = pNormalizeFileForPatchSignature(array, 779, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
     ok(result == 1, "Expected %d, got %d\n", 1, result);
     ok(header->OptionalHeader.ImageBase == image_base_initial, "Expected %#lx, got %#lx\n",
         image_base_initial, header->OptionalHeader.ImageBase);
+
+    /* Section table is beyond end file - no PE format exception */
+    SetLastError(0xdeadbeef);
+    memset(array, 0, 1024);
+    setup_pe_with_sections(array, &header, NULL, 779);
+    result = pNormalizeFileForPatchSignature(array, 779, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
+    ok(result == 1, "Expected %d, got %d\n", 1, result);
+    err = GetLastError();
+    ok(err == 0xdeadbeef, "Last error expected %#x, got %#lx\n", 0xdeadbeef, err);
+
+    /* Relocation block is beyond end file - PE format exception */
+    SetLastError(0xdeadbeef);
+    memset(array, 0, 1024);
+    setup_pe_with_sections(array, &header, &reloc_target, 0);
+    *reloc_target = reloc_target_value;
+    reloc_target_exp = reloc_target_value + (image_base_new - header->OptionalHeader.ImageBase);
+    section_headers = IMAGE_FIRST_SECTION(header);
+    base_relocation = (PIMAGE_BASE_RELOCATION)(&array[section_headers[1].PointerToRawData]);
+    base_relocation->SizeOfBlock = 244;
+    header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = 244;
+    result = pNormalizeFileForPatchSignature(array, 1012, 0, NULL, image_base_new, 0, 0, NULL, 0, NULL);
+    ok(result == 0, "Expected %d, got %d\n", 0, result);
+    ok(*reloc_target == reloc_target_exp, "Expected %#lx, got %#lx\n", reloc_target_exp, *reloc_target);
+    err = GetLastError();
+    ok(err == 0xe0000001 || err == 0, "Last error expected %#x or %#x, got %#lx\n", 0xe0000001, 0, err);
+
 }
 
 static void test_signature_by_buffer(void)
@@ -381,7 +411,7 @@ static void test_signature_by_buffer(void)
 
     /* Test signature of PE32 executable image */
     memset(array, 0, 1024);
-    setup_pe_with_sections(array, &header, NULL);
+    setup_pe_with_sections(array, &header, NULL, 0);
     header->FileHeader.TimeDateStamp = 0xdeadbeef;
     header->OptionalHeader.CheckSum = 0xdeadbeef;
     header->OptionalHeader.ImageBase = 0x400000;

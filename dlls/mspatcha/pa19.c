@@ -50,6 +50,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(mspatcha);
 #define PATCH_EXTRA_HAS_LZX_WINDOW_SIZE 0x00010000
 #define PATCH_EXTRA_HAS_PATCH_TRANSFORMS 0x20000000
 
+/* error code returned on PE format errors */
+#define PE_FMT_ERROR_CODE 0xE0000001
+
 /* Unaligned typedefs */
 typedef UINT16 DECLSPEC_ALIGN(1) UINT16_UNALIGNED;
 typedef UINT64 DECLSPEC_ALIGN(1) UINT64_UNALIGNED;
@@ -716,25 +719,23 @@ static void apply_retained_ranges(
     }
 }
 
-static void DECLSPEC_NORETURN throw_pe_fmt_exception(void)
-{
-    RaiseException(0xE0000001, 0, 0, NULL);
-    for (;;) { /* silence compiler warning */ }
-}
-
 static IMAGE_NT_HEADERS32 *image_get_nt_headers(const void *image_base, size_t image_size)
 {
-    IMAGE_DOS_HEADER *dos_hdr;
     IMAGE_NT_HEADERS32 *nt_headers;
+    IMAGE_SECTION_HEADER *section_table;
+    PUCHAR section_table_end;
     const UCHAR *const image_end = (PUCHAR)image_base + image_size;
 
     if (image_size >= 0x200) {
-        dos_hdr = (IMAGE_DOS_HEADER *)image_base;
-        if (dos_hdr->e_magic == IMAGE_DOS_SIGNATURE && dos_hdr->e_lfanew < image_size) {
-            nt_headers = (IMAGE_NT_HEADERS32 *)((ULONG_PTR)dos_hdr + dos_hdr->e_lfanew);
-            if (((PUCHAR)nt_headers + sizeof(IMAGE_NT_HEADERS32)) <= image_end) {
-                if (nt_headers->Signature == IMAGE_NT_SIGNATURE
-                    && nt_headers->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+        nt_headers = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader((HMODULE)image_base);
+        if (nt_headers && ((PUCHAR)nt_headers + sizeof(IMAGE_NT_HEADERS32)) <= image_end) {
+            if (nt_headers->Signature == IMAGE_NT_SIGNATURE
+                && nt_headers->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+                section_table = IMAGE_FIRST_SECTION(nt_headers);
+                section_table_end = (PUCHAR)&section_table[nt_headers->FileHeader.NumberOfSections];
+                if ((PUCHAR)section_table > (PUCHAR)nt_headers
+                    && (PUCHAR)section_table <= section_table_end
+                    && section_table_end <= image_end) {
                     return nt_headers;
                 }
             }
@@ -760,7 +761,8 @@ static ULONG image_rva_to_file_offset(
     for (i = 0; i < section_count; i++) {
         if ((PUCHAR)&section_table[i] < image_base
             || ((PUCHAR)&section_table[i] + sizeof(IMAGE_SECTION_HEADER)) > &image_base[image_size]) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return 0;
         }
 
         if (rva >= section_table[i].VirtualAddress
@@ -785,7 +787,8 @@ static ULONG image_directory_rva_and_size(
     data_directory = &nt_headers->OptionalHeader.DataDirectory[directory_entry];
     if ((PUCHAR)data_directory < image_base
         || ((PUCHAR)data_directory + sizeof(IMAGE_DATA_DIRECTORY)) > &image_base[image_size]) {
-        throw_pe_fmt_exception();
+        SetLastError(PE_FMT_ERROR_CODE);
+        return 0;
     }
 
     if (directory_size != NULL) {
@@ -835,7 +838,8 @@ static PVOID image_directory_mapped_address(
     }
 
     if (((PUCHAR)mapped_address + dir_size) < (PUCHAR)mapped_address) {
-        throw_pe_fmt_exception();
+        SetLastError(PE_FMT_ERROR_CODE);
+        return NULL;
     }
 
     if (((PUCHAR)mapped_address + dir_size) > &image_base[image_size]) {
@@ -854,7 +858,6 @@ static BOOL rebase_image(
     IMAGE_NT_HEADERS32 *nt_headers,
     PUCHAR mapped_image_base, ULONG mapped_image_size, ULONG new_image_base)
 {
-    BOOL result;
     IMAGE_BASE_RELOCATION *reloc_block;
     IMAGE_BASE_RELOCATION *reloc_block_base;
     PUCHAR reloc_fixup;
@@ -865,7 +868,6 @@ static BOOL rebase_image(
     ULONG reloc_count;
     PUCHAR mapped_image_end;
 
-    result = FALSE;
     mapped_image_end = &mapped_image_base[mapped_image_size];
     delta = (LONG)(new_image_base - nt_headers->OptionalHeader.ImageBase);
 
@@ -875,11 +877,10 @@ static BOOL rebase_image(
     if (!reloc_block
         || !reloc_dir_size
         || ((PUCHAR)reloc_block + sizeof(IMAGE_BASE_RELOCATION)) > mapped_image_end) {
-        return result;
+        return FALSE;
     }
 
     nt_headers->OptionalHeader.ImageBase = (DWORD)new_image_base;
-    result = TRUE;
 
     reloc_dir_remaining = (LONG)reloc_dir_size;
     while (reloc_dir_remaining > 0
@@ -932,11 +933,12 @@ static BOOL rebase_image(
         reloc_block = (IMAGE_BASE_RELOCATION *)((PUCHAR)reloc_block + reloc_block->SizeOfBlock);
 
         if ((PUCHAR)reloc_block > (mapped_image_end - sizeof(IMAGE_BASE_RELOCATION))) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return FALSE;
         }
     }
 
-    return result;
+    return TRUE;
 }
 
 /* Remove all bound imports for a given mapped image. */
@@ -967,12 +969,16 @@ static BOOL unbind_image(
         bound_import_data_dir = &nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT];
         if ((PUCHAR)bound_import_data_dir < mapped_image
             || (PUCHAR)bound_import_data_dir > (mapped_image_end - sizeof(IMAGE_DATA_DIRECTORY))) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return FALSE;
         }
 
         bound_import_data_dir->VirtualAddress = 0;
         bound_import_data_dir->Size = 0;
         result = TRUE;
+    }
+    else if (GetLastError() == PE_FMT_ERROR_CODE) {
+        return FALSE;
     }
 
     /* Zero out needed import descriptor fields */
@@ -1009,6 +1015,9 @@ static BOOL unbind_image(
             ++import_desc;
         }
     }
+    else if (GetLastError() == PE_FMT_ERROR_CODE) {
+        return FALSE;
+    }
 
     /* Mark the .idata section as writable */
     section_table = IMAGE_FIRST_SECTION(nt_headers);
@@ -1017,7 +1026,8 @@ static BOOL unbind_image(
     {
         if ((PUCHAR)&section_table[i] < mapped_image
             || (PUCHAR)&section_table[i] > (mapped_image_end - sizeof(IMAGE_SECTION_HEADER))) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return FALSE;
         }
 
         /* check for ".idata  " */
@@ -1047,31 +1057,37 @@ static BOOL normalize_lock_prefixes_in_image(
 
     loadcfg = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG,
                                             NULL, mapped_image, image_size);
-    if (loadcfg && loadcfg->LockPrefixTable)
+    if (loadcfg)
     {
-        if (loadcfg->LockPrefixTable < nt_headers->OptionalHeader.ImageBase) {
-            throw_pe_fmt_exception();
-        }
+        if (loadcfg->LockPrefixTable) {
+            if (loadcfg->LockPrefixTable < nt_headers->OptionalHeader.ImageBase) {
+                SetLastError(PE_FMT_ERROR_CODE);
+                return FALSE;
+            }
 
-        lock_prefix_table = image_rva_to_mapped_address(nt_headers,
-            loadcfg->LockPrefixTable - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
+            lock_prefix_table = image_rva_to_mapped_address(nt_headers,
+                loadcfg->LockPrefixTable - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
 
-        if (lock_prefix_table)
-        {
-            while ((PUCHAR)lock_prefix_table <= (mapped_image_end - sizeof(ULONG))
-                    && *lock_prefix_table)
+            if (lock_prefix_table)
             {
-                PUCHAR const p = image_rva_to_mapped_address(nt_headers,
-                    *lock_prefix_table - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
+                while ((PUCHAR)lock_prefix_table <= (mapped_image_end - sizeof(ULONG))
+                        && *lock_prefix_table)
+                {
+                    PUCHAR const p = image_rva_to_mapped_address(nt_headers,
+                        *lock_prefix_table - nt_headers->OptionalHeader.ImageBase, mapped_image, image_size);
 
-                if (p && *p != 0xF0) {
-                    *p = 0xF0;
-                    result = TRUE;
+                    if (p && *p != 0xF0) {
+                        *p = 0xF0;
+                        result = TRUE;
+                    }
+
+                    ++lock_prefix_table;
                 }
-
-                ++lock_prefix_table;
             }
         }
+    }
+    else if (GetLastError() == PE_FMT_ERROR_CODE) {
+        return FALSE;
     }
 
     return result;
@@ -1135,15 +1151,24 @@ int normalize_old_file_image(
 
             if (new_image_base != 0 && nt_headers->OptionalHeader.ImageBase != new_image_base) {
                 modified |= rebase_image(nt_headers, old_file_buffer, old_file_size, new_image_base);
+                if (GetLastError() == PE_FMT_ERROR_CODE) {
+                    return NORMALIZE_RESULT_FAILURE;
+                }
             }
         }
 
         if ((option_flags & PATCH_OPTION_NO_BINDFIX) == 0) {
             modified |= unbind_image(nt_headers, old_file_buffer, old_file_size);
+            if (GetLastError() == PE_FMT_ERROR_CODE) {
+                return NORMALIZE_RESULT_FAILURE;
+            }
         }
 
         if ((option_flags & PATCH_OPTION_NO_LOCKFIX) == 0) {
             modified |= normalize_lock_prefixes_in_image(nt_headers, old_file_buffer, old_file_size);
+            if (GetLastError() == PE_FMT_ERROR_CODE) {
+                return NORMALIZE_RESULT_FAILURE;
+            }
         }
 
         if ((option_flags & PATCH_OPTION_NO_CHECKSUM) != 0) {
@@ -1185,7 +1210,7 @@ int normalize_old_file_image(
     return modified ? NORMALIZE_RESULT_SUCCESS_MODIFIED : NORMALIZE_RESULT_SUCCESS;
 }
 
-static void patch_transform_PE_mark_non_executable(
+static int patch_transform_PE_mark_non_executable(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image, ULONG image_size,
     BYTE *hintmap, BOOL force)
 {
@@ -1220,6 +1245,10 @@ static void patch_transform_PE_mark_non_executable(
         directory_size = nt_headers->OptionalHeader.DataDirectory[i].Size;
         if (directory_rva && directory_size) {
             directory_offset = image_rva_to_file_offset(nt_headers, directory_rva, mapped_image, image_size);
+            if (!directory_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                return PE_FMT_ERROR_CODE;
+            }
+
             if ((directory_offset || force) && directory_offset < image_size) {
                 if (directory_size > image_size - directory_offset) {
                     directory_size = image_size - directory_offset;
@@ -1228,6 +1257,8 @@ static void patch_transform_PE_mark_non_executable(
             }
         }
     }
+
+    return 0;
 }
 
 static ULONG get_new_rva_from_xfrm_table(struct patch_transform_table *xfrm_tbl, ULONG old_rva)
@@ -1271,10 +1302,11 @@ static int __cdecl reloc_entry_compare(const void *a, const void *b)
     else return 0;
 }
 
-static void patch_transform_PE_relocations(
+static int patch_transform_PE_relocations(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image, ULONG image_size,
     struct patch_transform_table *xfrm_tbl, BYTE *hintmap)
 {
+    int result = 0;
     PUCHAR mapped_image_end;
     ULONG image_base_va;
     ULONG reloc_dir_offset;
@@ -1289,6 +1321,7 @@ static void patch_transform_PE_relocations(
     PUCHAR reloc_fixup;
     IMAGE_BASE_RELOCATION *reloc_block;
     IMAGE_BASE_RELOCATION *reloc_block_base;
+    ULONG reloc_block_base_offset;
     ULONG reloc_block_base_va;
     ULONG reloc_count;
     USHORT_UNALIGNED *reloc;
@@ -1311,6 +1344,10 @@ static void patch_transform_PE_relocations(
        possible relocations that point to within valid mapped image bounds. */
     if (!reloc_dir_offset || (reloc_dir_offset + reloc_dir_size) > image_size)
     {
+        if (GetLastError() == PE_FMT_ERROR_CODE) {
+            return PE_FMT_ERROR_CODE;
+        }
+
         if (nt_headers->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
         {
             IMAGE_SECTION_HEADER *const first_section = IMAGE_FIRST_SECTION(nt_headers);
@@ -1335,7 +1372,7 @@ static void patch_transform_PE_relocations(
             }
         }
 
-        return;
+        return 0;
     }
     
     /* update the hint map with the base reloc directory */
@@ -1345,7 +1382,7 @@ static void patch_transform_PE_relocations(
     reloc_entries = VirtualAlloc(NULL, sizeof(struct reloc_entry) * (reloc_dir_size / sizeof(USHORT)),
                                  MEM_COMMIT, PAGE_READWRITE);
     if (!reloc_entries) {
-        return;
+        return 0;
     }
 
     /* loop through the relocation table, updating the new rvas. */
@@ -1357,11 +1394,19 @@ static void patch_transform_PE_relocations(
         && reloc_block->SizeOfBlock > sizeof(IMAGE_BASE_RELOCATION)) 
     {
         if (((PUCHAR)reloc_block + sizeof(IMAGE_BASE_RELOCATION)) > mapped_image_end) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            result = PE_FMT_ERROR_CODE;
+            goto cleanup;
         }
 
-        reloc_block_base = (IMAGE_BASE_RELOCATION *)(mapped_image +
-            image_rva_to_file_offset(nt_headers, reloc_block->VirtualAddress, mapped_image, image_size));
+        reloc_block_base_offset = image_rva_to_file_offset(nt_headers, reloc_block->VirtualAddress,
+                                                           mapped_image, image_size);
+        if (!reloc_block_base_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+            result = PE_FMT_ERROR_CODE;
+            goto cleanup;
+        }
+
+        reloc_block_base = (IMAGE_BASE_RELOCATION *)(mapped_image + reloc_block_base_offset);
         if (reloc_block_base) {
 
             reloc_block_base_va = reloc_block->VirtualAddress + image_base_va;
@@ -1369,7 +1414,9 @@ static void patch_transform_PE_relocations(
             reloc_count = (reloc_block->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
             while (reloc_count--) {
                 if ((PUCHAR)reloc > (mapped_image_end - sizeof(USHORT))) {
-                    throw_pe_fmt_exception();
+                    SetLastError(PE_FMT_ERROR_CODE);
+                    result = PE_FMT_ERROR_CODE;
+                    goto cleanup;
                 }
 
                 reloc_type_offset = *reloc;
@@ -1442,7 +1489,9 @@ static void patch_transform_PE_relocations(
     for (i = 0; i < section_count; i++) {
         if ((PUCHAR)&section_table[i] < mapped_image
             || (PUCHAR)&section_table[i] > (mapped_image_end - sizeof(IMAGE_SECTION_HEADER))) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            result = PE_FMT_ERROR_CODE;
+            goto cleanup;
         }
 
         /* check for ".reloc  " */
@@ -1496,10 +1545,12 @@ static void patch_transform_PE_relocations(
         reloc_block = (IMAGE_BASE_RELOCATION *)((ULONG_PTR)reloc_block + reloc_block->SizeOfBlock);
     }
 
+cleanup:
     VirtualFree(reloc_entries, 0, MEM_RELEASE);
+    return result;
 }
 
-static void patch_transform_PE_infer_relocs_x86(
+static int patch_transform_PE_infer_relocs_x86(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, BYTE *hintmap)
 {
@@ -1530,32 +1581,37 @@ static void patch_transform_PE_infer_relocs_x86(
             }
         }
     }
+
+    return 0;
 }
 
-static void patch_transform_PE_infer_relocs(
+static int patch_transform_PE_infer_relocs(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, BYTE *hintmap)
 {
+    int result = 0;
     ULONG reloc_dir_offset;
     ULONG reloc_dir_size = 0;
 
     reloc_dir_offset = image_directory_offset_and_size(nt_headers, IMAGE_DIRECTORY_ENTRY_BASERELOC,
                                                 &reloc_dir_size, mapped_image_base, mapped_image_size);
-    if (reloc_dir_offset && reloc_dir_size + reloc_dir_offset <= mapped_image_size) {
-        patch_transform_PE_relocations(nt_headers, mapped_image_base, mapped_image_size, xfrm_tbl, hintmap);
+    if (!reloc_dir_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+        return PE_FMT_ERROR_CODE;
     }
 
-    switch(nt_headers->FileHeader.Machine) {
-    case IMAGE_FILE_MACHINE_I386:
-        patch_transform_PE_infer_relocs_x86(nt_headers, mapped_image_base, mapped_image_size, xfrm_tbl, hintmap);
-        break;
-
-    default:
-        break;
+    if (reloc_dir_offset && reloc_dir_size + reloc_dir_offset <= mapped_image_size)
+    {
+        result = patch_transform_PE_relocations(nt_headers, mapped_image_base, mapped_image_size, xfrm_tbl, hintmap);
     }
+    else if (nt_headers->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
+    {
+        result = patch_transform_PE_infer_relocs_x86(nt_headers, mapped_image_base, mapped_image_size, xfrm_tbl, hintmap);
+    }
+
+    return result;
 }
 
-static void patch_transform_PE_imports(
+static int patch_transform_PE_imports(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, BYTE* hintmap)
 {
@@ -1573,7 +1629,7 @@ static void patch_transform_PE_imports(
 
     /* Does the mapped image contain imports? */
     if (!import_dir_offset || (import_dir_offset + import_dir_size) > mapped_image_size) {
-        return;
+        return (GetLastError() == PE_FMT_ERROR_CODE) ? PE_FMT_ERROR_CODE : 0;
     }
 
     /* Update the hint map of the import directory. */
@@ -1586,12 +1642,20 @@ static void patch_transform_PE_imports(
 
             thunk_offset = image_rva_to_file_offset(nt_headers, import_desc->OriginalFirstThunk,
                                                     mapped_image_base, mapped_image_size);
+            if (!thunk_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                return PE_FMT_ERROR_CODE;
+            }
+
             thunk_data_start = (IMAGE_THUNK_DATA32 *)(mapped_image_base + thunk_offset);
             thunk_data = thunk_data_start;
             while (thunk_data->u1.Ordinal != 0) {
                 if (!IMAGE_SNAP_BY_ORDINAL32(thunk_data->u1.Ordinal)) {
                     import_by_name_offset = image_rva_to_file_offset(nt_headers, thunk_data->u1.AddressOfData,
                                                                     mapped_image_base, mapped_image_size);
+                    if (!import_by_name_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                        return PE_FMT_ERROR_CODE;
+                    }
+
                     import_by_name = (IMAGE_IMPORT_BY_NAME *)(mapped_image_base + import_by_name_offset);
                     memset(&hintmap[import_by_name_offset], 0x03,
                         sizeof(IMAGE_IMPORT_BY_NAME) + strlen((char*)import_by_name->Name));
@@ -1603,12 +1667,20 @@ static void patch_transform_PE_imports(
 
             thunk_offset = image_rva_to_file_offset(nt_headers, import_desc->FirstThunk,
                                                     mapped_image_base, mapped_image_size);
+            if (!thunk_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                return PE_FMT_ERROR_CODE;
+            }
+
             thunk_data_start = (IMAGE_THUNK_DATA32 *)(mapped_image_base + thunk_offset);
             thunk_data = thunk_data_start;
             while (thunk_data->u1.Ordinal != 0) {
                 if (!IMAGE_SNAP_BY_ORDINAL32(thunk_data->u1.Ordinal)) {
                     import_by_name_offset = image_rva_to_file_offset(nt_headers, thunk_data->u1.AddressOfData,
                                                                     mapped_image_base, mapped_image_size);
+                    if (!import_by_name_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                        return PE_FMT_ERROR_CODE;
+                    }
+
                     import_by_name = (IMAGE_IMPORT_BY_NAME *)(mapped_image_base + import_by_name_offset);
                     memset(&hintmap[import_by_name_offset], 0x03,
                         sizeof(IMAGE_IMPORT_BY_NAME) + strlen((char*)import_by_name->Name));
@@ -1625,9 +1697,11 @@ static void patch_transform_PE_imports(
 
         import_desc++;
     }
+
+    return 0;
 }
 
-static void patch_transform_PE_exports(
+static int patch_transform_PE_exports(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, BYTE *hintmap)
 {
@@ -1646,7 +1720,7 @@ static void patch_transform_PE_exports(
 
     /* Does the mapped image contain exports? */
     if (!export_dir_offset || (export_dir_offset + export_dir_size) > mapped_image_size) {
-        return;
+        return (GetLastError() == PE_FMT_ERROR_CODE) ? PE_FMT_ERROR_CODE : 0;
     }
 
     /* Update the hint map of the export directory. */
@@ -1658,6 +1732,9 @@ static void patch_transform_PE_exports(
     export_count = export_directory->NumberOfFunctions;
     offset = image_rva_to_file_offset(nt_headers, export_directory->AddressOfFunctions,
                                       mapped_image_base, mapped_image_size);
+    if (!offset && GetLastError() == PE_FMT_ERROR_CODE) {
+        return PE_FMT_ERROR_CODE;
+    }
     if ((offset + export_count * sizeof(ULONG)) <= mapped_image_size) {
         memset(&hintmap[offset], 0x03, export_count * sizeof(ULONG));
     }
@@ -1674,6 +1751,9 @@ static void patch_transform_PE_exports(
     export_count = export_directory->NumberOfNames;
     offset = image_rva_to_file_offset(nt_headers, export_directory->AddressOfNames,
                                       mapped_image_base, mapped_image_size);
+    if (!offset && GetLastError() == PE_FMT_ERROR_CODE) {
+        return PE_FMT_ERROR_CODE;
+    }
     if ((offset + export_count * sizeof(ULONG)) <= mapped_image_size) {
         memset(&hintmap[offset], 0x03, export_count * sizeof(ULONG));
     }
@@ -1690,6 +1770,9 @@ static void patch_transform_PE_exports(
     export_count = export_directory->NumberOfNames;
     offset = image_rva_to_file_offset(nt_headers, export_directory->AddressOfNameOrdinals,
                                       mapped_image_base, mapped_image_size);
+    if (!offset && GetLastError() == PE_FMT_ERROR_CODE) {
+        return PE_FMT_ERROR_CODE;
+    }
     if ((offset + export_count * sizeof(USHORT)) <= mapped_image_size) {
         memset(&hintmap[offset], 0x03, export_count * sizeof(USHORT));
     }
@@ -1699,9 +1782,11 @@ static void patch_transform_PE_exports(
     export_directory->AddressOfFunctions = get_new_rva_from_xfrm_table(xfrm_tbl, export_directory->AddressOfFunctions);
     export_directory->AddressOfNames = get_new_rva_from_xfrm_table(xfrm_tbl, export_directory->AddressOfNames);
     export_directory->AddressOfNameOrdinals = get_new_rva_from_xfrm_table(xfrm_tbl, export_directory->AddressOfNameOrdinals);
+
+    return 0;
 }
 
-static void patch_transform_PE_relative_jmps(
+static int patch_transform_PE_relative_jmps(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, BYTE *hintmap)
 {
@@ -1728,7 +1813,8 @@ static void patch_transform_PE_relative_jmps(
     for (i = 0; i < section_count; i++) {
         if ((PUCHAR)&section_table[i] < mapped_image_base
             || (PUCHAR)&section_table[i+1] > &mapped_image_base[mapped_image_size]) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return PE_FMT_ERROR_CODE;
         }
 
         /* If this section is executable, then scan it for relative jump instructions. */
@@ -1775,6 +1861,10 @@ static void patch_transform_PE_relative_jmps(
                                 {
                                     target_offset = image_rva_to_file_offset(nt_headers, target_rva,
                                                                 mapped_image_base, mapped_image_size);
+                                    if (!target_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                                        return PE_FMT_ERROR_CODE;
+                                    }
+
                                     if ((hintmap[target_offset] & 1) == 0) {
                                         new_target_rva = get_new_rva_from_xfrm_table(xfrm_tbl, target_rva);
                                         new_ins_rva = get_new_rva_from_xfrm_table(xfrm_tbl, ins_rva);
@@ -1804,9 +1894,11 @@ static void patch_transform_PE_relative_jmps(
             }
         }
     }
+
+    return 0;
 }
 
-static void patch_transform_PE_relative_calls(
+static int patch_transform_PE_relative_calls(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image_base, ULONG mapped_image_size,
     struct patch_transform_table *xfrm_tbl, PUCHAR hintmap)
 {
@@ -1830,7 +1922,8 @@ static void patch_transform_PE_relative_calls(
     for (i = 0; i < nt_headers->FileHeader.NumberOfSections; i++) {
         if ((PUCHAR)&section_table[i] < mapped_image_base
             || (PUCHAR)&section_table[i+1] > &mapped_image_base[mapped_image_size]) {
-            throw_pe_fmt_exception();
+            SetLastError(PE_FMT_ERROR_CODE);
+            return PE_FMT_ERROR_CODE;
         }
 
         /* If this section is executable, then scan it for relative jump instructions. */
@@ -1869,6 +1962,10 @@ static void patch_transform_PE_relative_calls(
                             if (target_rva < sizeof_image) {
                                 target_offset = image_rva_to_file_offset(nt_headers, target_rva,
                                                             mapped_image_base, mapped_image_size);
+                                if (!target_offset && GetLastError() == PE_FMT_ERROR_CODE) {
+                                    return PE_FMT_ERROR_CODE;
+                                }
+
                                 if ((hintmap[target_offset] & 1) == 0) {
                                     new_target_rva = get_new_rva_from_xfrm_table(xfrm_tbl, target_rva);
                                     new_ins_rva = get_new_rva_from_xfrm_table(xfrm_tbl, ins_rva);
@@ -1885,6 +1982,8 @@ static void patch_transform_PE_relative_calls(
             }
         }
     }
+
+    return 0;
 }
 
 struct transform_resource_context {         /* i386 | x64  */
@@ -1980,7 +2079,7 @@ static void transform_resources_recursive_old_compat(
     }
 }
 
-static void patch_transform_PE_resources_old_compat(
+static int patch_transform_PE_resources_old_compat(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image, ULONG image_size,
     ULONG new_res_time, struct patch_transform_table *xfrm_tbl)
 {
@@ -1989,7 +2088,11 @@ static void patch_transform_PE_resources_old_compat(
 
     ctx.res_dir_base = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_RESOURCE,
                                                       &ctx.res_dir_size, mapped_image, image_size);
-    if (ctx.res_dir_base && ctx.res_dir_size >= sizeof(IMAGE_RESOURCE_DIRECTORY))
+    if (!ctx.res_dir_base) {
+        return (GetLastError() == PE_FMT_ERROR_CODE) ? PE_FMT_ERROR_CODE : 0;
+    }
+
+    if (ctx.res_dir_size >= sizeof(IMAGE_RESOURCE_DIRECTORY))
     {
         ctx.res_dir_end = ctx.res_dir_base + ctx.res_dir_size;
         if (ctx.res_dir_end >= mapped_image_end) {
@@ -2001,6 +2104,9 @@ static void patch_transform_PE_resources_old_compat(
 
         ctx.old_rva = image_directory_rva_and_size(nt_headers, IMAGE_DIRECTORY_ENTRY_RESOURCE,
                                                    NULL, mapped_image, image_size);
+        if (!ctx.old_rva && GetLastError() == PE_FMT_ERROR_CODE) {
+            return PE_FMT_ERROR_CODE;
+        }
         ctx.new_rva = get_new_rva_from_xfrm_table(xfrm_tbl, ctx.old_rva);
 
         ctx.new_res_time = new_res_time;
@@ -2013,6 +2119,8 @@ static void patch_transform_PE_resources_old_compat(
                 (IMAGE_RESOURCE_DIRECTORY *)ctx.res_dir_base);
         }
     }
+
+    return 0;
 }
 
 static void transform_resources_recursive(
@@ -2111,11 +2219,11 @@ static void transform_resources_recursive(
     }
 }
 
-static BOOL patch_transform_PE_resources(
+static int patch_transform_PE_resources(
     IMAGE_NT_HEADERS32 *nt_headers, PUCHAR mapped_image, SIZE_T image_size,
     ULONG new_res_time, struct patch_transform_table *xfrm_tbl)
 {
-    BOOL result;
+    int result;
     struct transform_resource_context ctx;
 
     ctx.res_dir_base = image_directory_mapped_address(nt_headers, IMAGE_DIRECTORY_ENTRY_RESOURCE,
@@ -2127,14 +2235,17 @@ static BOOL patch_transform_PE_resources(
         ctx.sizeof_image = nt_headers->OptionalHeader.SizeOfImage;
         ctx.old_rva = image_directory_rva_and_size(nt_headers, IMAGE_DIRECTORY_ENTRY_RESOURCE,
                                                    NULL, mapped_image, image_size);
+        if (!ctx.old_rva && GetLastError() == PE_FMT_ERROR_CODE) {
+            return PE_FMT_ERROR_CODE;
+        }
         ctx.new_rva = get_new_rva_from_xfrm_table(xfrm_tbl, ctx.old_rva);
         ctx.new_res_time = new_res_time;
         ctx.xfrm_tbl = xfrm_tbl;
         ctx.out_of_bounds = FALSE;
         transform_resources_recursive(&ctx, (IMAGE_RESOURCE_DIRECTORY *)ctx.res_dir_base);
-        result = !ctx.out_of_bounds;
+        result = ctx.out_of_bounds ? -1 : 0;
     } else {
-        result = TRUE;
+        result = (GetLastError() == PE_FMT_ERROR_CODE) ? PE_FMT_ERROR_CODE : 0;
     }
 
     return result;
@@ -2145,6 +2256,7 @@ static BOOL patch_coff_image(
     PUCHAR old_file_buffer, ULONG old_file_size, ULONG new_res_time,
     struct patch_transform_table* xfrm_tbl, unsigned char *hintmap)
 {
+    int err = 0;
     PUCHAR local_hintmap = NULL;
     const ULONG transform_flags = *transform_option_flags;
 
@@ -2161,70 +2273,85 @@ static BOOL patch_coff_image(
     /* Order of transformations may matter here! */
     if (transform_flags & (PATCH_TRANSFORM_PE_RESOURCE_2 | PATCH_TRANSFORM_PE_IRELOC_2))
     {
-        patch_transform_PE_mark_non_executable(nt_headers, old_file_buffer, old_file_size, hintmap, FALSE);
+        err = patch_transform_PE_mark_non_executable(nt_headers, old_file_buffer, old_file_size, hintmap, FALSE);
+        if (err) goto cleanup;
 
         if ((transform_flags & PATCH_TRANSFORM_NO_IMPORTS) == 0) {
-            patch_transform_PE_imports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_imports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_EXPORTS) == 0) {
-            patch_transform_PE_exports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_exports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RESOURCE) == 0) {
-            patch_transform_PE_resources(nt_headers, old_file_buffer, old_file_size, new_res_time, xfrm_tbl);
+            err = patch_transform_PE_resources(nt_headers, old_file_buffer, old_file_size, new_res_time, xfrm_tbl);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELOCS) == 0) {
             if (transform_flags & PATCH_TRANSFORM_PE_IRELOC_2) {
-                patch_transform_PE_infer_relocs(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+                err = patch_transform_PE_infer_relocs(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
             } else {
-                patch_transform_PE_relocations(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+                err = patch_transform_PE_relocations(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
             }
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELJMPS) == 0) {
-            patch_transform_PE_relative_jmps(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_relative_jmps(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELCALLS) == 0) {
-            patch_transform_PE_relative_calls(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_relative_calls(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
     } else {
 
-        patch_transform_PE_mark_non_executable(nt_headers, old_file_buffer, old_file_size, hintmap, TRUE);
+        err = patch_transform_PE_mark_non_executable(nt_headers, old_file_buffer, old_file_size, hintmap, TRUE);
+        if (err) goto cleanup;
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELOCS) == 0) {
-            patch_transform_PE_relocations(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_relocations(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_IMPORTS) == 0) {
-            patch_transform_PE_imports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_imports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_EXPORTS) == 0) {
-            patch_transform_PE_exports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_exports(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELJMPS) == 0) {
-            patch_transform_PE_relative_jmps(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_relative_jmps(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RELCALLS) == 0) {
-            patch_transform_PE_relative_calls(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            err = patch_transform_PE_relative_calls(nt_headers, old_file_buffer, old_file_size, xfrm_tbl, hintmap);
+            if (err) goto cleanup;
         }
 
         if ((transform_flags & PATCH_TRANSFORM_NO_RESOURCE) == 0) {
-            patch_transform_PE_resources_old_compat(nt_headers, old_file_buffer, old_file_size, new_res_time, xfrm_tbl);
+            err = patch_transform_PE_resources_old_compat(nt_headers, old_file_buffer, old_file_size, new_res_time, xfrm_tbl);
+            if (err) goto cleanup;
         }
     }
 
+cleanup:
     if (local_hintmap != NULL) {
         VirtualFree(local_hintmap, 0, MEM_RELEASE);
     }
 
-    return TRUE;
+    return err ? FALSE : TRUE;
 }
 
 /* Performs patches on 32-bit PE images. */
@@ -2400,7 +2527,8 @@ DWORD apply_patch_to_file_by_buffers(
                                     ph.flags, NULL, ph.new_image_base, ph.new_image_time,
                                     NULL, 0, NULL, 0);
             if (normalize_result == NORMALIZE_RESULT_FAILURE) {
-                err = ERROR_PATCH_CORRUPT;
+                err = (GetLastError() == PE_FMT_ERROR_CODE)
+                        ? PE_FMT_ERROR_CODE : ERROR_PATCH_CORRUPT;
                 goto cleanup;
             } else if (normalize_result >= NORMALIZE_RESULT_SUCCESS_MODIFIED) {
                 patched = TRUE;
@@ -2462,7 +2590,8 @@ DWORD apply_patch_to_file_by_buffers(
                                 file_info->ignore_range_array, file_info->ignore_range_count,
                                 file_info->retain_range_array, file_info->retain_range_count);
             if (normalize_result == NORMALIZE_RESULT_FAILURE) {
-                err = ERROR_PATCH_CORRUPT;
+                err = (GetLastError() == PE_FMT_ERROR_CODE)
+                        ? PE_FMT_ERROR_CODE : ERROR_PATCH_CORRUPT;
                 goto cleanup;
             } else if (normalize_result >= NORMALIZE_RESULT_SUCCESS_MODIFIED) {
                 patched = TRUE;
@@ -2508,6 +2637,9 @@ DWORD apply_patch_to_file_by_buffers(
                     if (file_info->xfrm_tbl.count) {
                         err = perform_patches_on_old_file_image(&ph.extra_flags, old_file_buf,
                                 file_info->old_size, ph.new_res_time, &file_info->xfrm_tbl);
+                        if (err == PE_FMT_ERROR_CODE) {
+                            goto cleanup;
+                        }
                     }
 
                     if (err == ERROR_SUCCESS) {
