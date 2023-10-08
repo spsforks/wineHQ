@@ -379,6 +379,54 @@ static void test_GetSetEnvironmentVariableAW(void)
     ok(lstrcmpW(bufW, valueW) == 0, "expected %s, got %s\n", debugstr_w(valueW), debugstr_w(bufW));
 }
 
+static void test_ExpandEnvironmentStringsW(void)
+{
+    const WCHAR *value = L"Long long value";
+    WCHAR buf[256];
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 0);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 1);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 2);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Lbcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 3);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Locdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef");
+    ExpandEnvironmentStringsW(value, buf, 15);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Long long valucdefabcdefabcdefabcdefabcdefabcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef");
+    ExpandEnvironmentStringsW(value, buf, 16);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, value), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, NULL, 0);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+}
+
 static void test_ExpandEnvironmentStringsA(void)
 {
     const char* value="Long long value";
@@ -780,6 +828,7 @@ START_TEST(environ)
     test_GetSetEnvironmentVariableA();
     test_GetSetEnvironmentVariableW();
     test_GetSetEnvironmentVariableAW();
+    test_ExpandEnvironmentStringsW();
     test_ExpandEnvironmentStringsA();
     test_GetComputerName();
     test_GetComputerNameExA();

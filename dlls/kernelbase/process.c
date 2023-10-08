@@ -1425,6 +1425,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH ExpandEnvironmentStringsW( LPCWSTR src, LPWSTR ds
     UNICODE_STRING us_src, us_dst;
     NTSTATUS status;
     DWORD res;
+    WCHAR last_char;
 
     TRACE( "(%s %p %lu)\n", debugstr_w(src), dst, len );
 
@@ -1437,14 +1438,17 @@ DWORD WINAPI DECLSPEC_HOTPATCH ExpandEnvironmentStringsW( LPCWSTR src, LPWSTR ds
     us_dst.MaximumLength = len * sizeof(WCHAR);
     us_dst.Buffer = dst;
 
+    /* Tests show windows keeps the last character instead of a null terminator */
+    if (dst && len) last_char = dst[len - 1];
     res = 0;
     status = RtlExpandEnvironmentStrings_U( NULL, &us_src, &us_dst, &res );
     res /= sizeof(WCHAR);
-    if (!set_ntstatus( status ))
+    if (status != STATUS_BUFFER_TOO_SMALL)
     {
-        if (status != STATUS_BUFFER_TOO_SMALL) return 0;
-        if (len && dst) dst[len - 1] = 0;
+        if (!set_ntstatus( status )) return 0;
     }
+    else if (dst && len) dst[len - 1] = last_char;
+
     return res;
 }
 
