@@ -1147,6 +1147,7 @@ struct test_transfer_notify
     IMFMediaEngineEx *media_engine;
     HANDLE ready_event, frame_ready_event;
     HRESULT error;
+    BOOL autoplay;
 };
 
 static struct test_transfer_notify *impl_from_test_transfer_notify(IMFMediaEngineNotify *iface)
@@ -1200,8 +1201,11 @@ static HRESULT WINAPI test_transfer_notify_EventNotify(IMFMediaEngineNotify *ifa
     switch (event)
     {
     case MF_MEDIA_ENGINE_EVENT_CANPLAY:
-        hr = IMFMediaEngineEx_Play(media_engine);
-        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        if (notify->autoplay)
+        {
+            hr = IMFMediaEngineEx_Play(media_engine);
+            ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        }
         break;
 
     case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
@@ -1218,6 +1222,7 @@ static HRESULT WINAPI test_transfer_notify_EventNotify(IMFMediaEngineNotify *ifa
         notify->error = param2;
         /* fallthrough */
     case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
+    case MF_MEDIA_ENGINE_EVENT_ENDED:
         SetEvent(notify->frame_ready_event);
         break;
     case MF_MEDIA_ENGINE_EVENT_TIMEUPDATE:
@@ -1301,6 +1306,7 @@ static void test_TransferVideoFrame(void)
     hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+    notify->autoplay = TRUE;
     url = SysAllocString(L"i420-64x64.avi");
     hr = IMFMediaEngineEx_SetSourceFromByteStream(media_engine, stream, url);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -1795,6 +1801,9 @@ static void test_effect(void)
     D3D11_TEXTURE2D_DESC desc;
     IMFByteStream *stream;
     IMFMediaSink *sink;
+    LONGLONG prestime;
+    LONG old_count;
+    BOOL has_audio;
     RECT dst_rect;
     UINT token;
     HRESULT hr;
@@ -1886,20 +1895,30 @@ static void test_effect(void)
 
     /* Wait for MediaEngine to be ready. */
     res = WaitForSingleObject(notify->frame_ready_event, 5000);
-    ok(!res, "Unexpected res %#lx.\n", res);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    /* Skip tests on Wine for now. */
+    if (res == WAIT_TIMEOUT)
+        goto done;
+
+    hr = IMFMediaEngineEx_Play(media_engine_ex);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* Media Engine will have 2 processed video frames at the beginning. */
+    todo_wine ok(video_effect->processing_count == 2, "Unexpected processing count %lu.\n", video_effect->processing_count);
+    todo_wine ok(video_effect2->processing_count == 2, "Unexpected processing count %lu.\n", video_effect2->processing_count);
 
     SetRect(&dst_rect, 0, 0, desc.Width, desc.Height);
     hr = IMFMediaEngineEx_TransferVideoFrame(notify->media_engine, (IUnknown *)texture, NULL, &dst_rect, NULL);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-    ok(video_effect->processing_count > 0, "Unexpected processing count %lu.\n", video_effect->processing_count);
-    ok(video_effect2->processing_count > 0, "Unexpected processing count %lu.\n", video_effect2->processing_count);
-
+    has_audio = FALSE;
     if (SUCCEEDED(hr = MFCreateAudioRenderer(NULL, &sink)))
     {
         ok(audio_effect->processing_count > 0, "Unexpected processing count %lu.\n", audio_effect->processing_count);
         ok(audio_effect2->processing_count > 0, "Unexpected processing count %lu.\n", audio_effect2->processing_count);
 
+        has_audio = TRUE;
         IMFMediaSink_Release(sink);
     }
     else if (hr == MF_E_NO_AUDIO_PLAYBACK_DEVICE)
@@ -1907,6 +1926,68 @@ static void test_effect(void)
         ok(!audio_effect->processing_count, "Unexpected processing count %lu.\n", audio_effect->processing_count);
         ok(!audio_effect2->processing_count, "Unexpected processing count %lu.\n", audio_effect2->processing_count);
     }
+
+    old_count = video_effect2->processing_count;
+
+    /* Calling TransferVideoFrame does not advance the video stream. */
+    hr = IMFMediaEngineEx_TransferVideoFrame(notify->media_engine, (IUnknown *)texture, NULL, &dst_rect, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(old_count == video_effect2->processing_count, "Unexpected processing count %lu.\n", video_effect2->processing_count);
+
+    /* However OnVideoStreamTick does indeed advance the video stream by a single frame. */
+    hr = IMFMediaEngineEx_OnVideoStreamTick(media_engine_ex, &prestime);
+    todo_wine ok(hr == S_OK || broken(hr == S_FALSE) /* Win 10 1507 */, "Unexpected hr %#lx.\n", hr);
+
+    if (hr == S_FALSE)
+        goto done;
+
+    /* Wait for few update events, since they are emitted regardless of something actually updating in the playing state. */
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    todo_wine ok(video_effect2->processing_count == 3, "Unexpected processing count %lu.\n", video_effect2->processing_count);
+    /* However the audio stream will have advanced to the end, detached from video. */
+    if (has_audio) ok(audio_effect->processing_count == 4 ||
+        broken(audio_effect->processing_count == 2) /* Win 8.1 */, "Unexpected processing count %lu.\n", audio_effect->processing_count);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(media_engine_ex, &prestime);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    todo_wine ok(video_effect2->processing_count == 4, "Unexpected processing count %lu.\n", video_effect2->processing_count);
+
+    res = WaitForSingleObject(notify->ready_event, 500);
+    todo_wine ok(!res, "Unexpected res %#lx.\n", res);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(media_engine_ex, &prestime);
+    todo_wine ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* Await MF_MEDIA_ENGINE_EVENT_ENDED */
+    res = WaitForSingleObject(notify->frame_ready_event, 500);
+    ok(!res || broken(res == WAIT_TIMEOUT) /* Win 8.1 and Win 10 1507 */ , "Unexpected res %#lx.\n", res);
+
+    /* The pipeline does not advance past 4 processed samples. */
+    todo_wine ok(video_effect2->processing_count == 4, "Unexpected processing count %lu.\n", video_effect2->processing_count);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(media_engine_ex, &prestime);
+    todo_wine ok(hr == S_FALSE || broken(hr == S_OK) /* Win 8 */, "Unexpected hr %#lx.\n", hr);
 
 done:
     if (media_engine_ex)
@@ -1951,6 +2032,7 @@ static void test_GetDuration(void)
     notify = create_transfer_notify();
     media_engine = create_media_engine_ex(&notify->IMFMediaEngineNotify_iface, NULL, DXGI_FORMAT_B8G8R8X8_UNORM);
     notify->media_engine = media_engine;
+    notify->autoplay = TRUE;
     ok(!!media_engine, "create_media_engine_ex failed.\n");
 
     stream = load_resource(L"i420-64x64.avi", L"video/avi");
