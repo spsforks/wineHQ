@@ -1,4 +1,4 @@
 @ stdcall -private DllCanUnloadNow()
-@ stdcall -private DllGetClassObject(ptr ptr ptr) msxml3.DllGetClassObject
+@ stdcall -private DllGetClassObject(ptr ptr ptr) winexml.DllGetClassObject
 @ stdcall -private DllRegisterServer()
 @ stdcall -private DllUnregisterServer()
