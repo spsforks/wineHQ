@@ -622,8 +622,10 @@ static const WCHAR real_class_id_str[][MAX_ATOM_LEN + 1] = {
 INT WINAPI NtUserGetClassName( HWND hwnd, BOOL real, UNICODE_STRING *name )
 {
     const WCHAR *basename = NULL;
-    CLASS *class;
+    DWORD real_class_id = 0;
+    ATOM atom = 0;
     int ret = 0;
+    WND *wnd;
 
     TRACE( "%p %x %p\n", hwnd, real, name );
 
@@ -633,49 +635,43 @@ INT WINAPI NtUserGetClassName( HWND hwnd, BOOL real, UNICODE_STRING *name )
         return 0;
     }
 
-    if (!(class = get_class_ptr( hwnd, FALSE ))) return 0;
-
-    if (class == OBJ_OTHER_PROCESS)
+    if (!(wnd = get_win_ptr( hwnd )))
     {
-        ATOM atom = 0;
+        RtlSetLastWin32Error( ERROR_INVALID_WINDOW_HANDLE );
+        return 0;
+    }
 
-        SERVER_START_REQ( set_class_info )
+    if (wnd == WND_OTHER_PROCESS || wnd == WND_DESKTOP)
+    {
+        SERVER_START_REQ( get_window_class_name )
         {
-            req->window = wine_server_user_handle( hwnd );
-            req->flags = 0;
-            req->extra_offset = -1;
-            req->extra_size = 0;
+            req->handle = wine_server_user_handle( hwnd );
             if (!wine_server_call_err( req ))
+            {
+                real_class_id = reply->real_class_id;
                 atom = reply->base_atom;
+            }
         }
         SERVER_END_REQ;
-
-        return NtUserGetAtomName( atom, name );
+        wnd = NULL;
     }
+    else
+        real_class_id = wnd->real_class_id;
 
-    if (real)
+    if (real && real_class_id)
     {
-        WND *wnd;
-
-        if (!(wnd = get_win_ptr( hwnd )))
-        {
-            RtlSetLastWin32Error( ERROR_INVALID_WINDOW_HANDLE );
-            goto exit;
-        }
-
-        if (wnd->real_class_id)
-            basename = real_class_id_str[wnd->real_class_id - 1];
-        release_win_ptr(wnd);
+        assert(real_class_id <= ARRAY_SIZE(real_class_id_str));
+        basename = real_class_id_str[real_class_id - 1];
     }
-
-    if (!basename)
-        basename = (const WCHAR *)class->basename;
+    else if (wnd)
+        basename = (const WCHAR *)wnd->class->basename;
+    else
+        return NtUserGetAtomName( atom, name );
 
     ret = min( name->MaximumLength / sizeof(WCHAR) - 1, lstrlenW(basename) );
     if (ret) memcpy( name->Buffer, basename, ret * sizeof(WCHAR) );
     name->Buffer[ret] = 0;
-exit:
-    release_class_ptr( class );
+    if (wnd) release_win_ptr( wnd );
     return ret;
 }
 

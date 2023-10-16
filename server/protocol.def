@@ -3736,6 +3736,22 @@ struct handle_info
 @END
 
 
+/* Get class name atom/real class ID for a window. */
+@REQ(get_window_class_name)
+    user_handle_t  handle;        /* handle to the window */
+@REPLY
+    atom_t       base_atom;     /* Base class atom. */
+    unsigned int real_class_id; /* Real window class ID value. */
+@END
+
+
+/* Set real window class ID value for a window. */
+@REQ(set_real_window_class_id)
+    user_handle_t  handle;          /* handle to the window */
+    unsigned int   real_class_id;   /* Real window class ID value. */
+@END
+
+
 /* Allocate an arbitrary user handle */
 @REQ(alloc_user_handle)
 @REPLY

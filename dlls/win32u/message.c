@@ -4324,7 +4324,13 @@ static void set_real_window_class_id( HWND hwnd, unsigned int real_class_id )
 
     if (!win->real_class_id)
     {
-        FIXME("Real class ID currently set in-process only.\n");
+        SERVER_START_REQ( set_real_window_class_id )
+        {
+            req->handle = wine_server_user_handle( hwnd );
+            req->real_class_id = real_class_id;
+            wine_server_call( req );
+        }
+        SERVER_END_REQ;
         win->real_class_id = real_class_id;
     }
     else if (win->real_class_id != real_class_id)
