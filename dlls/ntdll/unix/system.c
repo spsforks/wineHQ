@@ -1639,6 +1639,13 @@ static void derive_machineid_to_uuid( GUID *uuid )
     memcpy( uuid, out256, sizeof(*uuid) );
 }
 
+static void fixup_missing_information( size_t *len, char *buffer, size_t buflen, GUID *uuid, const char *divert )
+{
+    const unsigned *pu = (const unsigned *)uuid;
+    *len = snprintf(buffer, buflen, "%s%08x%08x%08x%08x", divert, pu[0], pu[1], pu[2], pu[3]);
+    if (*len >= buflen) *len = buflen - 1;
+}
+
 static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
                                    ULONG *required_len )
 {
@@ -1701,6 +1708,16 @@ static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULON
         chassis_args.asset_tag_len = get_smbios_string("/sys/class/dmi/id/chassis_tag", S(chassis_asset_tag));
         chassis_args.asset_tag = chassis_asset_tag;
 #undef S
+
+        /* Some files above can only be readable by root.
+         * In that case, replace it by a simple derivation of machine GUID.
+         */
+        if (!board_args.serial_len)
+            fixup_missing_information( &board_args.serial_len, board_serial, sizeof(board_serial), &system_args.uuid, "1" );
+        if (!chassis_args.serial_len)
+            fixup_missing_information( &chassis_args.serial_len, chassis_serial, sizeof(chassis_serial), &system_args.uuid, "2" );
+        if (!system_args.serial_len)
+            fixup_missing_information( &system_args.serial_len, system_serial, sizeof(system_serial), &system_args.uuid, "3" );
 
         return create_smbios_tables( sfti, available_len, required_len,
                                      &bios_args, &system_args, &board_args, &chassis_args );

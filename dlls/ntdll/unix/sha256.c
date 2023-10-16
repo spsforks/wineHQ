@@ -21,6 +21,8 @@
 #pragma makedep unix
 #endif
 
+#include "config.h"
+
 #include <stdint.h>
 #include "unix_private.h"
 
