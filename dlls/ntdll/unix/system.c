@@ -1579,7 +1579,7 @@ static size_t get_smbios_string( const char *path, char *str, size_t size )
     return len;
 }
 
-static void get_system_uuid( GUID *uuid )
+static void read_machine_id( GUID *uuid )
 {
     static const unsigned char hex[] =
     {
@@ -1613,9 +1613,30 @@ static void get_system_uuid( GUID *uuid )
             uuid->Data4[5] = hex[p[26]] << 4 | hex[p[27]];
             uuid->Data4[6] = hex[p[28]] << 4 | hex[p[29]];
             uuid->Data4[7] = hex[p[30]] << 4 | hex[p[31]];
+            memset(buf, 0, sizeof(buf));
         }
         close( fd );
     }
+}
+
+static void derive_machineid_to_uuid( GUID *uuid )
+{
+    static unsigned char wine_uuid[16] = { 0xe8, 0x65, 0x52, 0x8d, 0x0a, 0xa2, 0x45, 0x27,
+                                           0xa8, 0x3b, 0x15, 0xed, 0x41, 0xb5, 0xd0, 0x91 };
+    GUID machine_uuid;
+    unsigned char out256[32]; /* returning first 128 bits only */
+
+    read_machine_id( &machine_uuid );
+
+    hmac_sha256( wine_uuid, sizeof(wine_uuid), (const unsigned char *)&machine_uuid, sizeof(machine_uuid), out256 );
+
+    memset( &machine_uuid, 0, sizeof(machine_uuid) );
+
+    /* set Variant 1 Version 4 (cf. DMI specs & RFC 4421) */
+    out256[6] = (out256[6] & 0x0F) | 0x40;
+    out256[8] = (out256[8] & 0x3F) | 0x80;
+
+    memcpy( uuid, out256, sizeof(*uuid) );
 }
 
 static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
@@ -1652,7 +1673,7 @@ static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULON
         system_args.version = system_version;
         system_args.serial_len = get_smbios_string("/sys/class/dmi/id/product_serial", S(system_serial));
         system_args.serial = system_serial;
-        get_system_uuid(&system_args.uuid);
+        derive_machineid_to_uuid(&system_args.uuid);
         system_args.sku_len = get_smbios_string("/sys/class/dmi/id/product_sku", S(system_sku));
         system_args.sku = system_sku;
         system_args.family_len = get_smbios_string("/sys/class/dmi/id/product_family", S(system_family));
