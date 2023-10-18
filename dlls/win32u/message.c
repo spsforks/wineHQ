@@ -4311,6 +4311,27 @@ BOOL WINAPI NtUserPostThreadMessage( DWORD thread, UINT msg, WPARAM wparam, LPAR
     return put_message_in_queue( &info, NULL );
 }
 
+static void set_real_window_class_id( HWND hwnd, unsigned int real_class_id )
+{
+    WND *win;
+
+    if (!(win = get_win_ptr( hwnd )) || (win == WND_OTHER_PROCESS || win == WND_DESKTOP))
+    {
+        if (win == WND_OTHER_PROCESS || win == WND_DESKTOP)
+            ERR("Tried to set real window class on a window belonging to another process.\n");
+        return;
+    }
+
+    if (!win->real_class_id)
+    {
+        FIXME("Real class ID currently set in-process only.\n");
+        win->real_class_id = real_class_id;
+    }
+    else if (win->real_class_id != real_class_id)
+        ERR("Tried to change real class ID value after it was already set.\n");
+    release_win_ptr( win );
+}
+
 LRESULT WINAPI NtUserMessageCall( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
                                   void *result_info, DWORD type, BOOL ansi )
 {
@@ -4379,6 +4400,11 @@ LRESULT WINAPI NtUserMessageCall( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
     case NtUserSystemTrayCall:
         return system_tray_call( hwnd, msg, wparam, lparam, result_info );
+
+    case NtUserStaticWndProc:
+        set_real_window_class_id( hwnd, REAL_CLASS_ID_STATIC );
+        if (msg == WM_NCCREATE) return default_window_proc( hwnd, msg, wparam, lparam, ansi );
+        return 0;
 
     default:
         FIXME( "%p %x %lx %lx %p %x %x\n", hwnd, msg, (long)wparam, lparam, result_info, (int)type, ansi );

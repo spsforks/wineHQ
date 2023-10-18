@@ -612,13 +612,18 @@ ULONG WINAPI NtUserGetAtomName( ATOM atom, UNICODE_STRING *name )
     return size / sizeof(WCHAR);
 }
 
+static const WCHAR real_class_id_str[][MAX_ATOM_LEN + 1] = {
+    { 'S', 't', 'a', 't', 'i', 'c', 0, }, /* REAL_CLASS_ID_STATIC */
+};
+
 /***********************************************************************
  *	     NtUserGetClassName   (win32u.@)
  */
 INT WINAPI NtUserGetClassName( HWND hwnd, BOOL real, UNICODE_STRING *name )
 {
+    const WCHAR *basename = NULL;
     CLASS *class;
-    int ret;
+    int ret = 0;
 
     TRACE( "%p %x %p\n", hwnd, real, name );
 
@@ -648,9 +653,28 @@ INT WINAPI NtUserGetClassName( HWND hwnd, BOOL real, UNICODE_STRING *name )
         return NtUserGetAtomName( atom, name );
     }
 
-    ret = min( name->MaximumLength / sizeof(WCHAR) - 1, lstrlenW(class->basename) );
-    if (ret) memcpy( name->Buffer, class->basename, ret * sizeof(WCHAR) );
+    if (real)
+    {
+        WND *wnd;
+
+        if (!(wnd = get_win_ptr( hwnd )))
+        {
+            RtlSetLastWin32Error( ERROR_INVALID_WINDOW_HANDLE );
+            goto exit;
+        }
+
+        if (wnd->real_class_id)
+            basename = real_class_id_str[wnd->real_class_id - 1];
+        release_win_ptr(wnd);
+    }
+
+    if (!basename)
+        basename = (const WCHAR *)class->basename;
+
+    ret = min( name->MaximumLength / sizeof(WCHAR) - 1, lstrlenW(basename) );
+    if (ret) memcpy( name->Buffer, basename, ret * sizeof(WCHAR) );
     name->Buffer[ret] = 0;
+exit:
     release_class_ptr( class );
     return ret;
 }

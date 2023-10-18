@@ -319,6 +319,7 @@ enum
     NtUserSpyExit             = 0x0304,
     NtUserImeDriverCall       = 0x0305,
     NtUserSystemTrayCall      = 0x0306,
+    NtUserStaticWndProc       = 0x0307,
 };
 
 /* NtUserThunkedMenuItemInfo codes */
