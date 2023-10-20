@@ -3169,7 +3169,10 @@ BOOL WINAPI SetupDiGetDeviceRegistryPropertyW(HDEVINFO devinfo,
             SetLastError(l);
         if (RequiredSize)
             *RequiredSize = size;
+    } else {
+        SetLastError(ERROR_INVALID_DATA);
     }
+
     return ret;
 }
 
