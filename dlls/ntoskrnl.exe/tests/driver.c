@@ -2524,9 +2524,12 @@ static NTSTATUS empty_ioctl(IRP *irp, IO_STACK_LOCATION *stack)
 {
     ULONG code = stack->Parameters.DeviceIoControl.IoControlCode;
     const void *input_buffer, *output_buffer;
+    ULONG in_size, out_size;
 
     input_buffer = irp->AssociatedIrp.SystemBuffer;
+    in_size = stack->Parameters.DeviceIoControl.InputBufferLength;
     output_buffer = irp->AssociatedIrp.SystemBuffer;
+    out_size = stack->Parameters.DeviceIoControl.OutputBufferLength;
 
     if (code == IOCTL_WINETEST_EMPTY_NEITHER)
     {
@@ -2547,6 +2550,8 @@ static NTSTATUS empty_ioctl(IRP *irp, IO_STACK_LOCATION *stack)
         else
             output_buffer = NULL;
     }
+
+    ok(0, "empty_ioctl code=0x%lx input_buffer=%p in_size=0x%lx output_buffer=%p out_size=0x%lx MdlAddress=%p\n", code, input_buffer, in_size, output_buffer, out_size, irp->MdlAddress);
 
     if (input_buffer)
         return STATUS_INVALID_PARAMETER_1;
