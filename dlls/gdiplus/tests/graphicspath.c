@@ -1883,6 +1883,108 @@ static void test_isvisible(void)
     ReleaseDC(0, hdc);
 }
 
+static REAL bisect(REAL minX, REAL maxX, REAL Y, GpGraphics *graphics, GpPath *path)
+{
+    BOOL resultMin = -1, resultMax = -1;
+
+    GdipIsVisiblePathPoint(path, minX, Y, graphics, &resultMin);
+    GdipIsVisiblePathPoint(path, maxX, Y, graphics, &resultMax);
+
+    if (resultMin == resultMax)
+    {
+        /* trace("initial results for min/max matched (%s)\n", resultMin?"T":"F"); */
+        return 0.0;
+    }
+
+    do {
+        REAL newX = (minX + maxX) * 0.5;
+        BOOL resultNew = -1;
+
+        if (newX == minX || newX == maxX) {
+            /* trace("%10.7f:%s  %10.7f:%s\n", minX, resultMin?"T":"F", maxX, resultMax?"T":"F"); */
+            return maxX;
+        }
+        GdipIsVisiblePathPoint(path, newX, Y, graphics, &resultNew);
+        if (resultNew == resultMin)
+            minX = newX;
+        else
+            maxX = newX;
+    } while (1);
+}
+
+static void test_isvisible_line(void)
+{
+    GpPath *path;
+    GpGraphics *graphics = NULL;
+    HDC hdc = GetDC(0);
+    GpStatus status;
+    GpMatrix *matrix;
+    static const REAL scales[] = {0.25, 0.5, 1.0, 2.0, 4.0};
+    static const REAL expected[7][5] = {
+        {0},  /* UnitWorld */
+        {9.5, 9.5, 9.5, 9.5, 9.5},  /* UnitDisplay */
+        {10.0, 9.0, 9.5, 9.75, 9.875},  /* UnitPixel */
+        {10.5, 9.75, 10.125, 9.9375, 10.03125},  /* UnitPoint */
+        {9.979167, 9.989584, 9.994792, 9.997396, 9.998698},  /* UnitInch */
+        {6.25, 9.375, 10.9375, 10.15625, 9.765626},  /* UnitDocument */
+        {10.054167, 9.789584, 9.921876, 9.988022, 10.021094},  /* UnitMillimeter */
+    };
+    REAL result;
+    UINT i, j;
+
+    GdipCreateFromHDC(hdc, &graphics);
+    GdipCreatePath(FillModeAlternate, &path);
+
+    GdipResetWorldTransform(graphics);
+
+    GdipAddPathRectangle(path, 10.0, 0.0, 10.0, 10.0);
+
+    /* test with NULL graphics context */
+    result = bisect(6.0, 14.0, 5.0, NULL, path);
+    ok(fabs(9.5 - result) < 0.000002, "Expected %.8e, got %.8e\n", 9.5, result);
+
+    for (i = UnitWorld; i <= UnitMillimeter + 1; i++)
+    {
+        winetest_push_context("%u", i);
+        status = GdipSetPageUnit(graphics, i);
+        todo_wine_if(i > UnitMillimeter)
+        expect((i != UnitWorld && i <= UnitMillimeter) ? Ok : InvalidParameter, status);
+        if (status != Ok || i > UnitMillimeter)
+        {
+            winetest_pop_context();
+            continue;
+        }
+
+        for (j = 0; j < 5; j++)
+        {
+            winetest_push_context("%f", scales[j]);
+            GdipSetPageScale(graphics, scales[j]);
+            result = bisect(6.0, 14.0, 5.0, graphics, path);
+            todo_wine_if(expected[i][j] != 9.5)
+            ok(fabs(expected[i][j] - result) < 0.000002, "Expected %.8e, got %.8e\n", expected[i][j], result);
+            winetest_pop_context();
+        }
+
+        winetest_pop_context();
+    }
+
+    /* Mimic the IsOutlineVisible_Line_WithGraphics test from Mono */
+    GdipResetPath(path);
+    GdipAddPathRectangle(path, 10.0, 0.5, 4.0, 1.0);
+    GdipCreateMatrix2(2.0, 0.0, 0.0, 2.0, 50.0, -50.0, &matrix);
+    GdipSetWorldTransform(graphics, matrix);
+    GdipDeleteMatrix(matrix);
+    GdipSetPageUnit(graphics, UnitMillimeter);
+    GdipSetPageScale(graphics, 2.0);
+    result = bisect(9.0, 11.0, 1.0, graphics, path);
+    todo_wine
+    ok(fabs(10.024221 - result) < 0.000002, "Expected %.8e, got %.8e\n", 10.024221, result);
+
+    GdipDeletePath(path);
+    GdipDeleteGraphics(graphics);
+    ReleaseDC(0, hdc);
+}
+
 static void test_empty_rect(void)
 {
     GpPath *path;
@@ -1976,6 +2078,7 @@ START_TEST(graphicspath)
     test_widen();
     test_widen_cap();
     test_isvisible();
+    test_isvisible_line();
     test_empty_rect();
 
     GdiplusShutdown(gdiplusToken);
