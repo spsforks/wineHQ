@@ -1960,7 +1960,7 @@ static void test_isvisible_line(void)
             winetest_push_context("%f", scales[j]);
             GdipSetPageScale(graphics, scales[j]);
             result = bisect(6.0, 14.0, 5.0, graphics, path);
-            todo_wine_if(expected[i][j] != 9.5)
+            todo_wine_if(expected[i][j] > 10.0)
             ok(fabs(expected[i][j] - result) < 0.000002, "Expected %.8e, got %.8e\n", expected[i][j], result);
             winetest_pop_context();
         }

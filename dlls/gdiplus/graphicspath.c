@@ -1786,6 +1786,7 @@ GpStatus WINGDIPAPI GdipIsVisiblePathPoint(GpPath* path, REAL x, REAL y, GpGraph
     GpRegion *region;
     HRGN hrgn;
     GpStatus status;
+    GpPointF pt = {x, y};
 
     if(!path || !result) return InvalidParameter;
 
@@ -1793,13 +1794,16 @@ GpStatus WINGDIPAPI GdipIsVisiblePathPoint(GpPath* path, REAL x, REAL y, GpGraph
     if(status != Ok)
         return status;
 
-    status = GdipGetRegionHRgn(region, NULL, &hrgn);
+    status = GdipGetRegionHRgn(region, graphics, &hrgn);
     if(status != Ok){
         GdipDeleteRegion(region);
         return status;
     }
 
-    *result = PtInRegion(hrgn, gdip_round(x), gdip_round(y));
+    if (graphics)
+        gdip_transform_points(graphics, CoordinateSpaceDevice, CoordinateSpaceWorld, &pt, 1);
+
+    *result = PtInRegion(hrgn, gdip_round(pt.X), gdip_round(pt.Y));
 
     DeleteObject(hrgn);
     GdipDeleteRegion(region);
