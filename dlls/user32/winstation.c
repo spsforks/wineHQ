@@ -390,11 +390,32 @@ BOOL WINAPI GetUserObjectInformationA( HANDLE handle, INT index, LPVOID info, DW
 
 
 /******************************************************************************
+ *              SetUserObjectInformationW   (USER32.@)
+ */
+BOOL WINAPI SetUserObjectInformationW( HANDLE handle, INT index, LPVOID info, DWORD len )
+{
+    if (index == UOI_TIMERPROC_EXCEPTION_SUPPRESSION)
+    {
+        if (handle != GetCurrentProcess() || len != sizeof(BOOL))
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+        }
+
+        suppress_timerproc_exception = *(const BOOL *)info;
+        return TRUE;
+    }
+
+    return NtUserSetObjectInformation( handle, index, info, len );
+}
+
+
+/******************************************************************************
  *              SetUserObjectInformationA   (USER32.@)
  */
 BOOL WINAPI SetUserObjectInformationA( HANDLE handle, INT index, LPVOID info, DWORD len )
 {
-    return NtUserSetObjectInformation( handle, index, info, len );
+    return SetUserObjectInformationW( handle, index, info, len );
 }
 
 

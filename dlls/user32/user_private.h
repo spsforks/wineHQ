@@ -44,6 +44,7 @@ struct wm_char_mapping_data
 };
 
 extern HMODULE user32_module;
+extern BOOL suppress_timerproc_exception;
 
 extern BOOL post_dde_message( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, DWORD dest_tid,
                               DWORD type );

@@ -395,6 +395,8 @@ BOOL WINAPI NtUserSetObjectInformation( HANDLE handle, INT index, void *info, DW
     BOOL ret;
     const USEROBJECTFLAGS *obj_flags = info;
 
+    if (index == UOI_TIMERPROC_EXCEPTION_SUPPRESSION) return TRUE;
+
     if (index != UOI_FLAGS || !info || len < sizeof(*obj_flags))
     {
         RtlSetLastWin32Error( ERROR_INVALID_PARAMETER );

@@ -869,6 +869,15 @@ static LRESULT dispatch_message( const MSG *msg, BOOL ansi )
 }
 
 
+static LONG WINAPI timerproc_exception_filter(EXCEPTION_POINTERS *eptr)
+{
+    if (suppress_timerproc_exception)
+        return EXCEPTION_EXECUTE_HANDLER;
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+
 /***********************************************************************
  *		DispatchMessageA (USER32.@)
  *
@@ -886,7 +895,7 @@ LRESULT WINAPI DECLSPEC_HOTPATCH DispatchMessageA( const MSG* msg )
             retval = CallWindowProcA( (WNDPROC)msg->lParam, msg->hwnd,
                                       msg->message, msg->wParam, GetTickCount() );
         }
-        __EXCEPT_ALL
+        __EXCEPT(timerproc_exception_filter)
         {
             retval = 0;
         }
