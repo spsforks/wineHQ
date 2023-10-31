@@ -355,6 +355,24 @@ NTSTATUS wg_transform_create(void *args)
     switch (input_format.major_type)
     {
         case WG_MAJOR_TYPE_VIDEO_H264:
+            GstElement *hw_element = find_element(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_HARDWARE, src_caps, raw_caps);
+            if (hw_element) {
+                if (!(element = create_element("h264parse", "base"))
+                        || !append_element(transform->container, element, &first, &last))
+                {
+                    free(hw_element);
+                    gst_caps_unref(raw_caps);
+                    goto out;
+                }
+                if (!(element = hw_element)
+                        || !append_element(transform->container, element, &first, &last))
+                {
+                    free(hw_element);
+                    gst_caps_unref(raw_caps);
+                    goto out;
+                }
+                break;
+            }
         case WG_MAJOR_TYPE_AUDIO_MPEG1:
         case WG_MAJOR_TYPE_AUDIO_MPEG4:
         case WG_MAJOR_TYPE_AUDIO_WMA:
