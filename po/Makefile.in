@@ -27,6 +27,7 @@ SOURCES = \
 	nb_NO.po \
 	nl.po \
 	or.po \
+	oc.po \
 	pa.po \
 	pl.po \
 	pt_BR.po \
