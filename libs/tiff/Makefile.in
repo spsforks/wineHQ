@@ -1,5 +1,6 @@
 EXTLIB    = libtiff.a
 EXTRAINCL = $(TIFF_PE_CFLAGS) $(JPEG_PE_CFLAGS) $(ZLIB_PE_CFLAGS)
+EXTRADEFS = -DJPEG_LIB_VERSION=90
 
 C_SRCS = \
 	libtiff/tif_aux.c \
