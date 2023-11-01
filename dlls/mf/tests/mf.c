@@ -6376,7 +6376,6 @@ if (SUCCEEDED(hr))
     check_sar_rate_support(sink);
 
     ref = IMFMediaSink_Release(sink);
-    todo_wine
     ok(ref == 0, "Release returned %ld\n", ref);
 
     /* Activation */
