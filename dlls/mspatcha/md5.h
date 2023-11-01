@@ -1,7 +1,5 @@
 /*
- * PatchAPI test resources
- *
- * Copyright 2019 Conor McCarthy
+ * MD5 algorithm
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,22 +14,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- *
  */
 
-#include "winuser.h"
+#define MD5DIGESTLEN 16
 
-/* @makedep: patch_xfrm_old_file.bin */
-patch_xfrm_old_file.bin RCDATA patch_xfrm_old_file.bin
-
-/* @makedep: patch_xfrm_new_file.bin */
-patch_xfrm_new_file.bin RCDATA patch_xfrm_new_file.bin
-
-/* @makedep: patch_xfrm_patch_file.bin */
-patch_xfrm_patch_file.bin RCDATA patch_xfrm_patch_file.bin
-
-/* Vista and later assume that any executable file containing an installer-related
- * word like "patch" in its name must need admin privileges unless manifested otherwise */
-
-/* @makedep: mspatcha.manifest */
-1 RT_MANIFEST mspatcha.manifest
+void ComputeMD5Hash(const void *data, unsigned int len, unsigned char digest[MD5DIGESTLEN]);
