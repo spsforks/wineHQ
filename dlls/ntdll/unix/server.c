@@ -1239,12 +1239,37 @@ int server_pipe( int fd[2] )
 
 
 /***********************************************************************
+ *           try_dir
+ */
+static int try_dir( const char *name, struct stat *st, int per_user )
+{
+    if (lstat( name, st ) == -1) return 1;
+    if (!S_ISDIR( st->st_mode ))
+    {
+        errno = ENOTDIR;
+        return 2;
+    }
+    if (per_user)
+    {
+        if (st->st_uid != getuid()) return 3;
+        if (st->st_mode & 077) return 4;
+        if ((st->st_mode & 0700) != 0700) return 5;
+    }
+
+    return 0;
+}
+
+
+/***********************************************************************
  *           init_server_dir
  */
 static const char *init_server_dir( dev_t dev, ino_t ino )
 {
-    char *p, *dir;
-    size_t len = sizeof("/server-") + 2 * sizeof(dev) + 2 * sizeof(ino) + 2;
+    char *p, *dir, *server_root_dir;
+    struct stat st;
+    size_t len, len2;
+
+    len = sizeof("/server-") + 2 * sizeof(dev) + 2 * sizeof(ino) + 2;
 
 #ifdef __ANDROID__  /* there's no /tmp dir on Android */
     len += strlen( config_dir ) + sizeof("/.wineserver");
@@ -1252,9 +1277,92 @@ static const char *init_server_dir( dev_t dev, ino_t ino )
     strcpy( dir, config_dir );
     strcat( dir, "/.wineserver/server-" );
 #else
+
+    /*
+     * try following locations for wineserver directory:
+     * - ${XDG_RUNTIME_DIR}/wine
+     * - /run/user/${uid}/wine
+     * - ${TMPDIR}/wine - only if ${TMPDIR} is per-user
+     * - ${TMPDIR}/.wine-${uid}
+     * - /tmp/.wine-${uid}
+     */
+
+    dir = NULL;
+
+    /* try "${XDG_RUNTIME_DIR}/wine" */
+
+    server_root_dir = getenv( "XDG_RUNTIME_DIR" );
+    if (!server_root_dir)
+        goto server_dir_at_run;
+
+    if (try_dir( server_root_dir, &st, 1 ))
+        goto server_dir_at_run;
+
+    len += strlen(server_root_dir) + sizeof("/wine") + 2;
+    if (!(dir = malloc( len ))) fatal_error( "out of memory\n" );
+    sprintf( dir, "%s/wine", server_root_dir );
+    goto server_dir_done;
+
+server_dir_at_run:
+
+    /* try "/run/user/${uid}/wine" */
+
+    len2 = len + sizeof("/run/user/") + sizeof("/wine") + 12;
+    if (!(dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+    sprintf( dir, "%s%u", "/run/user/", getuid() );
+    if (try_dir( dir, &st, 1 ))
+    {
+        free( dir );
+        dir = NULL;
+        goto server_dir_at_env_tmpdir;
+    }
+
+    strcat( dir, "/wine" );
+    len = len2;
+    goto server_dir_done;
+
+server_dir_at_env_tmpdir:
+
+    /* try somewhere in ${TMPDIR}/ */
+
+    server_root_dir = getenv( "TMPDIR" );
+    if (!server_root_dir)
+        goto server_dir_at_tmp;
+
+    if (try_dir( server_root_dir, &st, 0 ))
+        goto server_dir_at_tmp;
+
+    len2 = len + strlen(server_root_dir);
+    if (try_dir( server_root_dir, &st, 1 ))
+    {
+        /* try "${TMPDIR}/.wine-${uid}" because ${TMPDIR} is not per-user */
+
+        len2 += sizeof("/.wine-") + 12;
+        if (!(dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+        sprintf( dir, "%s/.wine-%u", server_root_dir, getuid() );
+    }
+    else
+    {
+        /* try "${TMPDIR}/wine" because ${TMPDIR} is per-user */
+
+        len2 += sizeof("/wine") + 2;
+        if (!(dir = malloc( len2 ))) fatal_error( "out of memory\n" );
+        sprintf( dir, "%s/wine", server_root_dir );
+    }
+
+    len = len2;
+    goto server_dir_done;
+
+server_dir_at_tmp:
+
+    /* try "/tmp/.wine-${uid}" - last resort */
+
     len += sizeof("/tmp/.wine-") + 12;
-    dir = malloc( len );
-    sprintf( dir, "/tmp/.wine-%u/server-", getuid() );
+    if (!(dir = malloc( len ))) fatal_error( "out of memory\n" );
+    sprintf( dir, "/tmp/.wine-%u", getuid() );
+
+server_dir_done:
+    strcat( dir, "/server-" );
 #endif
     p = dir + strlen( dir );
     if (dev != (unsigned long)dev)
