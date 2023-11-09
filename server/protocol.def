@@ -343,6 +343,7 @@ typedef union
         unsigned short vkey;    /* virtual key code */
         unsigned short scan;    /* scan code */
         unsigned int   flags;   /* event flags */
+        unsigned int   noraw;   /* flags to suppress rawinput generation */
         unsigned int   time;    /* event time */
         lparam_t       info;    /* extra info */
     } kbd;
@@ -353,6 +354,7 @@ typedef union
         int            y;
         unsigned int   data;    /* mouse data */
         unsigned int   flags;   /* event flags */
+        unsigned int   noraw;   /* flags to suppress rawinput generation */
         unsigned int   time;    /* event time */
         lparam_t       info;    /* extra info */
     } mouse;

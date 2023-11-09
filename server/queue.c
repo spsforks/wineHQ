@@ -1864,6 +1864,7 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
     unsigned int i, time, flags;
     struct hw_msg_source source = { IMDT_MOUSE, origin };
     int wait = 0, x, y;
+    unsigned int raw_flags;
 
     static const unsigned int messages[] =
     {
@@ -1884,6 +1885,7 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
 
     desktop->cursor.last_change = get_tick_count();
     flags = input->mouse.flags;
+    raw_flags = (input->mouse.flags & ~input->mouse.noraw);
     time  = input->mouse.time;
     if (!time) time = desktop->cursor.last_change;
 
@@ -1896,6 +1898,10 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
             if (flags & ~(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE) &&
                 x == desktop->cursor.x && y == desktop->cursor.y)
                 flags &= ~MOUSEEVENTF_MOVE;
+
+            /* rawinput does not currently support absolute events which
+             * use (65535,65535) coordinate space */
+            raw_flags &= ~MOUSEEVENTF_ABSOLUTE;
         }
         else
         {
@@ -1909,7 +1915,7 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
         y = desktop->cursor.y;
     }
 
-    if ((foreground = get_foreground_thread( desktop, win )))
+    if (raw_flags && (foreground = get_foreground_thread( desktop, win )))
     {
         memset( &raw_msg, 0, sizeof(raw_msg) );
         raw_msg.foreground = foreground;
@@ -1921,10 +1927,13 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
         msg_data = &raw_msg.data;
         msg_data->info                = input->mouse.info;
         msg_data->size                = sizeof(*msg_data);
-        msg_data->flags               = flags;
+        msg_data->flags               = raw_flags;
+        if (raw_flags & MOUSEEVENTF_MOVE)
+        {
+            msg_data->rawinput.mouse.x = x - desktop->cursor.x;
+            msg_data->rawinput.mouse.y = y - desktop->cursor.y;
+        }
         msg_data->rawinput.type       = RIM_TYPEMOUSE;
-        msg_data->rawinput.mouse.x    = x - desktop->cursor.x;
-        msg_data->rawinput.mouse.y    = y - desktop->cursor.y;
         msg_data->rawinput.mouse.data = input->mouse.data;
 
         enum_processes( queue_rawinput_message, &raw_msg );
@@ -1980,6 +1989,7 @@ static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, c
     unsigned char vkey = input->kbd.vkey;
     unsigned int message_code, time;
     int wait;
+    unsigned int raw_flags;
 
     if (!(time = input->kbd.time)) time = get_tick_count();
 
@@ -2047,7 +2057,8 @@ static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, c
         break;
     }
 
-    if ((foreground = get_foreground_thread( desktop, win )))
+    raw_flags = (input->kbd.flags & ~input->kbd.noraw);
+    if (raw_flags && (foreground = get_foreground_thread( desktop, win )))
     {
         memset( &raw_msg, 0, sizeof(raw_msg) );
         raw_msg.foreground = foreground;
@@ -2059,7 +2070,7 @@ static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, c
         msg_data = &raw_msg.data;
         msg_data->info                 = input->kbd.info;
         msg_data->size                 = sizeof(*msg_data);
-        msg_data->flags                = input->kbd.flags;
+        msg_data->flags                = raw_flags;
         msg_data->rawinput.type        = RIM_TYPEKEYBOARD;
         msg_data->rawinput.kbd.message = message_code;
         msg_data->rawinput.kbd.vkey    = vkey;
