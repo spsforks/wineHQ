@@ -128,11 +128,14 @@ static bool rawinput_from_hardware_message( RAWINPUT *rawinput, const struct har
             else if (msg_data->rawinput.mouse.data == XBUTTON2)
                 rawinput->data.mouse.usButtonFlags |= RI_MOUSE_BUTTON_5_UP;
         }
-
         rawinput->data.mouse.ulRawButtons       = 0;
         rawinput->data.mouse.lLastX             = msg_data->rawinput.mouse.x;
         rawinput->data.mouse.lLastY             = msg_data->rawinput.mouse.y;
         rawinput->data.mouse.ulExtraInformation = msg_data->info;
+
+        TRACE("x=%d y=%d buttons=%08x flags=%08x\n",
+            (int)rawinput->data.mouse.lLastX, (int)rawinput->data.mouse.lLastY,
+            rawinput->data.mouse.usButtonFlags, msg_data->flags);
     }
     else if (msg_data->rawinput.type == RIM_TYPEKEYBOARD)
     {
@@ -786,7 +789,8 @@ BOOL process_rawinput_message( MSG *msg, UINT hw_id, const struct hardware_msg_d
     else
     {
         thread_data->buffer->header.dwSize = RAWINPUT_BUFFER_SIZE;
-        if (!rawinput_from_hardware_message( thread_data->buffer, msg_data )) return FALSE;
+        if (thread_data->hw_id != hw_id)
+            if (!rawinput_from_hardware_message( thread_data->buffer, msg_data )) return FALSE;
         thread_data->hw_id = hw_id;
         msg->lParam = (LPARAM)hw_id;
     }
