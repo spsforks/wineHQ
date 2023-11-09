@@ -75,7 +75,7 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
           hwnd, wl_fixed_to_double(sx), wl_fixed_to_double(sy),
           screen_x, screen_y);
 
-    __wine_send_input(hwnd, &input, NULL);
+    __wine_send_input(hwnd, &input, NULL, 0);
 }
 
 static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
@@ -154,7 +154,7 @@ static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
 
     TRACE("hwnd=%p button=%#x state=%u\n", hwnd, button, state);
 
-    __wine_send_input(hwnd, &input, NULL);
+    __wine_send_input(hwnd, &input, NULL, 0);
 }
 
 static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
@@ -201,7 +201,7 @@ static void pointer_handle_axis_discrete(void *data, struct wl_pointer *wl_point
 
     TRACE("hwnd=%p axis=%u discrete=%d\n", hwnd, axis, discrete);
 
-    __wine_send_input(hwnd, &input, NULL);
+    __wine_send_input(hwnd, &input, NULL, 0);
 }
 
 static const struct wl_pointer_listener pointer_listener =

@@ -3416,7 +3416,7 @@ LRESULT send_internal_message_timeout( DWORD dest_pid, DWORD dest_tid,
 /***********************************************************************
  *		send_hardware_message
  */
-NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput, UINT flags )
+NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput, UINT flags, UINT noraw_flags )
 {
     struct send_message_info info;
     int prev_x, prev_y, new_x, new_y;
@@ -3461,6 +3461,7 @@ NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, const RAWINPUT *r
             req->input.mouse.y     = input->mi.dy;
             req->input.mouse.data  = input->mi.mouseData;
             req->input.mouse.flags = input->mi.dwFlags;
+            req->input.mouse.noraw = noraw_flags;
             req->input.mouse.time  = input->mi.time;
             req->input.mouse.info  = input->mi.dwExtraInfo;
             affects_key_state = !!(input->mi.dwFlags & (MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP |
@@ -3472,6 +3473,7 @@ NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, const RAWINPUT *r
             req->input.kbd.vkey  = input->ki.wVk;
             req->input.kbd.scan  = input->ki.wScan;
             req->input.kbd.flags = input->ki.dwFlags;
+            req->input.kbd.noraw = noraw_flags;
             req->input.kbd.time  = input->ki.time;
             req->input.kbd.info  = input->ki.dwExtraInfo;
             affects_key_state = TRUE;
