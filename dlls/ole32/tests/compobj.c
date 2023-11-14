@@ -975,6 +975,16 @@ static DWORD WINAPI MessageFilter_MessagePending(
     return PENDINGMSG_WAITNOPROCESS;
 }
 
+static DWORD WINAPI MessageFilter_MessagePending_cancel(
+  IMessageFilter *iface,
+  HTASK threadIDCallee,
+  DWORD dwTickCount,
+  DWORD dwPendingType)
+{
+    trace("MessagePending(cancel)\n");
+    return PENDINGMSG_CANCELCALL;
+}
+
 static const IMessageFilterVtbl MessageFilter_Vtbl =
 {
     MessageFilter_QueryInterface,
@@ -986,6 +996,18 @@ static const IMessageFilterVtbl MessageFilter_Vtbl =
 };
 
 static IMessageFilter MessageFilter = { &MessageFilter_Vtbl };
+
+static const IMessageFilterVtbl MessageFilter_Vtbl_cancel =
+{
+    MessageFilter_QueryInterface,
+    MessageFilter_AddRef,
+    MessageFilter_Release,
+    MessageFilter_HandleInComingCall,
+    MessageFilter_RetryRejectedCall,
+    MessageFilter_MessagePending_cancel
+};
+
+static IMessageFilter MessageFilter_cancel = { &MessageFilter_Vtbl_cancel };
 
 static void test_CoRegisterMessageFilter(void)
 {
@@ -2611,6 +2633,22 @@ static DWORD CALLBACK post_message_thread(LPVOID arg)
     return 0;
 }
 
+static DWORD CALLBACK post_input_later_thread(LPVOID arg)
+{
+    HWND hWnd = arg;
+    Sleep(50);
+    PostMessageA(hWnd, WM_CHAR, VK_ESCAPE, 0);
+    return 0;
+}
+
+static DWORD CALLBACK post_dde_later_thread(LPVOID arg)
+{
+    HWND hWnd = arg;
+    Sleep(50);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    return 0;
+}
+
 static const char cls_name[] = "cowait_test_class";
 
 static UINT cowait_msgs[100], cowait_msgs_first, cowait_msgs_last;
@@ -2668,6 +2706,18 @@ static LRESULT CALLBACK cowait_window_proc(HWND hwnd, UINT msg, WPARAM wparam, L
         cowait_msgs[cowait_msgs_last++] = msg;
     if(msg == WM_DDE_FIRST)
         return 6;
+    if(msg == WM_DDE_EXECUTE && lparam)
+    {
+        const char* command = (const char *)GlobalLock((HGLOBAL)lparam);
+        if(strcmp(command,"[apc]") == 0)
+            QueueUserAPC(apc_test_proc, GetCurrentThread(), 0);
+        else if(strcmp(command,"[postmessage]") == 0)
+            PostMessageA(hwnd,msg,wparam,lparam); /* post the same message again (trigges livelock) */
+        else if(strcmp(command,"[semaphore]") == 0)
+            ReleaseSemaphore(GetPropA(hwnd,"semaphore"), 1, NULL);
+        GlobalUnlock((HGLOBAL)lparam);
+        return 0;
+    }
     return DefWindowProcA(hwnd, msg, wparam, lparam);
 }
 
@@ -2749,6 +2799,28 @@ static DWORD CALLBACK test_CoWaitForMultipleHandles_thread(LPVOID arg)
     success = PeekMessageA(&msg, NULL, uMSG, uMSG, PM_REMOVE);
     ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
 
+    hr = CoRegisterMessageFilter(&MessageFilter_cancel, NULL);
+    ok(hr == S_OK, "CoRegisterMessageFilter failed: %08lx\n", hr);
+
+    /* a message which arrives during the wait calls IMessageFilter::PendingMessage,
+     * which can cancel the wait (without pumping the message) */
+    thread = CreateThread(NULL, 0, post_input_later_thread, hWnd, 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 200, 2, handles, &index);
+    ok(hr == RPC_E_CALL_CANCELED, "expected RPC_E_CALL_CANCELED, got 0x%08lx\n", hr);
+    success = PeekMessageA(&msg, hWnd, WM_CHAR, WM_CHAR, PM_REMOVE);
+    ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+    CloseHandle(thread);
+
+    /* DDE/RPC messages shouldn't go to IMessageFilter::PendingMessage */
+    thread = CreateThread(NULL, 0, post_dde_later_thread, hWnd, 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 200, 1, &thread, &index);
+    todo_wine ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr); /* wine gets RPC_E_CALL_CANCELED, because of MessageFilter_cancel */
+    ok(index == WAIT_OBJECT_0, "post_dde_later_thread didn't finish\n");
+    CloseHandle(thread);
+
+    hr = CoRegisterMessageFilter(NULL, NULL);
+    ok(hr == S_OK, "CoRegisterMessageFilter failed: %08lx\n", hr);
+
     DestroyWindow(hWnd);
     CoUninitialize();
 
@@ -2788,6 +2860,15 @@ static DWORD CALLBACK test_CoWaitForMultipleHandles_thread(LPVOID arg)
     return 0;
 }
 
+static HGLOBAL globalalloc_string(const char *s) {
+    UINT len = strlen(s);
+    HGLOBAL ret = GlobalAlloc(GMEM_FIXED,len+1);
+    void *ptr = GlobalLock(ret);
+    strcpy(ptr,s);
+    GlobalUnlock(ret);
+    return ret;
+}
+
 static void test_CoWaitForMultipleHandles(void)
 {
     HANDLE handles[2], thread;
@@ -2797,6 +2878,10 @@ static void test_CoWaitForMultipleHandles(void)
     HRESULT hr;
     HWND hWnd;
     MSG msg;
+    HGLOBAL execute_apc = globalalloc_string("[apc]");
+    HGLOBAL execute_postmessage = globalalloc_string("[postmessage]");
+    HGLOBAL execute_semaphore = globalalloc_string("[semaphore]");
+    DWORD start_time;
 
     hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     ok(hr == S_OK, "CoInitializeEx failed with error 0x%08lx\n", hr);
@@ -2818,6 +2903,8 @@ static void test_CoWaitForMultipleHandles(void)
     ok(handles[0] != 0, "CreateSemaphoreA failed %lu\n", GetLastError());
     handles[1] = CreateSemaphoreA(NULL, 1, 1, NULL);
     ok(handles[1] != 0, "CreateSemaphoreA failed %lu\n", GetLastError());
+
+    SetPropA(hWnd,"semaphore",handles[0]);
 
     /* test without flags */
 
@@ -2867,6 +2954,34 @@ static void test_CoWaitForMultipleHandles(void)
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
     ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
 
+    /* test CoWaitForMultipleHandles stops pumping messages as soon as its handles are signaled */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    hr = CoWaitForMultipleHandles(0, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_FIRST); /* WM_DDE_EXECUTE already pumped*/
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
+
+    /* test CoWaitForMultipleHandles will keep working past the timeout if the queue
+     * still has messages (this is ensured by posting a message that, when dispatched,
+     * just posts another identical message, so the queue can *never* be drained).
+     * but it will still exit with success once the handles become signaled */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_postmessage);
+    start_time = GetTickCount();
+    /* if this thread is disabled, the call to CoWaitForMultipleHandles will livelock forever, on both windows and wine */
+    thread = CreateThread(NULL, 0, release_semaphore_thread, handles[0], 0, &tid);
+    hr = CoWaitForMultipleHandles(0, 50, 1, handles, &index);
+    ok(GetTickCount() - start_time >= 200, "CoWaitForMultipleHandles exited too soon\n");
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_EXECUTE); /* each pumped execute_postmessage added one more back */
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
+    CloseHandle(thread);
+
     /* test PostMessageA/SendMessageA from a different thread */
 
     index = 0xdeadbeef;
@@ -2915,6 +3030,46 @@ static void test_CoWaitForMultipleHandles(void)
     ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
 
     ReleaseSemaphore(handles[0], 1, NULL);
+
+    /* COWAIT_ALL will get time out even if the handles became signaled while it waits
+     * in MsgWaitForMultipleObjects(...,MWIO_WAITALL), as it demands a posted message too */
+    index = 0xdeadbeef;
+    thread = CreateThread(NULL, 0, release_semaphore_thread, handles[1], 0, &tid);
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 500, 2, handles, &index);
+    ok(hr == RPC_S_CALLPENDING, "expected RPC_S_CALLPENDING, got 0x%08lx\n", hr);
+
+    /* but will succeed immediately if the handles are already available
+     * i.e. it checks the handles first before calling MsgWaitForMultipleObjects */
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 0, 2, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+
+    ReleaseSemaphore(handles[1], 1, NULL);
+
+    /* COWAIT_ALL will pump message which are already in the queue,
+     * (but no longer QS_ALLPOSTMESSAGE), before blocking in MsgWaitForMultipleObjectsEx */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    PeekMessageA(&msg, hWnd, 0, 0, PM_NOREMOVE); // clear QS_ALLPOSTMESSAGE
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
+
+    ReleaseSemaphore(handles[1], 1, NULL);
+
+    /* test early completion (rather than blocking in MsgWaitForMultipleObjectsEx again)
+     * if pumping a message results in all handles becoming signaled) */
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_semaphore);
+    hr = CoWaitForMultipleHandles(COWAIT_WAITALL, 50, 2, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == 0, "expected index 0, got %lu\n", index);
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump any messages\n");
+
+    ReleaseSemaphore(handles[0], 1, NULL);
     ReleaseSemaphore(handles[1], 1, NULL);
 
     /* test with COWAIT_ALERTABLE */
@@ -2952,6 +3107,16 @@ static void test_CoWaitForMultipleHandles(void)
     ok(index == WAIT_IO_COMPLETION, "expected index WAIT_IO_COMPLETION, got %lu\n", index);
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
     ok(success, "CoWaitForMultipleHandles unexpectedly pumped messages\n");
+
+    index = 0xdeadbeef;
+    PostMessageA(hWnd, WM_DDE_EXECUTE, 0, (LPARAM)execute_apc);
+    PostMessageA(hWnd, WM_DDE_FIRST, 0, 0);
+    hr = CoWaitForMultipleHandles(COWAIT_ALERTABLE, 50, 1, handles, &index);
+    ok(hr == S_OK, "expected S_OK, got 0x%08lx\n", hr);
+    ok(index == WAIT_IO_COMPLETION, "expected index WAIT_IO_COMPLETION, got %lu\n", index);
+    cowait_msgs_expect_queued(hWnd,WM_DDE_FIRST); /* WM_DDE_EXECUTE already pumped*/
+    success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE);
+    ok(!success, "CoWaitForMultipleHandles didn't pump enough messages\n");
 
     /* test with COWAIT_INPUTAVAILABLE (semaphores are still locked) */
 
@@ -3165,6 +3330,10 @@ static void test_CoWaitForMultipleHandles(void)
 
     CoUninitialize();
 
+    RemovePropA(hWnd,"semaphore");
+    GlobalFree(execute_apc);
+    GlobalFree(execute_postmessage);
+    GlobalFree(execute_semaphore);
     CloseHandle(handles[0]);
     CloseHandle(handles[1]);
     DestroyWindow(hWnd);
