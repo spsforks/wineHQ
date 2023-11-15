@@ -33,6 +33,8 @@ typedef UINT32 wg_major_type;
 enum wg_major_type
 {
     WG_MAJOR_TYPE_UNKNOWN = 0,
+    WG_MAJOR_TYPE_UNKNOWN_AUDIO,
+    WG_MAJOR_TYPE_UNKNOWN_VIDEO,
     WG_MAJOR_TYPE_AUDIO,
     WG_MAJOR_TYPE_AUDIO_MPEG1,
     WG_MAJOR_TYPE_AUDIO_MPEG4,
@@ -95,6 +97,19 @@ struct wg_format
 
     union
     {
+        struct
+        {
+            uint32_t channels;
+            uint32_t rate;
+            char caps[512];
+        } unknown_audio;
+        struct
+        {
+            int32_t width, height;
+            uint32_t fps_n, fps_d;
+            char caps[512];
+        } unknown_video;
+
         struct
         {
             wg_audio_format format;

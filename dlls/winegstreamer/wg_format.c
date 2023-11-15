@@ -265,6 +265,25 @@ static void wg_format_from_caps_audio_wma(struct wg_format *format, const GstCap
     gst_buffer_unmap(codec_data, &map);
 }
 
+static void wg_format_from_caps_unknown_audio(struct wg_format *format, const GstCaps *caps,
+        const GstAudioInfo *info)
+{
+    gchar *str;
+    gint len;
+
+    format->major_type = WG_MAJOR_TYPE_UNKNOWN_AUDIO;
+    format->u.unknown_audio.rate = info->rate;
+    format->u.unknown_audio.channels = info->channels;
+
+    str = gst_caps_to_string(caps);
+    len = strlen(str) + 1;
+    if (len >= ARRAY_SIZE(format->u.unknown_audio.caps))
+        GST_FIXME("wg_format.unknown_audio.caps buffer is too small, need %u bytes", len);
+    else
+        memcpy(format->u.unknown_audio.caps, str, len);
+    g_free(str);
+}
+
 static void wg_format_from_caps_video_cinepak(struct wg_format *format, const GstCaps *caps)
 {
     const GstStructure *structure = gst_caps_get_structure(caps, 0);
@@ -390,6 +409,27 @@ static void wg_format_from_caps_video_mpeg1(struct wg_format *format, const GstC
     format->u.video_mpeg1.fps_d = fps_d;
 }
 
+static void wg_format_from_caps_unknown_video(struct wg_format *format, const GstCaps *caps,
+        const GstVideoInfo *info)
+{
+    gchar *str;
+    gint len;
+
+    format->major_type = WG_MAJOR_TYPE_UNKNOWN_VIDEO;
+    format->u.unknown_video.width = info->width;
+    format->u.unknown_video.height = info->height;
+    format->u.unknown_video.fps_n = info->fps_n;
+    format->u.unknown_video.fps_d = info->fps_d;
+
+    str = gst_caps_to_string(caps);
+    len = strlen(str) + 1;
+    if (len >= ARRAY_SIZE(format->u.unknown_video.caps))
+        GST_FIXME("wg_format.unknown_video.caps buffer is too small, need %u bytes", len);
+    else
+        memcpy(format->u.unknown_video.caps, str, len);
+    g_free(str);
+}
+
 void wg_format_from_caps(struct wg_format *format, const GstCaps *caps)
 {
     const GstStructure *structure = gst_caps_get_structure(caps, 0);
@@ -408,6 +448,11 @@ void wg_format_from_caps(struct wg_format *format, const GstCaps *caps)
             wg_format_from_caps_audio_mpeg1(format, caps);
         else if (!strcmp(name, "audio/x-wma"))
             wg_format_from_caps_audio_wma(format, caps);
+        else
+        {
+            GST_FIXME("Using fallback for unknown audio caps %" GST_PTR_FORMAT ".", caps);
+            wg_format_from_caps_unknown_audio(format, caps, &audio_info);
+        }
     }
     else if (g_str_has_prefix(name, "video/") && gst_video_info_from_caps(&video_info, caps))
     {
@@ -419,6 +464,11 @@ void wg_format_from_caps(struct wg_format *format, const GstCaps *caps)
             wg_format_from_caps_video_wmv(format, caps);
         else if (!strcmp(name, "video/mpeg") && gst_structure_get_boolean(structure, "parsed", &parsed) && parsed)
             wg_format_from_caps_video_mpeg1(format, caps);
+        else
+        {
+            GST_FIXME("Using fallback for unknown video caps %" GST_PTR_FORMAT ".", caps);
+            wg_format_from_caps_unknown_video(format, caps, &video_info);
+        }
     }
     else
     {
@@ -847,6 +897,10 @@ GstCaps *wg_format_to_caps(const struct wg_format *format)
     {
         case WG_MAJOR_TYPE_UNKNOWN:
             return gst_caps_new_any();
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+            return gst_caps_from_string(format->u.unknown_audio.caps);
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
+            return gst_caps_from_string(format->u.unknown_video.caps);
         case WG_MAJOR_TYPE_AUDIO:
             return wg_format_to_caps_audio(format);
         case WG_MAJOR_TYPE_AUDIO_MPEG1:
@@ -888,6 +942,8 @@ bool wg_format_compare(const struct wg_format *a, const struct wg_format *b)
             GST_FIXME("Format %u not implemented!", a->major_type);
             /* fallthrough */
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
             return false;
 
         case WG_MAJOR_TYPE_AUDIO:

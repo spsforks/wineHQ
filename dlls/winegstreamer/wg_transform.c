@@ -400,6 +400,8 @@ NTSTATUS wg_transform_create(void *args)
 
     switch (input_format.major_type)
     {
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
         case WG_MAJOR_TYPE_VIDEO_H264:
         case WG_MAJOR_TYPE_AUDIO_MPEG1:
         case WG_MAJOR_TYPE_AUDIO_MPEG4:
@@ -465,6 +467,8 @@ NTSTATUS wg_transform_create(void *args)
             break;
 
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
         case WG_MAJOR_TYPE_AUDIO_MPEG1:
         case WG_MAJOR_TYPE_AUDIO_MPEG4:
         case WG_MAJOR_TYPE_AUDIO_WMA:

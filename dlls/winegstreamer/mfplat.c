@@ -570,6 +570,8 @@ IMFMediaType *mf_media_type_from_wg_format(const struct wg_format *format)
             FIXME("Format %u not implemented!\n", format->major_type);
             /* fallthrough */
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
             return NULL;
 
         case WG_MAJOR_TYPE_AUDIO:

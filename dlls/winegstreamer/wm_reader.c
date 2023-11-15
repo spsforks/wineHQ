@@ -1661,6 +1661,10 @@ static const char *get_major_type_string(enum wg_major_type type)
             return "mpeg1-video";
         case WG_MAJOR_TYPE_UNKNOWN:
             return "unknown";
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+            return "unknown-audio";
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
+            return "unknown-video";
     }
     assert(0);
     return NULL;
@@ -2033,6 +2037,8 @@ static HRESULT WINAPI reader_GetOutputFormat(IWMSyncReader2 *iface,
             FIXME("Format %u not implemented!\n", format.major_type);
             break;
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
             break;
     }
 
@@ -2077,6 +2083,8 @@ static HRESULT WINAPI reader_GetOutputFormatCount(IWMSyncReader2 *iface, DWORD o
             /* fallthrough */
         case WG_MAJOR_TYPE_AUDIO:
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
             *count = 1;
             break;
     }

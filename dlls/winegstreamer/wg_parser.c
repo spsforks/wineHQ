@@ -133,6 +133,8 @@ static struct wg_parser_stream *get_stream(wg_parser_stream_t stream)
 static bool format_is_compressed(struct wg_format *format)
 {
     return format->major_type != WG_MAJOR_TYPE_UNKNOWN
+            && format->major_type != WG_MAJOR_TYPE_UNKNOWN_AUDIO
+            && format->major_type != WG_MAJOR_TYPE_UNKNOWN_VIDEO
             && format->major_type != WG_MAJOR_TYPE_VIDEO
             && format->major_type != WG_MAJOR_TYPE_AUDIO;
 }
