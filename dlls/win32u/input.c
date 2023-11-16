@@ -599,10 +599,11 @@ BOOL WINAPI NtUserAttachThreadInput( DWORD from, DWORD to, BOOL attach )
  *           __wine_send_input  (win32u.@)
  *
  * Internal SendInput function to allow the graphics driver to inject real events.
+ *
  */
-BOOL WINAPI __wine_send_input( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput )
+BOOL WINAPI __wine_send_input( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput, UINT noraw_flags )
 {
-    return set_ntstatus( send_hardware_message( hwnd, input, rawinput, 0 ));
+    return set_ntstatus( send_hardware_message( hwnd, input, rawinput, 0, noraw_flags ));
 }
 
 /***********************************************************************
@@ -684,7 +685,7 @@ UINT WINAPI NtUserSendInput( UINT count, INPUT *inputs, int size )
             update_mouse_coords( &input );
             /* fallthrough */
         case INPUT_KEYBOARD:
-            status = send_hardware_message( 0, &input, NULL, SEND_HWMSG_INJECTED );
+            status = send_hardware_message( 0, &input, NULL, SEND_HWMSG_INJECTED, 0 );
             break;
         case INPUT_HARDWARE:
             RtlSetLastWin32Error( ERROR_CALL_NOT_IMPLEMENTED );

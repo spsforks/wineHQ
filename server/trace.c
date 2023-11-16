@@ -449,15 +449,16 @@ static void dump_hw_input( const char *prefix, const hw_input_t *input )
     switch (input->type)
     {
     case INPUT_MOUSE:
-        fprintf( stderr, "%s{type=MOUSE,x=%d,y=%d,data=%08x,flags=%08x,time=%u",
+        fprintf( stderr, "%s{type=MOUSE,x=%d,y=%d,data=%08x,flags=%08x,noraw=%08x,time=%u",
                  prefix, input->mouse.x, input->mouse.y, input->mouse.data, input->mouse.flags,
-                 input->mouse.time );
+                 input->mouse.noraw, input->mouse.time );
         dump_uint64( ",info=", &input->mouse.info );
         fputc( '}', stderr );
         break;
     case INPUT_KEYBOARD:
-        fprintf( stderr, "%s{type=KEYBOARD,vkey=%04hx,scan=%04hx,flags=%08x,time=%u",
-                 prefix, input->kbd.vkey, input->kbd.scan, input->kbd.flags, input->kbd.time );
+        fprintf( stderr, "%s{type=KEYBOARD,vkey=%04hx,scan=%04hx,flags=%08x,noraw=%08x,time=%u",
+                 prefix, input->kbd.vkey, input->kbd.scan, input->kbd.flags, input->kbd.noraw,
+                 input->kbd.time );
         dump_uint64( ",info=", &input->kbd.info );
         fputc( '}', stderr );
         break;

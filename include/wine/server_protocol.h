@@ -327,6 +327,7 @@ typedef union
         unsigned short vkey;
         unsigned short scan;
         unsigned int   flags;
+        unsigned int   noraw;
         unsigned int   time;
         lparam_t       info;
     } kbd;
@@ -337,6 +338,7 @@ typedef union
         int            y;
         unsigned int   data;
         unsigned int   flags;
+        unsigned int   noraw;
         unsigned int   time;
         lparam_t       info;
     } mouse;

@@ -132,7 +132,7 @@ extern void track_mouse_menu_bar( HWND hwnd, INT ht, int x, int y ) DECLSPEC_HID
 extern BOOL kill_system_timer( HWND hwnd, UINT_PTR id ) DECLSPEC_HIDDEN;
 extern BOOL reply_message_result( LRESULT result ) DECLSPEC_HIDDEN;
 extern NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput,
-                                       UINT flags ) DECLSPEC_HIDDEN;
+                                       UINT flags, UINT noraw_flags ) DECLSPEC_HIDDEN;
 extern LRESULT send_internal_message_timeout( DWORD dest_pid, DWORD dest_tid, UINT msg, WPARAM wparam,
                                               LPARAM lparam, UINT flags, UINT timeout,
                                               PDWORD_PTR res_ptr ) DECLSPEC_HIDDEN;

@@ -148,8 +148,6 @@ static const char * event_names[MAX_EVENT_HANDLERS] =
 /* is someone else grabbing the keyboard, for example the WM, when manipulating the window */
 BOOL keyboard_grabbed = FALSE;
 
-int xinput2_opcode = 0;
-
 /* return the name of an X event */
 static const char *dbgstr_event( int type )
 {
@@ -265,46 +263,6 @@ enum event_merge_action
 };
 
 /***********************************************************************
- *           merge_raw_motion_events
- */
-#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
-static enum event_merge_action merge_raw_motion_events( XIRawEvent *prev, XIRawEvent *next )
-{
-    int i, j, k;
-    unsigned char mask;
-
-    if (!prev->valuators.mask_len) return MERGE_HANDLE;
-    if (!next->valuators.mask_len) return MERGE_HANDLE;
-
-    mask = prev->valuators.mask[0] | next->valuators.mask[0];
-    if (mask == next->valuators.mask[0])  /* keep next */
-    {
-        for (i = j = k = 0; i < 8; i++)
-        {
-            if (XIMaskIsSet( prev->valuators.mask, i ))
-                next->valuators.values[j] += prev->valuators.values[k++];
-            if (XIMaskIsSet( next->valuators.mask, i )) j++;
-        }
-        TRACE( "merging duplicate GenericEvent\n" );
-        return MERGE_DISCARD;
-    }
-    if (mask == prev->valuators.mask[0])  /* keep prev */
-    {
-        for (i = j = k = 0; i < 8; i++)
-        {
-            if (XIMaskIsSet( next->valuators.mask, i ))
-                prev->valuators.values[j] += next->valuators.values[k++];
-            if (XIMaskIsSet( prev->valuators.mask, i )) j++;
-        }
-        TRACE( "merging duplicate GenericEvent\n" );
-        return MERGE_IGNORE;
-    }
-    /* can't merge events with disjoint masks */
-    return MERGE_HANDLE;
-}
-#endif
-
-/***********************************************************************
  *           merge_events
  *
  * Try to merge 2 consecutive events.
@@ -338,25 +296,6 @@ static enum event_merge_action merge_events( XEvent *prev, XEvent *next )
                 return MERGE_DISCARD;
             }
             break;
-#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
-        case GenericEvent:
-            if (next->xcookie.extension != xinput2_opcode) break;
-            if (next->xcookie.evtype != XI_RawMotion) break;
-            if (x11drv_thread_data()->warp_serial) break;
-            return MERGE_KEEP;
-        }
-        break;
-    case GenericEvent:
-        if (prev->xcookie.extension != xinput2_opcode) break;
-        if (prev->xcookie.evtype != XI_RawMotion) break;
-        switch (next->type)
-        {
-        case GenericEvent:
-            if (next->xcookie.extension != xinput2_opcode) break;
-            if (next->xcookie.evtype != XI_RawMotion) break;
-            if (x11drv_thread_data()->warp_serial) break;
-            return merge_raw_motion_events( prev->xcookie.data, next->xcookie.data );
-#endif
         }
         break;
     }
@@ -784,6 +723,7 @@ static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *xev )
     /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
     if (event->mode == NotifyGrab || event->mode == NotifyUngrab) return FALSE;
 
+    enable_xinput2();
     xim_set_focus( hwnd, TRUE );
 
     if (use_take_focus) return TRUE;
@@ -807,6 +747,7 @@ static void focus_out( Display *display , HWND hwnd )
  {
     if (xim_in_compose_mode()) return;
 
+    disable_xinput2();
     x11drv_thread_data()->last_focus = hwnd;
     xim_set_focus( hwnd, FALSE );
 

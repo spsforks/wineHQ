@@ -1132,7 +1132,7 @@ static void X11DRV_send_keyboard_input( HWND hwnd, WORD vkey, WORD scan, UINT fl
     input.ki.time        = time;
     input.ki.dwExtraInfo = 0;
 
-    __wine_send_input( hwnd, &input, NULL );
+    __wine_send_input( hwnd, &input, NULL, 0 );
 }
 
 

@@ -252,7 +252,7 @@ static void hid_device_queue_input( DEVICE_OBJECT *device, HID_XFER_PACKET *pack
             input.hi.uMsg = WM_INPUT;
             input.hi.wParamH = 0;
             input.hi.wParamL = 0;
-            __wine_send_input( 0, &input, rawinput );
+            __wine_send_input( 0, &input, rawinput, 0 );
 
             free( rawinput );
         }
