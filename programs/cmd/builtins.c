@@ -2818,9 +2818,24 @@ static int evaluate_if_comparison(const WCHAR *leftOperand, const WCHAR *operato
     return -1;
 }
 
+static void do_delayed_expansion(WCHAR *p)
+{
+  /* Perform delayed substitution after the if clause is parsed */
+  if (!delayedsubst) return;
+  for (p = wcschr(p, '!'); p; p = wcschr(p, '!'))
+    WCMD_expand_envvar(p, '!');
+}
+
+static void expand_first_param(WCHAR *dst, WCHAR *src, int negate)
+{
+  wcscpy(dst, WCMD_parameter(src, 1 + negate, NULL, FALSE, FALSE));
+  do_delayed_expansion(dst);
+}
+
 int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
 {
   WCHAR condition[MAX_PATH];
+  WCHAR param[MAXSTRING];
   int caseInsensitive = (wcsstr(quals, L"/I") != NULL);
 
   *negate = !lstrcmpiW(param1,L"not");
@@ -2828,9 +2843,10 @@ int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
   WINE_TRACE("Condition: %s\n", wine_dbgstr_w(condition));
 
   if (!lstrcmpiW(condition, L"errorlevel")) {
-    WCHAR *param = WCMD_parameter(p, 1+(*negate), NULL, FALSE, FALSE);
     WCHAR *endptr;
-    long int param_int = wcstol(param, &endptr, 10);
+    long int param_int;
+    expand_first_param(param, p, *negate);
+    param_int = wcstol(param, &endptr, 10);
     if (*endptr) goto syntax_err;
     *test = ((long int)errorlevel >= param_int);
     WCMD_parameter(p, 2+(*negate), command, FALSE, FALSE);
@@ -2838,8 +2854,10 @@ int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
   else if (!lstrcmpiW(condition, L"exist")) {
     WIN32_FIND_DATAW fd;
     HANDLE hff;
-    WCHAR *param = WCMD_parameter(p, 1+(*negate), NULL, FALSE, FALSE);
-    int    len = lstrlenW(param);
+    int len;
+
+    expand_first_param(param, p, *negate);
+    len = wcslen(param);
 
     if (!len) {
         *test = FALSE;
@@ -2855,8 +2873,8 @@ int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
     WCMD_parameter(p, 2+(*negate), command, FALSE, FALSE);
   }
   else if (!lstrcmpiW(condition, L"defined")) {
-    *test = (GetEnvironmentVariableW(WCMD_parameter(p, 1+(*negate), NULL, FALSE, FALSE),
-                                    NULL, 0) > 0);
+    expand_first_param(param, p, *negate);
+    *test = (GetEnvironmentVariableW(param, NULL, 0) > 0);
     WCMD_parameter(p, 2+(*negate), command, FALSE, FALSE);
   }
   else { /* comparison operation */
@@ -2883,12 +2901,15 @@ int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
     lstrcpyW(rightOperand, WCMD_parameter(p, 0, &paramStart, TRUE, FALSE));
     if (!*rightOperand)
       goto syntax_err;
+    p = paramStart + lstrlenW(rightOperand);
+
+    do_delayed_expansion(leftOperand);
+    do_delayed_expansion(rightOperand);
 
     *test = evaluate_if_comparison(leftOperand, operator, rightOperand, caseInsensitive);
     if (*test == -1)
       goto syntax_err;
 
-    p = paramStart + lstrlenW(rightOperand);
     WCMD_parameter(p, 0, command, FALSE, FALSE);
   }
 

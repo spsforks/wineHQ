@@ -551,7 +551,7 @@ static inline BOOL WCMD_is_magic_envvar(const WCHAR *s, const WCHAR *magicvar)
  *
  *	Expands environment variables, allowing for WCHARacter substitution
  */
-static WCHAR *WCMD_expand_envvar(WCHAR *start, WCHAR startchar)
+WCHAR *WCMD_expand_envvar(WCHAR *start, WCHAR startchar)
 {
     WCHAR *endOfVar = NULL, *s;
     WCHAR *colonpos = NULL;
@@ -1366,9 +1366,10 @@ void WCMD_execute (const WCHAR *command, const WCHAR *redirects,
     }
 
     /* Expand variables in command line mode only (batch mode will
-       be expanded as the line is read in, except for 'for' loops) */
-    handleExpansion(new_cmd, (context != NULL), delayedsubst);
-    handleExpansion(new_redir, (context != NULL), delayedsubst);
+       be expanded as the line is read in, except for 'for' loops).
+       Do delayed substitution now if it is enabled and the command is not IF. */
+    handleExpansion(new_cmd, context != NULL, delayedsubst && cmd_index != WCMD_IF);
+    handleExpansion(new_redir, context != NULL, delayedsubst && cmd_index != WCMD_IF);
 
 /*
  * Changing default drive has to be handled as a special case, anything

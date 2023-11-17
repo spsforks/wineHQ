@@ -612,6 +612,7 @@ foo
 foo@or_broken@!WINE_FOO!
 foo
 bar@or_broken@foo
+not empty
 0
 0@or_broken@1
 foo
