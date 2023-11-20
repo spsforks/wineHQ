@@ -1793,6 +1793,18 @@ NTSTATUS WINAPI NtResumeProcess( HANDLE handle )
 
 
 /**********************************************************************
+ *           NtGetNextProcess  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtGetNextProcess( HANDLE process, ACCESS_MASK access, ULONG attributes,
+                                  ULONG flags, HANDLE *handle )
+{
+    FIXME( "process %p, access %#x, attributes %#x, flags %#x, handle %p. stub!\n",
+           process, (int)access, (int)attributes, (int)flags, handle );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+/**********************************************************************
  *           NtDebugActiveProcess  (NTDLL.@)
  */
 NTSTATUS WINAPI NtDebugActiveProcess( HANDLE process, HANDLE debug )
