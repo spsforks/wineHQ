@@ -4310,7 +4310,7 @@ static UINT font_GetTextCharsetInfo( PHYSDEV dev, FONTSIGNATURE *fs, DWORD flags
 /*************************************************************
  * font_GetTextExtentExPoint
  */
-static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count, INT *dxs )
+static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count, INT *dxs, INT *maxdxs )
 {
     struct font_physdev *physdev = get_font_dev( dev );
     INT i, pos;
@@ -4319,7 +4319,7 @@ static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count,
     if (!physdev->font)
     {
         dev = GET_NEXT_PHYSDEV( dev, pGetTextExtentExPoint );
-        return dev->funcs->pGetTextExtentExPoint( dev, str, count, dxs );
+        return dev->funcs->pGetTextExtentExPoint( dev, str, count, dxs, maxdxs );
     }
 
     TRACE( "%p, %s, %d\n", physdev->font, debugstr_wn(str, count), count );
@@ -4328,7 +4328,17 @@ static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count,
     for (i = pos = 0; i < count; i++)
     {
         get_glyph_outline( physdev->font, str[i], GGO_METRICS, NULL, &abc, 0, NULL, NULL );
-        pos += abc.abcA + abc.abcB + abc.abcC;
+        if (maxdxs)
+            maxdxs[i] = pos;
+        pos += abc.abcA;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
+        pos += abc.abcC;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
+        pos += abc.abcB;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
         dxs[i] = pos;
     }
     pthread_mutex_unlock( &font_lock );
@@ -4339,7 +4349,7 @@ static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count,
 /*************************************************************
  * font_GetTextExtentExPointI
  */
-static BOOL font_GetTextExtentExPointI( PHYSDEV dev, const WORD *indices, INT count, INT *dxs )
+static BOOL font_GetTextExtentExPointI( PHYSDEV dev, const WORD *indices, INT count, INT *dxs, INT *maxdxs )
 {
     struct font_physdev *physdev = get_font_dev( dev );
     INT i, pos;
@@ -4348,7 +4358,7 @@ static BOOL font_GetTextExtentExPointI( PHYSDEV dev, const WORD *indices, INT co
     if (!physdev->font)
     {
         dev = GET_NEXT_PHYSDEV( dev, pGetTextExtentExPointI );
-        return dev->funcs->pGetTextExtentExPointI( dev, indices, count, dxs );
+        return dev->funcs->pGetTextExtentExPointI( dev, indices, count, dxs, maxdxs );
     }
 
     TRACE( "%p, %p, %d\n", physdev->font, indices, count );
@@ -4358,7 +4368,17 @@ static BOOL font_GetTextExtentExPointI( PHYSDEV dev, const WORD *indices, INT co
     {
         get_glyph_outline( physdev->font, indices[i], GGO_METRICS | GGO_GLYPH_INDEX,
                            NULL, &abc, 0, NULL, NULL );
-        pos += abc.abcA + abc.abcB + abc.abcC;
+        if (maxdxs)
+            maxdxs[i] = pos;
+        pos += abc.abcA;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
+        pos += abc.abcC;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
+        pos += abc.abcB;
+        if (maxdxs && pos > maxdxs[i])
+            maxdxs[i] = pos;
         dxs[i] = pos;
     }
     pthread_mutex_unlock( &font_lock );
@@ -4867,7 +4887,7 @@ static UINT init_font_options(void)
 
 
 /* compute positions for text rendering, in device coords */
-static BOOL get_char_positions( DC *dc, const WCHAR *str, INT count, INT *dx, SIZE *size )
+static BOOL get_char_positions( DC *dc, const WCHAR *str, INT count, INT *dx, INT *maxdx, SIZE *size )
 {
     TEXTMETRICW tm;
     PHYSDEV dev;
@@ -4879,7 +4899,7 @@ static BOOL get_char_positions( DC *dc, const WCHAR *str, INT count, INT *dx, SI
     dev->funcs->pGetTextMetrics( dev, &tm );
 
     dev = GET_DC_PHYSDEV( dc, pGetTextExtentExPoint );
-    if (!dev->funcs->pGetTextExtentExPoint( dev, str, count, dx )) return FALSE;
+    if (!dev->funcs->pGetTextExtentExPoint( dev, str, count, dx, maxdx )) return FALSE;
 
     if (dc->breakExtra || dc->breakRem)
     {
@@ -4905,7 +4925,7 @@ static BOOL get_char_positions( DC *dc, const WCHAR *str, INT count, INT *dx, SI
 }
 
 /* compute positions for text rendering, in device coords */
-static BOOL get_char_positions_indices( DC *dc, const WORD *indices, INT count, INT *dx, SIZE *size )
+static BOOL get_char_positions_indices( DC *dc, const WORD *indices, INT count, INT *dx, INT *maxdx, SIZE *size )
 {
     TEXTMETRICW tm;
     PHYSDEV dev;
@@ -4917,7 +4937,7 @@ static BOOL get_char_positions_indices( DC *dc, const WORD *indices, INT count, 
     dev->funcs->pGetTextMetrics( dev, &tm );
 
     dev = GET_DC_PHYSDEV( dc, pGetTextExtentExPointI );
-    if (!dev->funcs->pGetTextExtentExPointI( dev, indices, count, dx )) return FALSE;
+    if (!dev->funcs->pGetTextExtentExPointI( dev, indices, count, dx, maxdx )) return FALSE;
 
     if (dc->breakExtra || dc->breakRem)
     {
@@ -5317,7 +5337,7 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
     DC *dc;
     int i;
     BOOL ret;
-    INT buffer[256], *pos = dxs;
+    INT buffer[256], buffer2[256], *pos = dxs, *maxpos = buffer2;
 
     if (count < 0) return FALSE;
 
@@ -5334,11 +5354,18 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
         }
     }
 
+    if (count > 256 && !(maxpos = malloc( count * sizeof(*maxpos) )))
+    {
+        if (pos != buffer && pos != dxs) free( pos );
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
 
     if (flags)
-        ret = get_char_positions_indices( dc, str, count, pos, size );
+        ret = get_char_positions_indices( dc, str, count, pos, maxpos, size );
     else
-        ret = get_char_positions( dc, str, count, pos, size );
+        ret = get_char_positions( dc, str, count, pos, maxpos, size );
     if (ret)
     {
         if (dxs || nfit)
@@ -5347,7 +5374,12 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
             {
                 unsigned int dx = abs( INTERNAL_XDSTOWS( dc, pos[i] )) +
                     (i + 1) * dc->attr->char_extra;
-                if (nfit && dx > (unsigned int)max_ext) break;
+                if (nfit)
+                {
+                    unsigned int dx2 = abs( INTERNAL_XDSTOWS( dc, maxpos[i] )) +
+                        (i + 1) * dc->attr->char_extra;
+                    if (dx2 > (unsigned int)max_ext) break;
+                }
 		if (dxs) dxs[i] = dx;
             }
             if (nfit) *nfit = i;
@@ -5357,6 +5389,7 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
         size->cy = abs( INTERNAL_YDSTOWS( dc, size->cy ));
     }
 
+    if (maxpos != buffer2) free( maxpos );
     if (pos != buffer && pos != dxs) free( pos );
     release_dc_ptr( dc );
 
