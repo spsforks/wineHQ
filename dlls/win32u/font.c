@@ -2426,6 +2426,7 @@ static void free_gdi_font( struct gdi_font *font )
     free( font->gm );
     free( font->kern_pairs );
     free( font->gsub_table );
+    free( font->gdef_table );
     free( font );
 }
 
@@ -2831,6 +2832,126 @@ static UINT get_GSUB_vert_glyph( struct gdi_font *font, UINT glyph )
     if (!glyph) return glyph;
     if (!font->gsub_table) return glyph;
     return GSUB_apply_feature( font->gsub_table, font->vert_feature, glyph );
+}
+
+/* structures copied from dlls/gdi32/uniscribe/opentype.c */
+
+enum {BaseGlyph=1, LigatureGlyph, MarkGlyph, ComponentGlyph};
+
+typedef struct {
+    DWORD Version;
+    WORD GlyphClassDef;
+    WORD AttachList;
+    WORD LigCaretList;
+    WORD MarkAttachClassDef;
+} GDEF_Header;
+
+typedef struct {
+    WORD ClassFormat;
+    WORD StartGlyph;
+    WORD GlyphCount;
+    WORD ClassValueArray[1];
+} OT_ClassDefFormat1;
+
+typedef struct {
+    WORD Start;
+    WORD End;
+    WORD Class;
+} OT_ClassRangeRecord;
+
+typedef struct {
+    WORD ClassFormat;
+    WORD ClassRangeCount;
+    OT_ClassRangeRecord ClassRangeRecord[1];
+} OT_ClassDefFormat2;
+
+static void *load_GDEF( struct gdi_font *font )
+{
+    WORD format, offset, count;
+    GDEF_Header hdr;
+    UINT result;
+    size_t size;
+    void *data;
+
+    result = font_funcs->get_font_data( font, MS_GDEF_TAG, 0, &hdr, sizeof(hdr) );
+    if (result == GDI_ERROR) /* no GDEF table present */
+    {
+        TRACE("No GDEF table found\n");
+        return NULL;
+    }
+
+    offset = GET_BE_WORD(hdr.GlyphClassDef);
+    if (!offset)
+        return NULL;
+
+    result = font_funcs->get_font_data( font, MS_GDEF_TAG, offset, &format, sizeof(format) );
+    format = GET_BE_WORD(format);
+    if (result == GDI_ERROR || format < 1 || format > 2) /* GDEF table invalid or too short */
+    {
+        WARN("Invalid GDEF table\n");
+        return NULL;
+    }
+
+    if (format == 1)
+    {
+        result = font_funcs->get_font_data( font, MS_GDEF_TAG, offset + 4, &count, sizeof(count) );
+        size = FIELD_OFFSET(OT_ClassDefFormat1, ClassValueArray[GET_BE_WORD(count)]);
+    }
+    else
+    {
+        result = font_funcs->get_font_data( font, MS_GDEF_TAG, offset + 2, &count, sizeof(count) );
+        size = FIELD_OFFSET(OT_ClassDefFormat2, ClassRangeRecord[GET_BE_WORD(count)]);
+    }
+    if (result == GDI_ERROR)
+        return NULL;
+
+    data = malloc( size );
+    if (!data)
+        return NULL;
+
+    result = font_funcs->get_font_data( font, MS_GDEF_TAG, offset, data, size );
+    if (result != GDI_ERROR)
+    {
+        TRACE( "Loaded GDEF table of %zu bytes\n", size );
+        return data;
+    }
+    else
+        free( data );
+    return NULL;
+}
+
+static WORD get_GDEF_glyph_class( struct gdi_font *font, WORD glyph )
+{
+    OT_ClassDefFormat1 *cf1 = font->gdef_table;
+    WORD class = 0;
+
+    if (!cf1)
+        return 0;
+
+    if (cf1->ClassFormat == 1)
+    {
+        if (glyph >= GET_BE_WORD(cf1->StartGlyph))
+        {
+            int index = glyph - GET_BE_WORD(cf1->StartGlyph);
+            if (index < GET_BE_WORD(cf1->GlyphCount))
+                class = GET_BE_WORD(cf1->ClassValueArray[index]);
+        }
+    }
+    else
+    {
+        OT_ClassDefFormat2 *cf2 = (OT_ClassDefFormat2 *)cf1;
+        int i, top = GET_BE_WORD(cf2->ClassRangeCount);
+        for (i = 0; i < top; i++)
+        {
+            if (glyph >= GET_BE_WORD(cf2->ClassRangeRecord[i].Start) &&
+                glyph <= GET_BE_WORD(cf2->ClassRangeRecord[i].End))
+            {
+                class = GET_BE_WORD(cf2->ClassRangeRecord[i].Class);
+                break;
+            }
+        }
+    }
+    return class;
 }
 
 static void add_child_font( struct gdi_font *font, const WCHAR *family_name )
@@ -3832,13 +3953,14 @@ static UINT get_glyph_index_linked( struct gdi_font **font, UINT glyph )
 
 static DWORD get_glyph_outline( struct gdi_font *font, UINT glyph, UINT format,
                                 GLYPHMETRICS *gm_ret, ABC *abc_ret, DWORD buflen, void *buf,
-                                const MAT2 *mat )
+                                const MAT2 *mat, BOOL *zero_width )
 {
     GLYPHMETRICS gm;
     ABC abc;
     DWORD ret = 1;
     UINT index = glyph;
     BOOL tategaki = (*get_gdi_font_name( font ) == '@');
+    UINT orig_format = format;
 
     if (format & GGO_GLYPH_INDEX)
     {
@@ -3863,11 +3985,25 @@ static DWORD get_glyph_outline( struct gdi_font *font, UINT glyph, UINT format,
 
     if (mat && !memcmp( mat, &identity, sizeof(*mat) )) mat = NULL;
 
+    if (zero_width)
+    {
+        *zero_width = FALSE;
+        if (!(orig_format & GGO_GLYPH_INDEX))
+            *zero_width = glyph == 0x0009 || glyph == 0x000a || glyph == 0x000d || (glyph >= 0x001c && glyph <= 0x001f) || (glyph >= 0x0080 && glyph <= 0x009f);
+    }
+
     if (format == GGO_METRICS && !mat && get_gdi_font_glyph_metrics( font, index, &gm, &abc ))
+    {
+        if (zero_width)
+            *zero_width = *zero_width || get_GDEF_glyph_class( font, index ) == MarkGlyph;
         goto done;
+    }
 
     ret = font_funcs->get_glyph_outline( font, index, format, &gm, &abc, buflen, buf, mat, tategaki );
     if (ret == GDI_ERROR) return ret;
+
+    if (zero_width)
+        *zero_width = *zero_width || get_GDEF_glyph_class( font, index ) == MarkGlyph;
 
     if (format == GGO_METRICS && !mat)
         set_gdi_font_glyph_metrics( font, index, &gm, &abc );
@@ -3915,7 +4051,7 @@ static BOOL font_GetCharABCWidths( PHYSDEV dev, UINT first, UINT count, WCHAR *c
     for (i = 0; i < count; i++)
     {
         c = chars ? chars[i] : first + i;
-        get_glyph_outline( physdev->font, c, GGO_METRICS, NULL, &buffer[i], 0, NULL, NULL );
+        get_glyph_outline( physdev->font, c, GGO_METRICS, NULL, &buffer[i], 0, NULL, NULL, NULL );
     }
     pthread_mutex_unlock( &font_lock );
     return TRUE;
@@ -3941,7 +4077,7 @@ static BOOL font_GetCharABCWidthsI( PHYSDEV dev, UINT first, UINT count, WORD *g
     pthread_mutex_lock( &font_lock );
     for (c = 0; c < count; c++, buffer++)
         get_glyph_outline( physdev->font, gi ? gi[c] : first + c, GGO_METRICS | GGO_GLYPH_INDEX,
-                           NULL, buffer, 0, NULL, NULL );
+                           NULL, buffer, 0, NULL, NULL, NULL );
     pthread_mutex_unlock( &font_lock );
     return TRUE;
 }
@@ -3968,7 +4104,7 @@ static BOOL font_GetCharWidth( PHYSDEV dev, UINT first, UINT count, const WCHAR 
     for (i = 0; i < count; i++)
     {
         c = chars ? chars[i] : i + first;
-        if (get_glyph_outline( physdev->font, c, GGO_METRICS, NULL, &abc, 0, NULL, NULL ) == GDI_ERROR)
+        if (get_glyph_outline( physdev->font, c, GGO_METRICS, NULL, &abc, 0, NULL, NULL, NULL ) == GDI_ERROR)
             buffer[i] = 0;
         else
             buffer[i] = abc.abcA + abc.abcB + abc.abcC;
@@ -4147,7 +4283,7 @@ static DWORD font_GetGlyphOutline( PHYSDEV dev, UINT glyph, UINT format,
         return dev->funcs->pGetGlyphOutline( dev, glyph, format, gm, buflen, buf, mat );
     }
     pthread_mutex_lock( &font_lock );
-    ret = get_glyph_outline( physdev->font, glyph, format, gm, NULL, buflen, buf, mat );
+    ret = get_glyph_outline( physdev->font, glyph, format, gm, NULL, buflen, buf, mat, NULL );
     pthread_mutex_unlock( &font_lock );
     return ret;
 }
@@ -4327,18 +4463,27 @@ static BOOL font_GetTextExtentExPoint( PHYSDEV dev, const WCHAR *str, INT count,
     pthread_mutex_lock( &font_lock );
     for (i = pos = 0; i < count; i++)
     {
-        get_glyph_outline( physdev->font, str[i], GGO_METRICS, NULL, &abc, 0, NULL, NULL );
-        if (maxdxs)
-            maxdxs[i] = pos;
-        pos += abc.abcA;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
-        pos += abc.abcC;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
-        pos += abc.abcB;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
+        BOOL zero_width = FALSE;
+        get_glyph_outline( physdev->font, str[i], GGO_METRICS, NULL, &abc, 0, NULL, NULL, &zero_width );
+        if (!zero_width)
+        {
+            if (maxdxs)
+                maxdxs[i] = pos;
+            pos += abc.abcA;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+            pos += abc.abcC;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+            pos += abc.abcB;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+        }
+        else if (maxdxs)
+        {
+            /* +1 so that zero-width characters don't fit at the very right edge */
+            maxdxs[i] = pos + 1;
+        }
         dxs[i] = pos;
     }
     pthread_mutex_unlock( &font_lock );
@@ -4366,19 +4511,28 @@ static BOOL font_GetTextExtentExPointI( PHYSDEV dev, const WORD *indices, INT co
     pthread_mutex_lock( &font_lock );
     for (i = pos = 0; i < count; i++)
     {
+        BOOL zero_width = FALSE;
         get_glyph_outline( physdev->font, indices[i], GGO_METRICS | GGO_GLYPH_INDEX,
-                           NULL, &abc, 0, NULL, NULL );
-        if (maxdxs)
-            maxdxs[i] = pos;
-        pos += abc.abcA;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
-        pos += abc.abcC;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
-        pos += abc.abcB;
-        if (maxdxs && pos > maxdxs[i])
-            maxdxs[i] = pos;
+                           NULL, &abc, 0, NULL, NULL, &zero_width );
+        if (!zero_width)
+        {
+            if (maxdxs)
+                maxdxs[i] = pos;
+            pos += abc.abcA;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+            pos += abc.abcC;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+            pos += abc.abcB;
+            if (maxdxs && pos > maxdxs[i])
+                maxdxs[i] = pos;
+        }
+        else if (maxdxs)
+        {
+            /* +1 so that zero-width characters don't fit at the very right edge */
+            maxdxs[i] = pos + 1;
+        }
         dxs[i] = pos;
     }
     pthread_mutex_unlock( &font_lock );
@@ -4605,6 +4759,8 @@ static struct gdi_font *select_font( LOGFONTW *lf, FMAT2 dcmat, BOOL can_use_bit
 
     if (face->flags & ADDFONT_VERTICAL_FONT) /* We need to try to load the GSUB table */
         font->vert_feature = get_GSUB_vert_feature( font );
+
+    font->gdef_table = load_GDEF( font );
 
     create_child_font_list( font );
 
