@@ -1567,13 +1567,13 @@ static NTSTATUS ipv6_forward_enumerate_all( void *key_data, UINT key_size, void 
     UINT num = 0;
     NTSTATUS status = STATUS_SUCCESS;
     BOOL want_data = key_size || rw_size || dynamic_size || static_size;
-    struct ipv6_route_data entry;
 
     TRACE( "%p %d %p %d %p %d %p %d %p\n" , key_data, key_size, rw_data, rw_size,
         dynamic_data, dynamic_size, static_data, static_size, count );
 
 #ifdef __linux__
     {
+        struct ipv6_route_data entry;
         char buf[512], *ptr;
         UINT rtf_flags;
         FILE *fp;
