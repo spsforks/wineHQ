@@ -69,8 +69,8 @@ static int console_signaled( struct object *obj, struct wait_queue_entry *entry 
 static struct fd *console_get_fd( struct object *obj );
 static struct object *console_lookup_name( struct object *obj, struct unicode_str *name,
                                            unsigned int attr, struct object *root );
-static struct object *console_open_file( struct object *obj, unsigned int access,
-                                         unsigned int sharing, unsigned int options );
+static struct object *console_open_file( struct object *obj, const struct unicode_str *subpath,
+                                         unsigned int access, unsigned int sharing, unsigned int options );
 static int console_add_queue( struct object *obj, struct wait_queue_entry *entry );
 
 static const struct object_ops console_ops =
@@ -147,8 +147,8 @@ static int console_server_signaled( struct object *obj, struct wait_queue_entry 
 static struct fd *console_server_get_fd( struct object *obj );
 static struct object *console_server_lookup_name( struct object *obj, struct unicode_str *name,
                                                 unsigned int attr, struct object *root );
-static struct object *console_server_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options );
+static struct object *console_server_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options );
 
 static const struct object_ops console_server_ops =
 {
@@ -216,8 +216,8 @@ static void screen_buffer_dump( struct object *obj, int verbose );
 static void screen_buffer_destroy( struct object *obj );
 static int screen_buffer_add_queue( struct object *obj, struct wait_queue_entry *entry );
 static struct fd *screen_buffer_get_fd( struct object *obj );
-static struct object *screen_buffer_open_file( struct object *obj, unsigned int access,
-                                               unsigned int sharing, unsigned int options );
+static struct object *screen_buffer_open_file( struct object *obj, const struct unicode_str *subpath,
+                                               unsigned int access, unsigned int sharing, unsigned int options );
 
 static const struct object_ops screen_buffer_ops =
 {
@@ -265,8 +265,8 @@ static const struct fd_ops screen_buffer_fd_ops =
 static void console_device_dump( struct object *obj, int verbose );
 static struct object *console_device_lookup_name( struct object *obj, struct unicode_str *name,
                                                 unsigned int attr, struct object *root );
-static struct object *console_device_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options );
+static struct object *console_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options );
 
 static const struct object_ops console_device_ops =
 {
@@ -299,8 +299,8 @@ struct console_input
 };
 
 static void console_input_dump( struct object *obj, int verbose );
-static struct object *console_input_open_file( struct object *obj, unsigned int access,
-                                               unsigned int sharing, unsigned int options );
+static struct object *console_input_open_file( struct object *obj, const struct unicode_str *subpath,
+                                               unsigned int access, unsigned int sharing, unsigned int options );
 static int console_input_add_queue( struct object *obj, struct wait_queue_entry *entry );
 static struct fd *console_input_get_fd( struct object *obj );
 static void console_input_destroy( struct object *obj );
@@ -358,8 +358,8 @@ struct console_output
 static void console_output_dump( struct object *obj, int verbose );
 static int console_output_add_queue( struct object *obj, struct wait_queue_entry *entry );
 static struct fd *console_output_get_fd( struct object *obj );
-static struct object *console_output_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options );
+static struct object *console_output_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options );
 static void console_output_destroy( struct object *obj );
 
 static const struct object_ops console_output_ops =
@@ -415,8 +415,8 @@ static void console_connection_dump( struct object *obj, int verbose );
 static struct fd *console_connection_get_fd( struct object *obj );
 static struct object *console_connection_lookup_name( struct object *obj, struct unicode_str *name,
                                                     unsigned int attr, struct object *root );
-static struct object *console_connection_open_file( struct object *obj, unsigned int access,
-                                                    unsigned int sharing, unsigned int options );
+static struct object *console_connection_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                    unsigned int access, unsigned int sharing, unsigned int options );
 static int console_connection_close_handle( struct object *obj, struct process *process, obj_handle_t handle );
 static void console_connection_destroy( struct object *obj );
 
@@ -805,9 +805,15 @@ static struct object *console_lookup_name( struct object *obj, struct unicode_st
     return NULL;
 }
 
-static struct object *console_open_file( struct object *obj, unsigned int access,
-                                               unsigned int sharing, unsigned int options )
+static struct object *console_open_file( struct object *obj, const struct unicode_str *subpath,
+                                         unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 
@@ -833,9 +839,15 @@ static void screen_buffer_destroy( struct object *obj )
     free_async_queue( &screen_buffer->ioctl_q );
 }
 
-static struct object *screen_buffer_open_file( struct object *obj, unsigned int access,
-                                               unsigned int sharing, unsigned int options )
+static struct object *screen_buffer_open_file( struct object *obj, const struct unicode_str *subpath,
+                                               unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 
@@ -920,9 +932,15 @@ static struct fd *console_server_get_fd( struct object* obj )
     return (struct fd *)grab_object( server->fd );
 }
 
-static struct object *console_server_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options )
+static struct object *console_server_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 
@@ -1230,9 +1248,15 @@ static struct object *console_connection_lookup_name( struct object *obj, struct
     return NULL;
 }
 
-static struct object *console_connection_open_file( struct object *obj, unsigned int access,
-                                                    unsigned int sharing, unsigned int options )
+static struct object *console_connection_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                    unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 
@@ -1355,10 +1379,17 @@ static struct object *console_device_lookup_name( struct object *obj, struct uni
     return NULL;
 }
 
-static struct object *console_device_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options )
+static struct object *console_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options )
 {
     int is_output;
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     access = default_map_access( obj, access );
     is_output = access & FILE_WRITE_DATA;
     if (!current->process->console || (is_output && !current->process->console))
@@ -1396,9 +1427,15 @@ static struct fd *console_input_get_fd( struct object *obj )
     return (struct fd *)grab_object( console_input->fd );
 }
 
-static struct object *console_input_open_file( struct object *obj, unsigned int access,
-                                               unsigned int sharing, unsigned int options )
+static struct object *console_input_open_file( struct object *obj, const struct unicode_str *subpath,
+                                               unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 
@@ -1468,9 +1505,15 @@ static struct fd *console_output_get_fd( struct object *obj )
     return (struct fd *)grab_object( console_output->fd );
 }
 
-static struct object *console_output_open_file( struct object *obj, unsigned int access,
-                                                unsigned int sharing, unsigned int options )
+static struct object *console_output_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                unsigned int access, unsigned int sharing, unsigned int options )
 {
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
     return grab_object( obj );
 }
 

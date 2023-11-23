@@ -79,8 +79,8 @@ static struct security_descriptor *file_get_sd( struct object *obj );
 static int file_set_sd( struct object *obj, const struct security_descriptor *sd, unsigned int set_info );
 static struct object *file_lookup_name( struct object *obj, struct unicode_str *name,
                                       unsigned int attr, struct object *root );
-static struct object *file_open_file( struct object *obj, unsigned int access,
-                                      unsigned int sharing, unsigned int options );
+static struct object *file_open_file( struct object *obj, const struct unicode_str *subpath,
+                                      unsigned int access, unsigned int sharing, unsigned int options );
 static struct list *file_get_kernel_obj_list( struct object *obj );
 static void file_destroy( struct object *obj );
 
@@ -556,8 +556,8 @@ static struct object *file_lookup_name( struct object *obj, struct unicode_str *
     return NULL;
 }
 
-static struct object *file_open_file( struct object *obj, unsigned int access,
-                                      unsigned int sharing, unsigned int options )
+static struct object *file_open_file( struct object *obj, const struct unicode_str *subpath,
+                                      unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct file *file = (struct file *)obj;
     struct object *new_file = NULL;
@@ -565,6 +565,12 @@ static struct object *file_open_file( struct object *obj, unsigned int access,
     char *unix_name;
 
     assert( obj->ops == &file_ops );
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if ((unix_name = dup_fd_name( file->fd, "" )))
     {

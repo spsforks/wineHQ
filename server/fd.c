@@ -2777,11 +2777,7 @@ DECL_HANDLER(open_file_object)
     if (root) release_object( root );
     if (!obj) return;
 
-    if (name_left.len) /* not fully parsed */
-    {
-        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
-    }
-    else if ((result = obj->ops->open_file( obj, req->access, req->sharing, req->options )))
+    if ((result = obj->ops->open_file( obj, &name_left, req->access, req->sharing, req->options )))
     {
         reply->handle = alloc_handle( current->process, result, req->access, req->attributes );
         release_object( result );

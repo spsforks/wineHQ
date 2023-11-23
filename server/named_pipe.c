@@ -107,8 +107,8 @@ static void named_pipe_dump( struct object *obj, int verbose );
 static unsigned int named_pipe_map_access( struct object *obj, unsigned int access );
 static WCHAR *named_pipe_get_full_name( struct object *obj, data_size_t *ret_len );
 static int named_pipe_link_name( struct object *obj, struct object_name *name, struct object *parent );
-static struct object *named_pipe_open_file( struct object *obj, unsigned int access,
-                                            unsigned int sharing, unsigned int options );
+static struct object *named_pipe_open_file( struct object *obj, const struct unicode_str *subpath,
+                                            unsigned int access, unsigned int sharing, unsigned int options );
 static void named_pipe_destroy( struct object *obj );
 
 static const struct object_ops named_pipe_ops =
@@ -154,8 +154,8 @@ static void pipe_end_get_file_info( struct fd *fd, obj_handle_t handle, unsigned
 static void pipe_server_dump( struct object *obj, int verbose );
 static struct object *pipe_server_lookup_name( struct object *obj, struct unicode_str *name,
                                                unsigned int attr, struct object *root );
-static struct object *pipe_server_open_file( struct object *obj, unsigned int access,
-                                             unsigned int sharing, unsigned int options );
+static struct object *pipe_server_open_file( struct object *obj, const struct unicode_str *subpath,
+                                             unsigned int access, unsigned int sharing, unsigned int options );
 static void pipe_server_destroy( struct object *obj);
 static void pipe_server_ioctl( struct fd *fd, ioctl_code_t code, struct async *async );
 
@@ -246,8 +246,8 @@ static const struct fd_ops pipe_client_fd_ops =
 static void named_pipe_device_dump( struct object *obj, int verbose );
 static struct object *named_pipe_device_lookup_name( struct object *obj,
     struct unicode_str *name, unsigned int attr, struct object *root );
-static struct object *named_pipe_device_open_file( struct object *obj, unsigned int access,
-                                                   unsigned int sharing, unsigned int options );
+static struct object *named_pipe_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                   unsigned int access, unsigned int sharing, unsigned int options );
 static void named_pipe_device_destroy( struct object *obj );
 
 static const struct object_ops named_pipe_device_ops =
@@ -462,12 +462,18 @@ static struct object *pipe_server_lookup_name( struct object *obj, struct unicod
     return NULL;
 }
 
-static struct object *pipe_server_open_file( struct object *obj, unsigned int access,
-                                             unsigned int sharing, unsigned int options )
+static struct object *pipe_server_open_file( struct object *obj, const struct unicode_str *subpath,
+                                             unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct pipe_server *server = (struct pipe_server *)obj;
 
-    return server->pipe_end.pipe->obj.ops->open_file( &server->pipe_end.pipe->obj, access, sharing, options );
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
+
+    return server->pipe_end.pipe->obj.ops->open_file( &server->pipe_end.pipe->obj, subpath, access, sharing, options );
 }
 
 static void pipe_server_destroy( struct object *obj )
@@ -508,10 +514,16 @@ static struct object *named_pipe_device_lookup_name( struct object *obj, struct 
     return found;
 }
 
-static struct object *named_pipe_device_open_file( struct object *obj, unsigned int access,
-                                                   unsigned int sharing, unsigned int options )
+static struct object *named_pipe_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                   unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct named_pipe_device_file *file;
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if (!(file = alloc_object( &named_pipe_device_file_ops ))) return NULL;
     file->device = (struct named_pipe_device *)grab_object( obj );
@@ -1333,13 +1345,19 @@ static int named_pipe_link_name( struct object *obj, struct object_name *name, s
     return 1;
 }
 
-static struct object *named_pipe_open_file( struct object *obj, unsigned int access,
-                                            unsigned int sharing, unsigned int options )
+static struct object *named_pipe_open_file( struct object *obj, const struct unicode_str *subpath,
+                                            unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct named_pipe *pipe = (struct named_pipe *)obj;
     struct pipe_server *server;
     struct pipe_end *client;
     unsigned int pipe_sharing;
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if (list_empty( &pipe->listeners ))
     {

@@ -703,10 +703,13 @@ void default_unlink_name( struct object *obj, struct object_name *name )
     list_remove( &name->entry );
 }
 
-struct object *no_open_file( struct object *obj, unsigned int access, unsigned int sharing,
-                             unsigned int options )
+struct object *no_open_file( struct object *obj, const struct unicode_str *subpath,
+                             unsigned int access, unsigned int sharing, unsigned int options )
 {
-    set_error( STATUS_OBJECT_TYPE_MISMATCH );
+    if (subpath->len) /* not fully parsed */
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+    else
+        set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return NULL;
 }
 

@@ -99,8 +99,8 @@ struct object_ops
     /* unlink an object's name from its parent */
     void (*unlink_name)(struct object *, struct object_name *);
     /* open a file object to access this object */
-    struct object *(*open_file)(struct object *, unsigned int access, unsigned int sharing,
-                                unsigned int options);
+    struct object *(*open_file)(struct object *, const struct unicode_str *filename,
+                                unsigned int access, unsigned int sharing, unsigned int options);
     /* return list of kernel objects */
     struct list *(*get_kernel_obj_list)(struct object *);
     /* close a handle to this object */
@@ -178,8 +178,8 @@ extern struct object *no_lookup_name( struct object *obj, struct unicode_str *na
                                       unsigned int attributes, struct object *root );
 extern int no_link_name( struct object *obj, struct object_name *name, struct object *parent );
 extern void default_unlink_name( struct object *obj, struct object_name *name );
-extern struct object *no_open_file( struct object *obj, unsigned int access, unsigned int sharing,
-                                    unsigned int options );
+extern struct object *no_open_file( struct object *obj, const struct unicode_str *filename, unsigned int access,
+                                    unsigned int sharing, unsigned int options );
 extern struct list *no_kernel_obj_list( struct object *obj );
 extern int no_close_handle( struct object *obj, struct process *process, obj_handle_t handle );
 extern void no_destroy( struct object *obj );
