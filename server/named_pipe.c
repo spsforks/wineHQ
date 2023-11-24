@@ -277,6 +277,8 @@ static const struct object_ops named_pipe_device_ops =
 static void named_pipe_device_file_dump( struct object *obj, int verbose );
 static struct fd *named_pipe_device_file_get_fd( struct object *obj );
 static WCHAR *named_pipe_device_file_get_full_name( struct object *obj, data_size_t *len );
+static struct object *named_pipe_device_file_lookup_name( struct object *obj, struct unicode_str *name,
+                                                          unsigned int attr, struct object *root );
 static void named_pipe_device_ioctl( struct fd *fd, ioctl_code_t code, struct async *async );
 static enum server_fd_type named_pipe_device_file_get_fd_type( struct fd *fd );
 static void named_pipe_device_file_destroy( struct object *obj );
@@ -296,7 +298,7 @@ static const struct object_ops named_pipe_device_file_ops =
     default_get_sd,                          /* get_sd */
     default_set_sd,                          /* set_sd */
     named_pipe_device_file_get_full_name,    /* get_full_name */
-    no_lookup_name,                          /* lookup_name */
+    named_pipe_device_file_lookup_name,      /* lookup_name */
     no_link_name,                            /* link_name */
     NULL,                                    /* unlink_name */
     no_open_file,                            /* open_file */
@@ -583,6 +585,12 @@ static WCHAR *named_pipe_device_file_get_full_name( struct object *obj, data_siz
 static enum server_fd_type named_pipe_device_file_get_fd_type( struct fd *fd )
 {
     return FD_TYPE_DEVICE;
+}
+
+static struct object *named_pipe_device_file_lookup_name( struct object *obj, struct unicode_str *name,
+                                                          unsigned int attr, struct object *root )
+{
+    return no_lookup_name( obj, name, attr, root );
 }
 
 static void named_pipe_device_file_destroy( struct object *obj )
