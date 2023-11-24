@@ -2806,6 +2806,24 @@ static void test_empty_name(void)
             FILE_SHARE_READ|FILE_SHARE_WRITE, FILE_OPEN, 0, NULL, 0 );
     ok(!status, "Got unexpected status %#lx.\n", status);
 
+    pRtlInitUnicodeString(&name, L"\\Device\\NamedPipe\\winetestxyz");
+    attr.RootDirectory = NULL;
+    attr.ObjectName = &name;
+    timeout.QuadPart = -(LONG64)10000000;
+    status = pNtCreateNamedPipeFile(&hpipe, GENERIC_READ|GENERIC_WRITE, &attr, &io, FILE_SHARE_READ|FILE_SHARE_WRITE,
+                                    FILE_CREATE, FILE_PIPE_FULL_DUPLEX, 0, 0, 0, 1, 256, 256, &timeout);
+    ok(status == STATUS_SUCCESS, "NtCreateNamedPipeFile \"\\Device\\NamedPipe\\winetestxyz\": %#lx\n", status);
+    if (status) hpipe = NULL;
+
+    pRtlInitUnicodeString(&name, L"winetestxyz");
+    attr.RootDirectory = hdirectory;
+    attr.ObjectName = &name;
+    status = NtCreateFile(&handle, SYNCHRONIZE, &attr, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN, 0, NULL, 0 );
+    todo_wine
+    ok(status == STATUS_SUCCESS, "open \"winetestxyz\" root \\Device\\NamedPipe\\: got %#lx.\n", status);
+    if (!status) NtClose(handle);
+    if (hpipe) NtClose(hpipe);
+
     pRtlInitUnicodeString(&name, L"nonexistent_pipe");
     status = wait_pipe(hdirectory, &name, &zero_timeout);
     ok(status == STATUS_OBJECT_NAME_NOT_FOUND, "unexpected status for FSCTL_PIPE_WAIT on \\Device\\NamedPipe\\: %#lx\n", status);
