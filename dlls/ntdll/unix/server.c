@@ -790,8 +790,35 @@ unsigned int server_wait( const select_op_t *select_op, data_size_t size, UINT f
  */
 NTSTATUS WINAPI NtContinue( CONTEXT *context, BOOLEAN alertable )
 {
+    /* NtContinueEx accepts both */
+    return NtContinueEx(context, (CONTINUE_OPTIONS *)(intptr_t)alertable);
+}
+
+
+/***********************************************************************
+ *              NtContinueEx  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtContinueEx( CONTEXT *context, CONTINUE_OPTIONS *options )
+{
     user_apc_t apc;
     NTSTATUS status;
+    BOOLEAN alertable;
+
+    if ((ULONG_PTR)options <= 0xff)
+    {
+        alertable = (BOOLEAN)(intptr_t)options;
+    } else
+    {
+        alertable = !!(options->ContinueFlags & CONTINUE_FLAG_TEST_ALERT);
+
+        /* FIXME: no idea how to handle rest of CONTINUE_OPTIONS stuff */
+        if (options->ContinueType != CONTINUE_UNWIND ||
+            options->ContinueFlags > CONTINUE_FLAG_TEST_ALERT ||
+            options->Reserved[0] > 0 || options->Reserved[1] > 0)
+        {
+            FIXME("(PCONTEXT, PCONTINUE_OPTIONS) is not implemented!\n");
+        }
+    }
 
     if (alertable)
     {

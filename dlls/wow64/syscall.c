@@ -442,8 +442,18 @@ NTSTATUS WINAPI wow64_NtClose( UINT *args )
  */
 NTSTATUS WINAPI wow64_NtContinue( UINT *args )
 {
+    return wow64_NtContinueEx( args );
+}
+
+
+/**********************************************************************
+ *           wow64_NtContinueEx
+ */
+NTSTATUS WINAPI wow64_NtContinueEx( UINT *args )
+{
     void *context = get_ptr( &args );
-    BOOLEAN alertable = get_ulong( &args );
+    CONTINUE_OPTIONS *options = get_ptr( &args );
+    BOOL alertable = (ULONG_PTR)options > 0xff ? options->ContinueFlags & CONTINUE_FLAG_TEST_ALERT : !!options;
 
     NTSTATUS status = get_context_return_value( context );
     struct user_apc_frame *frame = NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST];
@@ -452,7 +462,7 @@ NTSTATUS WINAPI wow64_NtContinue( UINT *args )
 
     while (frame && frame->wow_context != context) frame = frame->prev_frame;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST] = frame ? frame->prev_frame : NULL;
-    if (frame) NtContinue( frame->context, alertable );
+    if (frame) NtContinueEx( frame->context, options );
 
     if (alertable) NtTestAlert();
     return status;
