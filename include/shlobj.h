@@ -1755,6 +1755,8 @@ WINSHELLAPI HRESULT WINAPI SHBindToFolderIDListParent(IShellFolder *psf, LPCITEM
  * SHBindToParent API
  */
 WINSHELLAPI HRESULT WINAPI SHBindToParent(LPCITEMIDLIST pidl, REFIID riid, LPVOID *ppv, LPCITEMIDLIST *ppidlLast);
+WINSHELLAPI HRESULT WINAPI SHBindToObject(IShellFolder *folder, LPCITEMIDLIST pidl, IBindCtx *context,
+        REFIID riid, void **object);
 
 /****************************************************************************
 * SHDefExtractIcon API
