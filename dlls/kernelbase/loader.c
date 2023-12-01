@@ -543,6 +543,13 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
         return 0;
     }
 
+    if (flags & LOAD_PACKAGED_LIBRARY)
+    {
+        /* FIXME: Don't know if it's implemented like this on Windows
+           but this does accomplish same result in error case */
+        return LoadPackagedLibrary(name, flags);
+    }
+
     RtlInitUnicodeString( &str, name );
     if (str.Buffer[str.Length/sizeof(WCHAR) - 1] != ' ') return load_library( &str, flags );
 

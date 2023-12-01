@@ -995,6 +995,7 @@ DECL_WINELIB_TYPE_AW(ENUMRESLANGPROC)
 /* flags that can be passed to LoadLibraryEx */
 #define DONT_RESOLVE_DLL_REFERENCES         0x00000001
 #define LOAD_LIBRARY_AS_DATAFILE            0x00000002
+#define LOAD_PACKAGED_LIBRARY               0x00000004 /* Undocumented Windows internal */
 #define LOAD_WITH_ALTERED_SEARCH_PATH       0x00000008
 #define LOAD_IGNORE_CODE_AUTHZ_LEVEL        0x00000010
 #define LOAD_LIBRARY_AS_IMAGE_RESOURCE      0x00000020
