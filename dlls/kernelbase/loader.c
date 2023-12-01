@@ -537,6 +537,18 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
                         ((flags & LOAD_LIBRARY_AS_DATAFILE) && (flags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE)) ||
                         ((flags & LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) && (flags & LOAD_WITH_ALTERED_SEARCH_PATH));
 
+    /* Windows 10 22H2 have such validation */
+    invalid_parameter = invalid_parameter ||
+                        ((flags & LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR) &&
+                            (flags & (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE)));
+
+    if (flags & LOAD_LIBRARY_UNSUPPORTED_MASK)
+    {
+        WARN( "Pretending to be Windows 10 22H2, unsupported flags: 0x%lx\n, returning ERROR_INVALID_PARAMETER",
+              flags & LOAD_LIBRARY_UNSUPPORTED_MASK );
+        invalid_parameter = TRUE;
+    }
+
     if (invalid_parameter)
     {
         SetLastError( ERROR_INVALID_PARAMETER );
