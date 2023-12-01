@@ -530,12 +530,19 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
 {
     UNICODE_STRING str;
     HMODULE module;
+    BOOL invalid_parameter;
 
-    if (!name)
+    invalid_parameter = !name ||
+                        file ||
+                        ((flags & LOAD_LIBRARY_AS_DATAFILE) && (flags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE)) ||
+                        ((flags & LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) && (flags & LOAD_WITH_ALTERED_SEARCH_PATH));
+
+    if (invalid_parameter)
     {
         SetLastError( ERROR_INVALID_PARAMETER );
         return 0;
     }
+
     RtlInitUnicodeString( &str, name );
     if (str.Buffer[str.Length/sizeof(WCHAR) - 1] != ' ') return load_library( &str, flags );
 
