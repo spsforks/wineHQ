@@ -2641,6 +2641,7 @@ end:
 
 static char *xdg_config;
 static DWORD xdg_config_len;
+static BOOL do_symlink = TRUE;
 
 static BOOL WINAPI init_xdg_dirs( INIT_ONCE *once, void *param, void **context )
 {
@@ -2649,6 +2650,14 @@ static BOOL WINAPI init_xdg_dirs( INIT_ONCE *once, void *param, void **context )
     WCHAR *name, *ptr;
     HANDLE file;
     DWORD len;
+
+    if (_wgetenv( L"WINEISOLATEHOME" ))
+    {
+        do_symlink = FALSE;
+        xdg_config = NULL;
+        TRACE("WINEISOLATEHOME is set, not creating symlinks to user home\n");
+        return TRUE;
+    }
 
     if (!(var = _wgetenv( L"XDG_CONFIG_HOME" )) || var[0] != '/')
     {
@@ -2779,7 +2788,7 @@ done:
  * _SHCreateSymbolicLink  [Internal]
  *
  * Sets up a symbolic link for one of the special shell folders to point into
- * the users home directory.
+ * the users home directory. Will not do so when WINEISOLATEHOME is set.
  *
  * PARAMS
  *  nFolder [I] CSIDL identifying the folder.
@@ -2787,6 +2796,8 @@ done:
 static void _SHCreateSymbolicLink(int nFolder, const WCHAR *path)
 {
     DWORD folder = nFolder & CSIDL_FOLDER_MASK;
+
+    if (!do_symlink) return;
 
     switch (folder) {
         case CSIDL_PERSONAL:
