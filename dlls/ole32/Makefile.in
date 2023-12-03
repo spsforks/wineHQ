@@ -15,11 +15,9 @@ SOURCES = \
 	datacache.c \
 	dcom.idl \
 	defaulthandler.c \
-	dictionary.c \
 	drag_copy.svg \
 	drag_link.svg \
 	drag_move.svg \
-	filelockbytes.c \
 	filemoniker.c \
 	ftmarshal.c \
 	git.c \
@@ -38,8 +36,6 @@ SOURCES = \
 	oleobj.c \
 	oleproxy.c \
 	pointermoniker.c \
-	stg_prop.c \
-	stg_stream.c \
 	storage32.c \
 	usrmarshal.c
 

@@ -58,7 +58,6 @@
 #include "ole2.h"
 
 #include "compobj_private.h"
-#include "storage32.h"
 
 #include "wine/debug.h"
 
@@ -77,6 +76,8 @@ enum object_state
     object_state_running,
     object_state_deferred_close
 };
+
+HRESULT STORAGE_CreateOleStream(IStorage*, DWORD);
 
 /****************************************************************************
  * DefaultHandler

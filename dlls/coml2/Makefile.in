@@ -1,9 +1,13 @@
 EXTRADEFS = -DWINOLE32API=
 MODULE    = coml2.dll
 IMPORTLIB = coml2
-IMPORTS   = uuid
+IMPORTS   = uuid combase
+DELAYIMPORTS = oleaut32
 
 SOURCES = \
+	dictionary.c \
+	filelockbytes.c \
 	memlockbytes.c \
 	stg_prop.c \
+	stg_stream.c \
 	storage32.c

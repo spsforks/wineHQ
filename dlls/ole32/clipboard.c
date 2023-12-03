@@ -74,11 +74,12 @@
 #include "wine/debug.h"
 #include "olestd.h"
 
-#include "storage32.h"
-
 #include "compobj_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
+
+HRESULT STORAGE_CreateOleStream(IStorage*, DWORD);
+HRESULT OLECONVERT_CreateCompObjStream(LPSTORAGE pStorage, LPCSTR strOleTypeName);
 
 /* Structure of 'Ole Private Data' clipboard format */
 typedef struct
