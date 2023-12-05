@@ -510,7 +510,7 @@ static void test_find_pin(void)
 
     hr = IBaseFilter_FindPin(filter, L"Audio", &pin);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
-    todo_wine ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
     IPin_Release(pin);
     IPin_Release(pin2);
 
@@ -519,7 +519,7 @@ static void test_find_pin(void)
 
     hr = IBaseFilter_FindPin(filter, L"Video", &pin);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
-    todo_wine ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
     IPin_Release(pin);
     IPin_Release(pin2);
 
