@@ -28,6 +28,10 @@ test.avi RCDATA "test.avi"
 /* @makedep: test.mpg */
 test.mpg RCDATA "test.mpg"
 
+/* ffmpeg -f lavfi -i smptebars -f lavfi -i "sine=frequency=1000" -t 0.16 -r 25 -f mpeg -vcodec mpeg1video -vf scale=32x24 -acodec mp2 test2.mpg && ffmpeg -f lavfi -i smptebars -f lavfi -i "sine=frequency=1000" -t 0.16 -r 25 -f mpeg -vcodec mpeg1video -vf scale=32x24 -acodec mp2 -map 1 -map 0 - | dd conv=notrunc of=test2.mpg bs=1 count=30 */
+/* @makedep: test2.mpg */
+test2.mpg RCDATA "test2.mpg"
+
 /* ffmpeg -f lavfi -i "sine=frequency=500" -t 0.5 -ar 48000 -b:a 32k -f mp3 -acodec mp3 -write_xing 0 test.mp3 */
 /* @makedep: test.mp3 */
 test.mp3 RCDATA "test.mp3"
