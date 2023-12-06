@@ -23,8 +23,8 @@
 @ stub -arch=win32 ?_Clog_func@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
 @ stub -arch=win64 ?_Clog_func@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
 @ stub ?_Cosh@@YANNN@Z
-@ stub -arch=win32 ?_Cout_func@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
-@ stub -arch=win64 ?_Cout_func@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
+@ cdecl -arch=win32 ?_Cout_func@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ() _Cout_func
+@ cdecl -arch=win64 ?_Cout_func@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ() _Cout_func
 @ stub -arch=win32 ?_Debug_message@std@@YAXPBD0@Z
 @ stub -arch=win64 ?_Debug_message@std@@YAXPEBD0@Z
 @ stub -arch=win32 ?_Dnorm@@YAFPAG@Z
@@ -231,10 +231,10 @@
 @ stub -arch=win64 ?_Wclog_func@std@@YAAEAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ
 @ stub -arch=win32 ?_Wclog_func@std@@YAAAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
 @ stub -arch=win64 ?_Wclog_func@std@@YAAEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
-@ stub -arch=win32 ?_Wcout_func@std@@YAAAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ
-@ stub -arch=win64 ?_Wcout_func@std@@YAAEAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ
-@ stub -arch=win32 ?_Wcout_func@std@@YAAAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
-@ stub -arch=win64 ?_Wcout_func@std@@YAAEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
+@ cdecl -arch=win32 ?_Wcout_func@std@@YAAAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ() _Wcout_func_short
+@ cdecl -arch=win64 ?_Wcout_func@std@@YAAEAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ() _Wcout_func_short
+@ cdecl -arch=win32 ?_Wcout_func@std@@YAAAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ() _Wcout_func
+@ cdecl -arch=win64 ?_Wcout_func@std@@YAAEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ() _Wcout_func
 @ stub -arch=win32 ?_Wcrtomb@@YAHPADGPAHPBU_Cvtvec@@@Z
 @ stub -arch=win64 ?_Wcrtomb@@YAHPEADGPEAHPEBU_Cvtvec@@@Z
 @ stub -arch=win32 ?_Wcrtomb@@YAHPAD_WPAHPBU_Cvtvec@@@Z
