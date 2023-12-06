@@ -14,8 +14,8 @@
 @ stub ?_Atexit@@YAXP6AXXZ@Z
 @ stub -arch=win32 ?_BADOFF_func@std@@YAABJXZ
 @ stub -arch=win64 ?_BADOFF_func@std@@YAAEB_JXZ
-@ stub -arch=win32 ?_Cerr_func@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
-@ stub -arch=win64 ?_Cerr_func@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ
+@ cdecl -arch=win32 ?_Cerr_func@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ() _Cerr_func
+@ cdecl -arch=win64 ?_Cerr_func@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@1@XZ() _Cerr_func
 @ cdecl -arch=win32 ?_Cin_func@std@@YAAAV?$basic_istream@DU?$char_traits@D@std@@@1@XZ() _Cin_func
 @ cdecl -arch=win64 ?_Cin_func@std@@YAAEAV?$basic_istream@DU?$char_traits@D@std@@@1@XZ() _Cin_func
 @ stub -arch=win32 ?_Clocptr_func@_Locimp@locale@std@@CAAAPAV123@XZ
@@ -219,10 +219,10 @@
 @ stub -arch=win64 ?_Towupper@@YAGGPEBU_Ctypevec@@@Z
 @ stub -arch=win32 ?_Towupper@@YA_W_WPBU_Ctypevec@@@Z
 @ stub -arch=win64 ?_Towupper@@YA_W_WPEBU_Ctypevec@@@Z
-@ stub -arch=win32 ?_Wcerr_func@std@@YAAAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ
-@ stub -arch=win64 ?_Wcerr_func@std@@YAAEAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ
-@ stub -arch=win32 ?_Wcerr_func@std@@YAAAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
-@ stub -arch=win64 ?_Wcerr_func@std@@YAAEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ
+@ cdecl -arch=win32 ?_Wcerr_func@std@@YAAAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ() _Wcerr_func_short
+@ cdecl -arch=win64 ?_Wcerr_func@std@@YAAEAV?$basic_ostream@GU?$char_traits@G@std@@@1@XZ() _Wcerr_func_short
+@ cdecl -arch=win32 ?_Wcerr_func@std@@YAAAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ() _Wcerr_func
+@ cdecl -arch=win64 ?_Wcerr_func@std@@YAAEAV?$basic_ostream@_WU?$char_traits@_W@std@@@1@XZ() _Wcerr_func
 @ cdecl -arch=win32 ?_Wcin_func@std@@YAAAV?$basic_istream@GU?$char_traits@G@std@@@1@XZ() _Wcin_func_short
 @ cdecl -arch=win64 ?_Wcin_func@std@@YAAEAV?$basic_istream@GU?$char_traits@G@std@@@1@XZ() _Wcin_func_short
 @ cdecl -arch=win32 ?_Wcin_func@std@@YAAAV?$basic_istream@_WU?$char_traits@_W@std@@@1@XZ() _Wcin_func
