@@ -65,6 +65,7 @@ static NTSTATUS (WINAPI *pNtOpenIoCompletion)( PHANDLE, ACCESS_MASK, POBJECT_ATT
 static NTSTATUS (WINAPI *pNtQueryInformationFile)(HANDLE, PIO_STATUS_BLOCK, void *, ULONG, FILE_INFORMATION_CLASS);
 static NTSTATUS (WINAPI *pNtOpenProcess)( HANDLE *, ACCESS_MASK, const OBJECT_ATTRIBUTES *, const CLIENT_ID * );
 static NTSTATUS (WINAPI *pNtCreateDebugObject)( HANDLE *, ACCESS_MASK, OBJECT_ATTRIBUTES *, ULONG );
+static NTSTATUS (WINAPI *pNtGetNextProcess)(HANDLE process, ACCESS_MASK access, ULONG attributes, ULONG flags, HANDLE *handle);
 static NTSTATUS (WINAPI *pNtGetNextThread)(HANDLE process, HANDLE thread, ACCESS_MASK access, ULONG attributes,
                                             ULONG flags, HANDLE *handle);
 static NTSTATUS (WINAPI *pNtOpenProcessToken)(HANDLE,DWORD,HANDLE*);
@@ -3156,6 +3157,32 @@ static void test_null_in_object_name(void)
         skip("Limited access to \\Registry\\Machine\\Software key, skipping the tests\n");
 }
 
+static void test_get_next_process(void)
+{
+    NTSTATUS status;
+    HANDLE handle;
+
+    if (!pNtGetNextProcess)
+    {
+        win_skip("NtGetNextProcess is not available.\n");
+        return;
+    }
+
+    status = pNtGetNextProcess(0, PROCESS_QUERY_LIMITED_INFORMATION, OBJ_INHERIT, 0, &handle);
+    ok(!status, "Unexpected status %#lx.\n", status);
+    pNtClose(handle);
+
+    /* Reversed search only supported in recent enough Win10 */
+    status = pNtGetNextProcess(0, PROCESS_QUERY_LIMITED_INFORMATION, OBJ_INHERIT, 1, &handle);
+    ok(!status || broken(status == STATUS_INVALID_PARAMETER), "Unexpected status %#lx.\n", status);
+    if (status)
+        pNtClose(handle);
+
+    status = pNtGetNextProcess(0, PROCESS_QUERY_LIMITED_INFORMATION, OBJ_INHERIT, 2, &handle);
+    ok(status == STATUS_INVALID_PARAMETER, "Unexpected status %#lx.\n", status);
+}
+
+
 START_TEST(om)
 {
     HMODULE hntdll = GetModuleHandleA("ntdll.dll");
@@ -3194,6 +3221,7 @@ START_TEST(om)
     pNtQueryInformationFile =  (void *)GetProcAddress(hntdll, "NtQueryInformationFile");
     pNtOpenProcess          =  (void *)GetProcAddress(hntdll, "NtOpenProcess");
     pNtCreateDebugObject    =  (void *)GetProcAddress(hntdll, "NtCreateDebugObject");
+    pNtGetNextProcess       =  (void *)GetProcAddress(hntdll, "NtGetNextProcess");
     pNtGetNextThread        =  (void *)GetProcAddress(hntdll, "NtGetNextThread");
     pNtOpenProcessToken     =  (void *)GetProcAddress(hntdll, "NtOpenProcessToken");
     pNtOpenThreadToken      =  (void *)GetProcAddress(hntdll, "NtOpenThreadToken");
@@ -3215,6 +3243,7 @@ START_TEST(om)
     test_token();
     test_duplicate_object();
     test_object_types();
+    test_get_next_process();
     test_get_next_thread();
     test_globalroot();
     test_object_identity();
