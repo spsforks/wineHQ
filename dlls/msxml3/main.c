@@ -311,6 +311,7 @@ static void init_char_encoders(void)
     } encoder[] =
     {
         { "gbk",          gbk_to_utf8,     utf8_to_gbk     },
+        { "iso8859-1",    win1252_to_utf8, utf8_to_win1252 },
         { "windows-1250", win1250_to_utf8, utf8_to_win1250 },
         { "windows-1251", win1251_to_utf8, utf8_to_win1251 },
         { "windows-1252", win1252_to_utf8, utf8_to_win1252 },
