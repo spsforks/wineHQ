@@ -2382,6 +2382,7 @@ static BOOL process_keyboard_message( MSG *msg, UINT hw_id, HWND hwnd_filter,
             if (msg->wParam == VK_APPS && !is_menu_active())
                 NtUserPostMessage( msg->hwnd, WM_CONTEXTMENU, (WPARAM)msg->hwnd, -1 );
         }
+        accept_hardware_message( hw_id );
     }
 
     if (call_hooks( WH_KEYBOARD, remove ? HC_ACTION : HC_NOREMOVE,
@@ -2389,10 +2390,10 @@ static BOOL process_keyboard_message( MSG *msg, UINT hw_id, HWND hwnd_filter,
     {
         /* skip this message */
         call_hooks( WH_CBT, HCBT_KEYSKIPPED, LOWORD(msg->wParam), msg->lParam, 0 );
-        accept_hardware_message( hw_id );
+        if (!remove)
+            accept_hardware_message( hw_id );
         return FALSE;
     }
-    if (remove) accept_hardware_message( hw_id );
     msg->pt = point_phys_to_win_dpi( msg->hwnd, msg->pt );
 
     if (remove && msg->message == WM_KEYDOWN)
