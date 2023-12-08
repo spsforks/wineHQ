@@ -111,6 +111,7 @@ extern "C" {
 
 GpStatus WINGDIPAPI GdipCreateEffect(const GUID guid, CGpEffect **effect);
 GpStatus WINGDIPAPI GdipDeleteEffect(CGpEffect *effect);
+GpStatus WINGDIPAPI GdipGetEffectParameterSize(CGpEffect *effect, UINT *size);
 
 #ifdef __cplusplus
 }
