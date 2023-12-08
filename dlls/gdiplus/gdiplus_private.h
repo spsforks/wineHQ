@@ -384,6 +384,7 @@ typedef enum EffectType {
 } EffectType;
 
 typedef struct CGpEffect{
+    void *params;
     EffectType type;
 } CGpEffect;
 

@@ -5408,37 +5408,95 @@ static void test_createeffect(void)
     GpStatus (WINAPI *pGdipCreateEffect)( const GUID guid, CGpEffect **effect);
     GpStatus (WINAPI *pGdipDeleteEffect)( CGpEffect *effect);
     GpStatus (WINAPI *pGdipGetEffectParameterSize)( CGpEffect *effect, UINT *size);
+    GpStatus (WINAPI *pGdipSetEffectParameters)( CGpEffect *effect, const VOID *params, const UINT size);
     GpStatus stat;
     CGpEffect *effect = NULL;
     UINT size;
     HMODULE mod = GetModuleHandleA("gdiplus.dll");
     int i;
 
-    static const struct test_data {
+    RECT rects[2] = { { 0, 0, 75, 75 }, { -32, -32, 32, 32 } };
+    struct BlurParams blur = { 2.0, TRUE };
+    struct SharpenParams sharpen = { 5.0, 2 };
+    ColorMatrix matrix =
+    {
+        {
+            { 1.0, 1.0, 1.0, 1.0, 1.0 },
+            { 2.0, 2.0, 2.0, 2.0, 2.0 },
+            { 3.0, 3.0, 3.0, 3.0, 3.0 },
+            { 4.0, 4.0, 4.0, 4.0, 4.0 },
+            { 5.0, 5.0, 5.0, 5.0, 5.0 }
+        }
+    };
+    struct ColorLUTParams lut =
+    {
+        { 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7 },
+        { 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,
+          8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,
+          12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,14,14,14,14,14,14,14,14,15,15,15,15,15,15,15,15,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,
+          8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,
+          12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,14,14,14,14,14,14,14,14,15,15,15,15,15,15,15,15 },
+        { 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,
+          0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3 },
+        { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+    };
+    struct BrightnessContrastParams bc = { 75, 50 };
+    struct HueSaturationLightnessParams hsl = { 50, 50, 50 };
+    struct LevelsParams lvl = { 50, 50, 5 };
+    struct TintParams tint = { 20, 5 };
+    struct ColorBalanceParams cbal = { 50, 50, 50 };
+    struct ColorCurveParams ccurve = { AdjustExposure, CurveChannelAll, 5 };
+    struct RedEyeCorrectionParams redi = { 2, rects };
+    const struct test_data {
         const GUID *guid;
         UINT size;
+        void *params;
     } td[] =
     {
-        { &BlurEffectGuid, 8 },
-        { &SharpenEffectGuid, 8 },
-        { &ColorMatrixEffectGuid, 100 },
-        { &ColorLUTEffectGuid, 1024 },
-        { &BrightnessContrastEffectGuid, 8 },
-        { &HueSaturationLightnessEffectGuid, 12 },
-        { &LevelsEffectGuid, 12 },
-        { &TintEffectGuid, 8 },
-        { &ColorBalanceEffectGuid, 12 },
+        { &BlurEffectGuid, 8, &blur },
+        { &SharpenEffectGuid, 8, &sharpen },
+        { &ColorMatrixEffectGuid, 100, &matrix },
+        { &ColorLUTEffectGuid, 1024, &lut },
+        { &BrightnessContrastEffectGuid, 8, &bc },
+        { &HueSaturationLightnessEffectGuid, 12, &hsl },
+        { &LevelsEffectGuid, 12, &lvl },
+        { &TintEffectGuid, 8, &tint },
+        { &ColorBalanceEffectGuid, 12, &cbal },
 #ifdef _WIN64
-        { &RedEyeCorrectionEffectGuid, 16 },
+        { &RedEyeCorrectionEffectGuid, 16, &redi },
 #else
-        { &RedEyeCorrectionEffectGuid, 8 },
+        { &RedEyeCorrectionEffectGuid, 8, &redi },
 #endif
-        { &ColorCurveEffectGuid, 12 }
+        { &ColorCurveEffectGuid, 12, &ccurve }
     };
 
     pGdipCreateEffect = (void*)GetProcAddress( mod, "GdipCreateEffect");
     pGdipDeleteEffect = (void*)GetProcAddress( mod, "GdipDeleteEffect");
     pGdipGetEffectParameterSize = (void*)GetProcAddress( mod, "GdipGetEffectParameterSize");
+    pGdipSetEffectParameters = (void*)GetProcAddress( mod, "GdipSetEffectParameters");
     if(!pGdipCreateEffect || !pGdipDeleteEffect)
     {
         /* GdipCreateEffect/GdipDeleteEffect was introduced in Windows Vista. */
@@ -5452,7 +5510,7 @@ static void test_createeffect(void)
     stat = pGdipGetEffectParameterSize(NULL, NULL);
     expect(InvalidParameter, stat);
 
-    stat = pGdipGetEffectParameterSize(effect, NULL);
+    stat = pGdipSetEffectParameters(NULL, NULL, 0);
     expect(InvalidParameter, stat);
 
     effect = (CGpEffect *)0xdeadbeef;
@@ -5470,6 +5528,12 @@ static void test_createeffect(void)
             size = 0;
             stat = pGdipGetEffectParameterSize(effect, &size);
             expect(Ok, stat);
+            expect(td[i].size, size);
+
+            stat = pGdipSetEffectParameters(effect, td[i].params, td[i].size);
+            expect(Ok, stat);
+            size = 0;
+            stat = pGdipGetEffectParameterSize(effect, &size);
             expect(td[i].size, size);
 
             stat = pGdipDeleteEffect(effect);

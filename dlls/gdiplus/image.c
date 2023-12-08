@@ -5635,6 +5635,7 @@ GpStatus WINGDIPAPI GdipCreateEffect(const GUID guid, CGpEffect **effect)
     }
 
     ef = malloc(sizeof(CGpEffect));
+    ef->params = NULL;
     ef->type = type;
     *effect = ef;
 
@@ -5648,6 +5649,7 @@ GpStatus WINGDIPAPI GdipDeleteEffect(CGpEffect *effect)
 {
     TRACE("(%p)\n", effect);
 
+    free(effect->params);
     free(effect);
     return Ok;
 }
@@ -5678,6 +5680,8 @@ GpStatus WINGDIPAPI GdipGetEffectParameterSize(CGpEffect *effect, UINT *size)
         break;
     case RedEyeCorrectionEffect:
         sz = sizeof(struct RedEyeCorrectionParams);
+        if (effect->params)
+            sz += (((struct RedEyeCorrectionParams *)effect->params)->numberOfAreas)*sizeof(RECT);
         break;
     case ColorMatrixEffect:
         sz = sizeof(ColorMatrix);
@@ -5704,8 +5708,8 @@ GpStatus WINGDIPAPI GdipGetEffectParameterSize(CGpEffect *effect, UINT *size)
         status = InvalidParameter;
         break;
     }
-
     *size = sz;
+
     return status;
 }
 
@@ -5715,14 +5719,39 @@ GpStatus WINGDIPAPI GdipGetEffectParameterSize(CGpEffect *effect, UINT *size)
 GpStatus WINGDIPAPI GdipSetEffectParameters(CGpEffect *effect,
     const VOID *params, const UINT size)
 {
-    static int calls;
+    UINT paramsize = 0, num = 0;
 
     TRACE("(%p,%p,%u)\n", effect, params, size);
 
-    if(!(calls++))
-        FIXME("not implemented\n");
+    if (!effect || !params || !size)
+        return InvalidParameter;
 
-    return NotImplemented;
+    if (GdipGetEffectParameterSize(effect, &paramsize) != Ok)
+        return InvalidParameter;
+
+    if (effect->type == RedEyeCorrectionEffect)
+    {
+        if ((paramsize-size > 0) || (((size-paramsize)%sizeof(RECT)) != 0))
+            return InvalidParameter;
+    }
+    else
+    {
+        if (paramsize != size)
+            return InvalidParameter;
+    }
+
+    effect->params = realloc(effect->params, size);
+    if (effect->type == RedEyeCorrectionEffect)
+    {
+        num = (size-paramsize)/sizeof(RECT);
+        ((struct RedEyeCorrectionParams *)effect->params)->numberOfAreas = num;
+        ((struct RedEyeCorrectionParams *)effect->params)->areas = malloc(num*sizeof(RECT));
+        memcpy(((struct RedEyeCorrectionParams *)params)->areas, ((struct RedEyeCorrectionParams *)effect->params)->areas, num*sizeof(RECT));
+    }
+    else
+        memcpy(effect->params, params, size);
+
+    return Ok;
 }
 
 /*****************************************************************************
