@@ -5408,7 +5408,7 @@ static void test_createeffect(void)
     GpStatus (WINAPI *pGdipCreateEffect)( const GUID guid, CGpEffect **effect);
     GpStatus (WINAPI *pGdipDeleteEffect)( CGpEffect *effect);
     GpStatus stat;
-    CGpEffect *effect;
+    CGpEffect *effect = NULL;
     HMODULE mod = GetModuleHandleA("gdiplus.dll");
     int i;
     const GUID * const effectlist[] =
@@ -5429,12 +5429,13 @@ static void test_createeffect(void)
     expect(InvalidParameter, stat);
 
     stat = pGdipCreateEffect(noneffect, &effect);
-    todo_wine expect(Win32Error, stat);
+    expect(Win32Error, stat);
+    ok(effect == NULL, "Expected effect to be NULL\n");
 
     for(i=0; i < ARRAY_SIZE(effectlist); i++)
     {
         stat = pGdipCreateEffect(*effectlist[i], &effect);
-        todo_wine expect(Ok, stat);
+        expect(Ok, stat);
         if(stat == Ok)
         {
             stat = pGdipDeleteEffect(effect);
