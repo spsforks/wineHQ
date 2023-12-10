@@ -2644,6 +2644,17 @@ typedef struct _SYSTEM_CPU_INFORMATION {
     ULONG  ProcessorFeatureBits;
 } SYSTEM_CPU_INFORMATION, *PSYSTEM_CPU_INFORMATION;
 
+typedef struct _SYSTEM_BOOT_ENVIRONMENT_V1 {
+  GUID BootIdentifier;
+  FIRMWARE_TYPE FirmwareType;
+} SYSTEM_BOOT_ENVIRONMENT_V1, *PSYSTEM_BOOT_ENVIRONMENT_V1;
+
+typedef struct _SYSTEM_BOOT_ENVIRONMENT_INFORMATION {
+  GUID BootIdentifier;
+  FIRMWARE_TYPE FirmwareType;
+  ULONGLONG BootFlags;
+} SYSTEM_BOOT_ENVIRONMENT_INFORMATION, *PSYSTEM_BOOT_ENVIRONMENT_INFORMATION;
+
 /* definitions of bits in the Feature set for the x86 processors */
 #define CPU_FEATURE_VME    0x00000005   /* Virtual 86 Mode Extensions */
 #define CPU_FEATURE_TSC    0x00000002   /* Time Stamp Counter available */
