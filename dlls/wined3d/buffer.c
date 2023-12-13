@@ -1245,15 +1245,27 @@ void wined3d_buffer_update_sub_resource(struct wined3d_buffer *buffer, struct wi
 
     if (flags & UPLOAD_BO_RENAME_ON_UNMAP)
     {
-        /* Don't increment the refcount. UPLOAD_BO_RENAME_ON_UNMAP transfers an
-         * existing reference.
-         *
-         * FIXME: We could degenerate RENAME to a copy + free and rely on the
-         * COW logic to detect this case.
-         */
-        wined3d_buffer_set_bo(buffer, context, upload_bo->addr.buffer_object);
-        wined3d_buffer_validate_location(buffer, WINED3D_LOCATION_BUFFER);
-        wined3d_buffer_invalidate_location(buffer, ~WINED3D_LOCATION_BUFFER);
+        if (upload_bo->addr.buffer_object)
+        {
+            /* Don't increment the refcount. UPLOAD_BO_RENAME_ON_UNMAP transfers an
+             * existing reference.
+             *
+             * FIXME: We could degenerate RENAME to a copy + free and rely on the
+             * COW logic to detect this case.
+             */
+            wined3d_buffer_set_bo(buffer, context, upload_bo->addr.buffer_object);
+            wined3d_buffer_validate_location(buffer, WINED3D_LOCATION_BUFFER);
+            wined3d_buffer_invalidate_location(buffer, ~WINED3D_LOCATION_BUFFER);
+        }
+        else
+        {
+            _aligned_free(buffer->resource.heap_memory);
+            buffer->resource.heap_memory = (void *)upload_bo->addr.addr;
+            wined3d_buffer_validate_location(buffer, WINED3D_LOCATION_SYSMEM);
+            wined3d_buffer_invalidate_location(buffer, ~WINED3D_LOCATION_SYSMEM);
+            /* We are done here. Due to the invalidated LOCATION_BUFFER the data will be uplooaded on the next draw. */
+            return;
+        }
     }
 
     if (upload_bo->addr.buffer_object && upload_bo->addr.buffer_object == buffer->buffer_object)
