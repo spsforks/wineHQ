@@ -33,6 +33,8 @@
 
 #include "wine/test.h"
 
+static IMFMediaType *h264_video_type;
+static IMFMediaType *aac_audio_type;
 
 #define check_interface(a, b, c) check_interface_(__LINE__, a, b, c)
 static void check_interface_(unsigned int line, void *iface_ptr, REFIID iid, BOOL supported)
@@ -49,63 +51,87 @@ static void check_interface_(unsigned int line, void *iface_ptr, REFIID iid, BOO
         IUnknown_Release(unk);
 }
 
-static void test_mpeg4_media_sink(void)
+static void start_tests(void)
 {
-    IMFMediaSink *sink = NULL, *sink2 = NULL, *sink_audio = NULL, *sink_video = NULL, *sink_empty = NULL;
-    IMFByteStream *bytestream, *bytestream_audio, *bytestream_video, *bytestream_empty;
-    IMFMediaType *audio_type, *video_type, *media_type;
-    DWORD id, count, flags, width = 96, height = 96;
-    IMFMediaTypeHandler *type_handler = NULL;
-    IMFPresentationClock *clock;
-    IMFStreamSink *stream_sink;
+    DWORD width = 96, height = 96;
     HRESULT hr;
-    GUID guid;
 
-    /* Test sink creation. */
-    hr = MFCreateMediaType(&audio_type);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = MFCreateMediaType(&video_type);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = CoInitialize(NULL);
+    ok(hr == S_OK, "CoInitialize failed, hr %#lx.\n", hr);
+    hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    ok(hr == S_OK, "MFStartup failed, hr %#lx.\n", hr);
 
-    hr = IMFMediaType_SetGUID(audio_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+    hr = MFCreateMediaType(&h264_video_type);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetGUID(audio_type, &MF_MT_SUBTYPE, &MFAudioFormat_AAC);
+    hr = IMFMediaType_SetGUID(h264_video_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AUDIO_NUM_CHANNELS, 1);
+    hr = IMFMediaType_SetGUID(h264_video_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+    hr = IMFMediaType_SetUINT64(h264_video_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100);
+    hr = IMFMediaType_SetUINT64(h264_video_type, &MF_MT_FRAME_RATE, ((UINT64)30000 << 32) | 1001);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 12000);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 41);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AAC_PAYLOAD_TYPE, 0);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetBlob(audio_type, &MF_MT_USER_DATA, test_aac_codec_data, sizeof(test_aac_codec_data));
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
-    hr = IMFMediaType_SetGUID(video_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetGUID(video_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT64(video_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetUINT64(video_type, &MF_MT_FRAME_RATE, ((UINT64)30000 << 32) | 1001);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetBlob(video_type, &MF_MT_MPEG_SEQUENCE_HEADER,
+    hr = IMFMediaType_SetBlob(h264_video_type, &MF_MT_MPEG_SEQUENCE_HEADER,
             test_h264_sequence_header, sizeof(test_h264_sequence_header));
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_audio);
+    hr = MFCreateMediaType(&aac_audio_type);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_video);
+    hr = IMFMediaType_SetGUID(aac_audio_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_empty);
+    hr = IMFMediaType_SetGUID(aac_audio_type, &MF_MT_SUBTYPE, &MFAudioFormat_AAC);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AUDIO_NUM_CHANNELS, 1);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 12000);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 41);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT32(aac_audio_type, &MF_MT_AAC_PAYLOAD_TYPE, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaType_SetBlob(aac_audio_type, &MF_MT_USER_DATA, test_aac_codec_data, sizeof(test_aac_codec_data));
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+}
+
+static void end_tests(void)
+{
+    HRESULT hr;
+
+    IMFMediaType_Release(aac_audio_type);
+    IMFMediaType_Release(h264_video_type);
+
+    hr = MFShutdown();
+    ok(hr == S_OK, "MFShutdown returned %#lx.\n", hr);
+
+    CoUninitialize();
+}
+
+static HRESULT create_mpeg4_media_sink(IMFMediaType *video_type, IMFMediaType *audio_type,
+        IMFByteStream **bytestream, IMFMediaSink **media_sink)
+{
+    HRESULT hr;
+
+    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, bytestream);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    if (FAILED(hr = MFCreateMPEG4MediaSink(*bytestream, video_type, audio_type, media_sink)))
+    {
+        IMFByteStream_Release(*bytestream);
+        *bytestream = NULL;
+    }
+
+    return hr;
+}
+
+static void test_mpeg4_media_sink_create(void)
+{
+    IMFByteStream *bytestream;
+    IMFMediaSink *sink;
+    HRESULT hr;
 
     hr = MFCreateMPEG4MediaSink(NULL, NULL, NULL, NULL);
     ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
@@ -114,19 +140,51 @@ static void test_mpeg4_media_sink(void)
     hr = MFCreateMPEG4MediaSink(NULL, NULL, NULL, &sink);
     ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
     ok(sink == (void *)0xdeadbeef, "Unexpected pointer %p.\n", sink);
-    sink = NULL;
 
-    hr = MFCreateMPEG4MediaSink(bytestream_empty, NULL, NULL, &sink_empty);
+    hr = create_mpeg4_media_sink(h264_video_type, aac_audio_type, &bytestream, &sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFByteStream_Release(bytestream);
+    IMFMediaSink_Release(sink);
+
+    hr = create_mpeg4_media_sink(h264_video_type, NULL, &bytestream, &sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFByteStream_Release(bytestream);
+    IMFMediaSink_Release(sink);
+
+    hr = create_mpeg4_media_sink(NULL, aac_audio_type, &bytestream, &sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFByteStream_Release(bytestream);
+    IMFMediaSink_Release(sink);
+
+    hr = create_mpeg4_media_sink(NULL, NULL, &bytestream, &sink);
     ok(hr == S_OK || broken(hr == E_INVALIDARG), "Unexpected hr %#lx.\n", hr);
+    if (hr == S_OK)
+    {
+        IMFByteStream_Release(bytestream);
+        IMFMediaSink_Release(sink);
+    }
+}
 
-    hr = MFCreateMPEG4MediaSink(bytestream_audio, NULL, audio_type, &sink_audio);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+static void test_mpeg4_media_sink(void)
+{
+    IMFMediaSink *sink = NULL, *sink2 = NULL, *sink_audio = NULL, *sink_video = NULL, *sink_empty = NULL;
+    IMFByteStream *bytestream, *bytestream_audio, *bytestream_video, *bytestream_empty = NULL;
+    IMFMediaTypeHandler *type_handler = NULL;
+    IMFPresentationClock *clock;
+    IMFStreamSink *stream_sink;
+    IMFMediaType *media_type;
+    DWORD id, count, flags;
+    HRESULT hr;
+    GUID guid;
 
-    hr = MFCreateMPEG4MediaSink(bytestream_video, video_type, NULL, &sink_video);
+    hr = create_mpeg4_media_sink(h264_video_type, aac_audio_type, &bytestream, &sink);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
-    hr = MFCreateMPEG4MediaSink(bytestream, video_type, audio_type, &sink);
+    hr = create_mpeg4_media_sink(h264_video_type, NULL, &bytestream_video, &sink_video);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = create_mpeg4_media_sink(NULL, aac_audio_type, &bytestream_audio, &sink_audio);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = create_mpeg4_media_sink(NULL, NULL, &bytestream_empty, &sink_empty);
+    ok(hr == S_OK || broken(hr == E_INVALIDARG), "Unexpected hr %#lx.\n", hr);
 
     /* Test sink. */
     flags = 0xdeadbeef;
@@ -218,7 +276,7 @@ static void test_mpeg4_media_sink(void)
     /* Test adding and removing stream sink. */
     if (!(flags & MEDIASINK_FIXED_STREAMS))
     {
-        hr = IMFMediaSink_AddStreamSink(sink, 123, video_type, &stream_sink);
+        hr = IMFMediaSink_AddStreamSink(sink, 123, h264_video_type, &stream_sink);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         IMFStreamSink_Release(stream_sink);
         hr = IMFMediaSink_GetStreamSinkByIndex(sink, 2, &stream_sink);
@@ -229,13 +287,13 @@ static void test_mpeg4_media_sink(void)
         IMFStreamSink_Release(stream_sink);
 
         stream_sink = (void *)0xdeadbeef;
-        hr = IMFMediaSink_AddStreamSink(sink, 1, audio_type, &stream_sink);
+        hr = IMFMediaSink_AddStreamSink(sink, 1, aac_audio_type, &stream_sink);
         ok(hr == MF_E_STREAMSINK_EXISTS, "Unexpected hr %#lx.\n", hr);
         ok(!stream_sink, "Unexpected pointer %p.\n", stream_sink);
 
         hr = IMFMediaSink_RemoveStreamSink(sink, 1);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-        hr = IMFMediaSink_AddStreamSink(sink, 1, audio_type, &stream_sink);
+        hr = IMFMediaSink_AddStreamSink(sink, 1, aac_audio_type, &stream_sink);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         IMFStreamSink_Release(stream_sink);
         hr = IMFMediaSink_GetStreamSinkByIndex(sink, 2, &stream_sink);
@@ -329,7 +387,7 @@ static void test_mpeg4_media_sink(void)
 
     IMFStreamSink_Release(stream_sink);
 
-    hr = IMFMediaSink_AddStreamSink(sink, 0, audio_type, &stream_sink);
+    hr = IMFMediaSink_AddStreamSink(sink, 0, aac_audio_type, &stream_sink);
     todo_wine
     ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaSink_GetStreamSinkByIndex(sink, 0, &stream_sink);
@@ -349,26 +407,18 @@ static void test_mpeg4_media_sink(void)
     if (sink_empty)
         IMFMediaSink_Release(sink_empty);
     IMFByteStream_Release(bytestream);
-    IMFByteStream_Release(bytestream_empty);
+    if (bytestream_empty)
+        IMFByteStream_Release(bytestream_empty);
     IMFByteStream_Release(bytestream_video);
     IMFByteStream_Release(bytestream_audio);
-    IMFMediaType_Release(video_type);
-    IMFMediaType_Release(audio_type);
 }
-
 
 START_TEST(mpeg4)
 {
-    HRESULT hr;
+    start_tests();
 
-    hr = CoInitialize(NULL);
-    ok(hr == S_OK, "CoInitialize failed, hr %#lx.\n", hr);
-    hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-    ok(hr == S_OK, "MFStartup failed, hr %#lx.\n", hr);
-
+    test_mpeg4_media_sink_create();
     test_mpeg4_media_sink();
 
-    hr = MFShutdown();
-    ok(hr == S_OK, "MFShutdown failed, hr %#lx.\n", hr);
-    CoUninitialize();
+    end_tests();
 }
