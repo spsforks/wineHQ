@@ -137,7 +137,7 @@ static HWND create_window(void)
             0, 0, r.right - r.left, r.bottom - r.top, NULL, NULL, NULL, NULL);
 }
 
-static IMFSample *create_sample(const BYTE *data, ULONG size)
+IMFSample *create_sample(const BYTE *data, ULONG size)
 {
     IMFMediaBuffer *media_buffer;
     IMFSample *sample;

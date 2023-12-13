@@ -114,3 +114,4 @@ struct sample_desc
 #define check_mf_sample_collection(a, b, c) check_mf_sample_collection_(__FILE__, __LINE__, a, b, c)
 extern DWORD check_mf_sample_collection_(const char *file, int line, IMFCollection *samples,
         const struct sample_desc *expect_samples, const WCHAR *expect_data_filename);
+extern IMFSample *create_sample(const BYTE *data, ULONG size);
