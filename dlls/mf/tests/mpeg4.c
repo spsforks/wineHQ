@@ -365,26 +365,57 @@ static void test_mpeg4_media_sink(void)
 
     IMFMediaType_Release(media_type);
 
-    /* Test shutdown state. */
+    IMFMediaTypeHandler_Release(type_handler);
+    IMFMediaSink_Release(sink);
+    IMFMediaSink_Release(sink_video);
+    IMFMediaSink_Release(sink_audio);
+    if (sink_empty)
+        IMFMediaSink_Release(sink_empty);
+    IMFByteStream_Release(bytestream);
+    if (bytestream_empty)
+        IMFByteStream_Release(bytestream_empty);
+    IMFByteStream_Release(bytestream_video);
+    IMFByteStream_Release(bytestream_audio);
+}
+
+static void test_mpeg4_media_sink_shutdown_state(void)
+{
+    IMFMediaTypeHandler *type_handler;
+    IMFClockStateSink *clock_sink;
+    IMFMediaSink *sink, *sink2;
+    IMFStreamSink *stream_sink;
+    IMFByteStream *bytestream;
+    DWORD id, flags;
+    HRESULT hr;
+    GUID guid;
+
+    hr = create_mpeg4_media_sink(h264_video_type, aac_audio_type, &bytestream, &sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaSink_GetStreamSinkByIndex(sink, 0, &stream_sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFStreamSink_GetMediaTypeHandler(stream_sink, &type_handler);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
     hr = IMFMediaSink_Shutdown(sink);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaSink_Shutdown(sink);
     ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
 
     hr = IMFStreamSink_GetMediaSink(stream_sink, &sink2);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    IMFMediaSink_Release(sink2);
-
+    todo_wine
+    ok(hr == MF_E_STREAMSINK_REMOVED, "Unexpected hr %#lx.\n", hr);
     hr = IMFStreamSink_GetIdentifier(stream_sink, &id);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
+    todo_wine
+    ok(hr == MF_E_STREAMSINK_REMOVED, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaTypeHandler_GetMajorType(type_handler, NULL);
     todo_wine
     ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaTypeHandler_GetMajorType(type_handler, &guid);
     todo_wine
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(hr == MF_E_STREAMSINK_REMOVED, "Unexpected hr %#lx.\n", hr);
 
+    IMFMediaTypeHandler_Release(type_handler);
     IMFStreamSink_Release(stream_sink);
 
     hr = IMFMediaSink_AddStreamSink(sink, 0, aac_audio_type, &stream_sink);
@@ -400,17 +431,23 @@ static void test_mpeg4_media_sink(void)
     todo_wine
     ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
 
-    IMFMediaTypeHandler_Release(type_handler);
+    hr = IMFMediaSink_QueryInterface(sink, &IID_IMFClockStateSink, (void **)&clock_sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockStart(clock_sink, MFGetSystemTime(), 0);
+    ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockStop(clock_sink, MFGetSystemTime());
+    ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockPause(clock_sink, MFGetSystemTime());
+    ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockRestart(clock_sink, MFGetSystemTime());
+    ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockSetRate(clock_sink, MFGetSystemTime(), 1.0f);
+    todo_wine
+    ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
+    IMFClockStateSink_Release(clock_sink);
+
     IMFMediaSink_Release(sink);
-    IMFMediaSink_Release(sink_video);
-    IMFMediaSink_Release(sink_audio);
-    if (sink_empty)
-        IMFMediaSink_Release(sink_empty);
     IMFByteStream_Release(bytestream);
-    if (bytestream_empty)
-        IMFByteStream_Release(bytestream_empty);
-    IMFByteStream_Release(bytestream_video);
-    IMFByteStream_Release(bytestream_audio);
 }
 
 START_TEST(mpeg4)
@@ -419,6 +456,7 @@ START_TEST(mpeg4)
 
     test_mpeg4_media_sink_create();
     test_mpeg4_media_sink();
+    test_mpeg4_media_sink_shutdown_state();
 
     end_tests();
 }
