@@ -33,8 +33,180 @@
 
 #include "wine/test.h"
 
+struct test_event_callback
+{
+    IMFAsyncCallback IMFAsyncCallback_iface;
+    HANDLE started, stopped;
+};
+
+struct test_finalize_callback
+{
+    IMFAsyncCallback IMFAsyncCallback_iface;
+    HANDLE finalized;
+};
+
+static const BYTE test_h264_header[] =
+{
+    0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x14, 0xac, 0xd9, 0x46, 0x36, 0xc0,
+    0x5a, 0x83, 0x03, 0x03, 0x52, 0x80, 0x00, 0x00, 0x03, 0x00, 0x80, 0x00,
+    0x00, 0x03, 0x01, 0x47, 0x8a, 0x14, 0xcb, 0x00, 0x00, 0x01, 0x68, 0xeb,
+    0xec, 0xb2, 0x2c,
+};
+
+static const BYTE test_h264_frame[] =
+{
+    0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x00, 0x17, 0xff, 0xe8, 0xff, 0xf2,
+    0x3f, 0x9b, 0x0f, 0x5c, 0xdd, 0x08, 0x3f, 0xf5, 0xe8, 0xfc, 0xbb, 0xed,
+    0x67, 0xbd, 0x22, 0xa1, 0xd7, 0xba, 0x21, 0xe6, 0x75, 0x8d, 0x3c, 0x11,
+    0x12, 0x18, 0xd9, 0x81, 0x11, 0x75, 0x6a, 0x9b, 0x14, 0xcc, 0x50, 0x96,
+    0x3f, 0x70, 0xd4, 0xf8, 0x3d, 0x17, 0xc9, 0x4e, 0x23, 0x96, 0x4e, 0x37,
+    0xb9, 0xbe, 0x74, 0xf1, 0x53, 0x9f, 0xb4, 0x59, 0x57, 0x32, 0xee, 0x7f,
+    0xfd, 0xea, 0x48, 0x2d, 0x80, 0x9e, 0x19, 0x61, 0x59, 0xcb, 0x14, 0xbd,
+    0xcd, 0xb3, 0x3e, 0x81, 0x05, 0x56, 0x8e, 0x9c, 0xd9, 0x3f, 0x01, 0x6b,
+    0x3e, 0x3c, 0x95, 0xcb, 0xc4, 0x1c, 0xfd, 0xb1, 0x72, 0x23, 0xbb, 0x7b,
+    0xf8, 0xb8, 0x50, 0xda, 0x3c, 0x70, 0xc5, 0x7a, 0xc1, 0xe3, 0x13, 0x29,
+    0x79, 0x7a, 0xbe, 0xff, 0x5a, 0x26, 0xc3, 0xb6, 0x56, 0xbb, 0x6a, 0x97,
+    0x4d, 0xdc, 0x1e, 0x07, 0x4a, 0xaf, 0xff, 0x9e, 0x60, 0x20, 0x69, 0xf9,
+    0xfc, 0xe8, 0xe0, 0xa6, 0x10, 0xa3, 0xab, 0x0f, 0xbe, 0x9c, 0x59, 0xa6,
+    0xb4, 0x69, 0x4d, 0xc6, 0x09, 0xaa, 0xa8, 0xab, 0xbc, 0x64, 0xfd, 0x7e,
+    0xde, 0x5f, 0x55, 0x06, 0xb9, 0xae, 0xce, 0x76, 0x5f, 0x63, 0x3a, 0x12,
+    0x2e, 0x9e, 0xbd, 0x28, 0x71, 0x69, 0x34, 0xc9, 0xab, 0x20, 0x28, 0xb8,
+    0x4b, 0x20, 0x1c, 0xe1, 0xc8, 0xc4, 0xa6, 0x7d, 0x73, 0x53, 0x73, 0xbf,
+    0x21, 0x19, 0x9a, 0xd5, 0xa7, 0xcf, 0x47, 0x5a, 0xda, 0x34, 0x50, 0x7b,
+    0x69, 0x8e, 0x52, 0xb2, 0x61, 0xda, 0x8e, 0x20, 0x95, 0x73, 0xc5, 0xb9,
+    0x2b, 0x14, 0x48, 0xc1, 0x68, 0x3a, 0x7c, 0x78, 0x14, 0xe9, 0x92, 0xc7,
+    0x89, 0xfc, 0x4f, 0x90, 0xaf, 0x54, 0x1e, 0xd0, 0xf0, 0x00, 0x25, 0x3e,
+    0xcf, 0xbc, 0x18, 0xad, 0xc9, 0x6b, 0x9d, 0x77, 0x21, 0x6d, 0x5d, 0x2e,
+    0xce, 0x09, 0xd9, 0xee, 0x79, 0xb6, 0xe7, 0xe4, 0xf4, 0x7f, 0x6e, 0x11,
+    0x7b, 0x32, 0xfb, 0xf6, 0x8c, 0xbf, 0x05, 0xe1, 0x9a, 0x9c, 0x6c, 0x48,
+    0x79, 0xac, 0x8f, 0x16, 0xb6, 0xf6, 0x3e, 0x76, 0xab, 0x40, 0x28, 0x61,
+
+};
+
 static IMFMediaType *h264_video_type;
 static IMFMediaType *aac_audio_type;
+
+static struct test_event_callback *impl_from_event_callback(IMFAsyncCallback *iface)
+{
+    return CONTAINING_RECORD(iface, struct test_event_callback, IMFAsyncCallback_iface);
+}
+
+static struct test_finalize_callback *impl_from_finalize_callback(IMFAsyncCallback *iface)
+{
+    return CONTAINING_RECORD(iface, struct test_finalize_callback, IMFAsyncCallback_iface);
+}
+
+static HRESULT WINAPI test_callback_QueryInterface(IMFAsyncCallback *iface, REFIID riid, void **obj)
+{
+    if (IsEqualIID(riid, &IID_IMFAsyncCallback) ||
+            IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = iface;
+        IMFAsyncCallback_AddRef(iface);
+        return S_OK;
+    }
+
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI test_callback_AddRef(IMFAsyncCallback *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI test_callback_Release(IMFAsyncCallback *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI test_callback_GetParameters(IMFAsyncCallback *iface, DWORD *flags, DWORD *queue)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI test_event_callback_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
+{
+    struct test_event_callback *callback = impl_from_event_callback(iface);
+    IMFMediaEventGenerator *event_generator;
+    IMFMediaEvent *media_event;
+    MediaEventType type;
+    IUnknown *object;
+    HRESULT hr;
+
+    ok(result != NULL, "Unexpected result object.\n");
+
+    hr = IMFAsyncResult_GetState(result, &object);
+    ok(hr == S_OK, "GetState returned hr %#lx.\n", hr);
+    hr = IUnknown_QueryInterface(object, &IID_IMFMediaEventGenerator, (void **)&event_generator);
+    ok(hr == S_OK, "QueryInterface returned hr %#lx.\n", hr);
+    hr = IMFMediaEventGenerator_EndGetEvent(event_generator, result, &media_event);
+    ok(hr == S_OK, "EndGetEvent returned hr %#lx.\n", hr);
+
+    hr = IMFMediaEvent_GetType(media_event, &type);
+    ok(hr == S_OK, "GetType returned hr %#lx.\n", hr);
+    switch (type)
+    {
+        case MEStreamSinkStarted:
+            SetEvent(callback->started);
+            break;
+        case MEStreamSinkStopped:
+            SetEvent(callback->stopped);
+            break;
+        default:
+            break;
+    }
+
+    hr = IMFMediaEventGenerator_BeginGetEvent(event_generator, iface, object);
+    ok(hr == S_OK, "BeginGetEvent returned hr %#lx.\n", hr);
+
+    IMFMediaEvent_Release(media_event);
+    IMFMediaEventGenerator_Release(event_generator);
+    IUnknown_Release(object);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI test_finalize_callback_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
+{
+    struct test_finalize_callback *callback = impl_from_finalize_callback(iface);
+    IMFFinalizableMediaSink *media_sink;
+    IUnknown *object;
+    HRESULT hr;
+
+    ok(result != NULL, "Unexpected result object.\n");
+
+    hr = IMFAsyncResult_GetState(result, &object);
+    ok(hr == S_OK, "GetState returned hr %#lx.\n", hr);
+    hr = IUnknown_QueryInterface(object, &IID_IMFFinalizableMediaSink, (void **)&media_sink);
+    ok(hr == S_OK, "QueryInterface returned hr %#lx.\n", hr);
+    hr = IMFFinalizableMediaSink_EndFinalize(media_sink, result);
+    ok(hr == S_OK, "EndFinalize returned hr %#lx.\n", hr);
+    IMFFinalizableMediaSink_Release(media_sink);
+    IUnknown_Release(object);
+
+    SetEvent(callback->finalized);
+
+    return S_OK;
+}
+
+static const IMFAsyncCallbackVtbl test_callback_event_vtbl =
+{
+    test_callback_QueryInterface,
+    test_callback_AddRef,
+    test_callback_Release,
+    test_callback_GetParameters,
+    test_event_callback_Invoke,
+};
+
+static const IMFAsyncCallbackVtbl test_callback_finalize_vtbl =
+{
+    test_callback_QueryInterface,
+    test_callback_AddRef,
+    test_callback_Release,
+    test_callback_GetParameters,
+    test_finalize_callback_Invoke,
+};
 
 #define check_interface(a, b, c) check_interface_(__LINE__, a, b, c)
 static void check_interface_(unsigned int line, void *iface_ptr, REFIID iid, BOOL supported)
@@ -450,6 +622,93 @@ static void test_mpeg4_media_sink_shutdown_state(void)
     IMFByteStream_Release(bytestream);
 }
 
+static void test_mpeg4_media_sink_process(void)
+{
+    struct test_finalize_callback finalize_callback = {.IMFAsyncCallback_iface.lpVtbl = &test_callback_finalize_vtbl};
+    struct test_event_callback event_callback = {.IMFAsyncCallback_iface.lpVtbl = &test_callback_event_vtbl};
+    DWORD width = 96, height = 96, fps = 1, ret;
+    IMFFinalizableMediaSink *finalizable;
+    IMFClockStateSink *clock_sink;
+    IMFStreamSink *stream_sink;
+    IMFByteStream *bytestream;
+    IMFMediaSink *media_sink;
+    IMFMediaType *video_type;
+    IMFSample *input_sample;
+    HRESULT hr;
+
+    hr = MFCreateMediaType(&video_type);
+    ok(hr == S_OK, "MFCreateMediaType returned %#lx.\n", hr);
+    hr = IMFMediaType_SetGUID(video_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+    ok(hr == S_OK, "SetGUID returned %#lx.\n", hr);
+    hr = IMFMediaType_SetGUID(video_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
+    ok(hr == S_OK, "SetGUID returned %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT64(video_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
+    ok(hr == S_OK, "SetUINT64 returned %#lx.\n", hr);
+    hr = IMFMediaType_SetUINT64(video_type, &MF_MT_FRAME_RATE, ((UINT64)fps << 32) | 1);
+    ok(hr == S_OK, "SetUINT64 returned %#lx.\n", hr);
+    hr = IMFMediaType_SetBlob(video_type, &MF_MT_MPEG_SEQUENCE_HEADER, test_h264_header, sizeof(test_h264_header));
+    ok(hr == S_OK, "etBlob returned %#lx.\n", hr);
+
+    hr = create_mpeg4_media_sink(video_type, NULL, &bytestream, &media_sink);
+    ok(hr == S_OK, "Failed to create media sink, hr %#lx.\n", hr);
+    IMFMediaType_Release(video_type);
+
+    hr = IMFMediaSink_QueryInterface(media_sink, &IID_IMFClockStateSink, (void **)&clock_sink);
+    ok(hr == S_OK, "QueryInterface returned %#lx.\n", hr);
+
+    event_callback.started = CreateEventW(NULL, FALSE, FALSE, NULL);
+    event_callback.stopped = CreateEventW(NULL, FALSE, FALSE, NULL);
+    finalize_callback.finalized = CreateEventW(NULL, FALSE, FALSE, NULL);
+
+    /* Start streaming. */
+    hr = IMFMediaSink_GetStreamSinkById(media_sink, 1, &stream_sink);
+    ok(hr == S_OK, "GetStreamSinkById returned %#lx.\n", hr);
+    hr = IMFClockStateSink_OnClockStart(clock_sink, MFGetSystemTime(), 0);
+    ok(hr == S_OK, "OnClockStar returned %#lx.\n", hr);
+    hr = IMFStreamSink_BeginGetEvent(stream_sink, &event_callback.IMFAsyncCallback_iface, (IUnknown *)stream_sink);
+    ok(hr == S_OK, "BeginGetEvent returned %#lx.\n", hr);
+    ret = WaitForSingleObject(event_callback.started, 3000);
+    ok(hr == S_OK, "WaitForSingleObject returned %#lx.\n", ret);
+
+    /* Process sample. */
+    input_sample = create_sample(test_h264_frame, sizeof(test_h264_frame));
+    hr = IMFSample_SetSampleTime(input_sample, 0);
+    ok(hr == S_OK, "SetSampleTime returned %#lx.\n", hr);
+    hr = IMFSample_SetSampleDuration(input_sample, 10000000);
+    ok(hr == S_OK, "SetSampleDuration returned %#lx.\n", hr);
+    hr = IMFStreamSink_ProcessSample(stream_sink, input_sample);
+    ok(hr == S_OK, "ProcessSample returned %#lx.\n", hr);
+    IMFSample_Release(input_sample);
+
+    /* Wait for stop event to make sure samples have been processed. */
+    hr = IMFClockStateSink_OnClockStop(clock_sink, MFGetSystemTime());
+    ok(hr == S_OK, "OnClockStop returned %#lx.\n", hr);
+    ret = WaitForSingleObject(event_callback.stopped, 3000);
+    ok(hr == S_OK, "WaitForSingleObject returned %#lx.\n", ret);
+
+    /* Finalize. */
+    hr = IMFMediaSink_QueryInterface(media_sink, &IID_IMFFinalizableMediaSink, (void **)&finalizable);
+    ok(hr == S_OK, "QueryInterface returned %#lx.\n", hr);
+    hr = IMFFinalizableMediaSink_BeginFinalize(finalizable,
+            &finalize_callback.IMFAsyncCallback_iface, (IUnknown *)media_sink);
+    ok(hr == S_OK, "BeginFinalize returned %#lx.\n", hr);
+    ret = WaitForSingleObject(finalize_callback.finalized, 3000);
+    ok(hr == S_OK, "WaitForSingleObject returned %#lx.\n", ret);
+    hr = IMFMediaSink_Shutdown(media_sink);
+    ok(hr == S_OK, "Shutdown returned %#lx.\n", hr);
+    IMFFinalizableMediaSink_Release(finalizable);
+
+    IMFStreamSink_Release(stream_sink);
+    CloseHandle(finalize_callback.finalized);
+    CloseHandle(event_callback.stopped);
+    CloseHandle(event_callback.started);
+    IMFClockStateSink_Release(clock_sink);
+    ret = IMFMediaSink_Release(media_sink);
+    todo_wine
+    ok(ret == 0, "Release returned %lu.\n", ret);
+    IMFByteStream_Release(bytestream);
+}
+
 START_TEST(mpeg4)
 {
     start_tests();
@@ -457,6 +716,7 @@ START_TEST(mpeg4)
     test_mpeg4_media_sink_create();
     test_mpeg4_media_sink();
     test_mpeg4_media_sink_shutdown_state();
+    test_mpeg4_media_sink_process();
 
     end_tests();
 }
