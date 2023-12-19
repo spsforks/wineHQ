@@ -4434,13 +4434,13 @@ static void test_thread_context(void)
 #undef COMPARE
 }
 
-static void test_continue(void)
+static void test_continue(BOOL testContinueEx)
 {
     struct context_pair {
         CONTEXT before;
         CONTEXT after;
     } contexts;
-    NTSTATUS (*func_ptr)( struct context_pair *, BOOL alertable, void *continue_func, void *capture_func ) = code_mem;
+    NTSTATUS (*func_ptr)( struct context_pair *, void *arg2, void *continue_func, void *capture_func ) = code_mem;
     int i;
 
     static const BYTE call_func[] =
@@ -4509,7 +4509,7 @@ static void test_continue(void)
 
         /* load args */
         0x48, 0x8b, 0x4c, 0x24, 0x70, /* mov 8*14(%rsp), %rcx; context   */
-        0x48, 0x8b, 0x54, 0x24, 0x78, /* mov 8*15(%rsp), %rdx; alertable */
+        0x48, 0x8b, 0x54, 0x24, 0x78, /* mov 8*15(%rsp), %rdx; arg2 */
         0x48, 0x83, 0xec, 0x70,       /* sub $0x70, %rsp; change stack   */
 
         /* setup context to return to label 1 */
@@ -4569,7 +4569,16 @@ static void test_continue(void)
     memcpy( func_ptr, call_func, sizeof(call_func) );
     FlushInstructionCache( GetCurrentProcess(), func_ptr, sizeof(call_func) );
 
-    func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+    if (testContinueEx)
+    {
+        CONTINUE_OPTIONS opts = { 0 };
+        opts.ContinueType = CONTINUE_UNWIND; /* Nothing else is implemented */
+        opts.ContinueFlags = 0; /* Disable test alert */
+        func_ptr( &contexts, &opts, NtContinueEx, pRtlCaptureContext );
+    } else
+    {
+        func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+    }
 
 #define COMPARE(reg) \
     ok( contexts.before.reg == contexts.after.reg, "wrong " #reg " %p/%p\n", (void *)(ULONG64)contexts.before.reg, (void *)(ULONG64)contexts.after.reg )
@@ -9223,14 +9232,14 @@ static void test_debug_service(DWORD numexc)
     /* not supported */
 }
 
-static void test_continue(void)
+static void test_continue(BOOL testContinueEx)
 {
     struct context_pair {
         CONTEXT before;
         CONTEXT after;
     } contexts;
     unsigned int i;
-    NTSTATUS (*func_ptr)( struct context_pair *, BOOL alertable, void *continue_func, void *capture_func ) = code_mem;
+    NTSTATUS (*func_ptr)( struct context_pair *, void *arg2, void *continue_func, void *capture_func ) = code_mem;
 
     static const DWORD call_func[] =
     {
@@ -9330,7 +9339,16 @@ static void test_continue(void)
 #define COMPARE_INDEXED(reg) \
     ok( contexts.before.reg == contexts.after.reg, "wrong " #reg " i: %u, %p/%p\n", i, (void *)(ULONG64)contexts.before.reg, (void *)(ULONG64)contexts.after.reg )
 
-    func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+    if (testContinueEx)
+    {
+        CONTINUE_OPTIONS opts = { 0 };
+        opts.ContinueType = CONTINUE_UNWIND; /* Nothing else is implemented */
+        opts.ContinueFlags = 0; /* Disable test alert */
+        func_ptr( &contexts, &opts, NtContinueEx, pRtlCaptureContext );
+    } else
+    {
+        func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+    }
 
     for (i = 1; i < 29; i++) COMPARE_INDEXED( X[i] );
 
@@ -12989,7 +13007,8 @@ START_TEST(exception)
     test_debug_registers_wow64();
     test_debug_service(1);
     test_simd_exceptions();
-    test_continue();
+    test_continue(FALSE /* NtContinue */);
+    test_continue(TRUE /* NtContinueEx */);
     test_virtual_unwind();
     test___C_specific_handler();
     test_restore_context();
@@ -13008,7 +13027,8 @@ START_TEST(exception)
 
 #elif defined(__aarch64__)
 
-    test_continue();
+    test_continue(FALSE /* NtContinue */);
+    test_continue(TRUE /* NtContinueEx */);
     test_virtual_unwind();
     test_nested_exception();
     test_collided_unwind();
