@@ -83,6 +83,8 @@ SYSTEM_DLL_INIT_BLOCK LdrSystemDllInitBlock = { 0xf0 };
 void *__wine_syscall_dispatcher = NULL;
 unixlib_handle_t __wine_unixlib_handle = 0;
 
+UINT_PTR page_size;
+
 /* windows directory */
 const WCHAR windows_dir[] = L"C:\\windows";
 /* system directory with trailing backslash */
@@ -4255,9 +4257,13 @@ void loader_init( CONTEXT *context, void **entry )
 
     if (!imports_fixup_done)
     {
+        SYSTEM_BASIC_INFORMATION basic_info;
         ANSI_STRING ctrl_routine = RTL_CONSTANT_STRING( "CtrlRoutine" );
         WINE_MODREF *kernel32;
         PEB *peb = NtCurrentTeb()->Peb;
+
+        NtQuerySystemInformation(SystemBasicInformation, &basic_info, sizeof(basic_info), NULL);
+        page_size = basic_info.PageSize;
 
         peb->LdrData            = &ldr;
         peb->FastPebLock        = &peb_lock;
