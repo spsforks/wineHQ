@@ -152,6 +152,7 @@ static const BYTE VIRTUAL_Win32Flags[16] =
 static struct wine_rb_tree views_tree;
 static pthread_mutex_t virtual_mutex;
 
+SIZE_T page_size;
 static const UINT page_shift = 12;
 static const UINT_PTR page_mask = 0xfff;
 static const UINT_PTR granularity_mask = 0xffff;
@@ -3255,6 +3256,8 @@ void virtual_init(void)
     size_t size;
     int i;
     pthread_mutexattr_t attr;
+
+    page_size = getpagesize();
 
     pthread_mutexattr_init( &attr );
     pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
