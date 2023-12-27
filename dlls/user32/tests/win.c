@@ -13146,7 +13146,6 @@ static void test_activate(void)
     {
         next_window = next_window ? GetWindow(next_window, GW_HWNDNEXT) : GetTopWindow(0);
     } while (next_window && next_window != hwnd1 && next_window != hwnd2);
-    todo_wine
     ok(next_window == hwnd1, "Got unexpected next window.\n");
 
     DestroyWindow(hwnd2);

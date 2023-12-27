@@ -3326,6 +3326,7 @@ static HWND swp_owner_popups( HWND hwnd, HWND after )
     TRACE( "(%p) after = %p\n", hwnd, after );
 
     if (get_window_long( hwnd, GWL_STYLE ) & WS_CHILD) return after;
+    if (!is_window_ever_activated( hwnd )) return after;
 
     if ((owner = get_window_relative( hwnd, GW_OWNER )))
     {
