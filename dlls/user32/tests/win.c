@@ -13121,6 +13121,37 @@ static void test_activate(void)
 
     DestroyWindow(hwnd3);
     DestroyWindow(hwnd1);
+
+    /* Test 2: an owned window that never gets activated shouldn't get moved on top of its owner by SetWindowPos() */
+    hwnd1 = CreateWindowA("test_activate_class", "1", WS_POPUP, 0, 0, 100, 100, 0, 0, 0, NULL);
+    ok(!!hwnd1, "CreateWindowExA failed, error %lu.\n", GetLastError());
+    hwnd2 = CreateWindowA("test_activate_class", "2", WS_POPUP, 0, 0, 100, 100, hwnd1, 0, 0, NULL);
+    ok(!!hwnd2, "CreateWindowExA failed, error %lu.\n", GetLastError());
+    ShowWindow(hwnd1, SW_SHOW);
+    flush_events(TRUE);
+    ShowWindow(hwnd2, SW_SHOWNA);
+    flush_events(TRUE);
+
+    next_window = NULL;
+    do
+    {
+        next_window = next_window ? GetWindow(next_window, GW_HWNDNEXT) : GetTopWindow(0);
+    } while (next_window && next_window != hwnd1 && next_window != hwnd2);
+    ok(next_window == hwnd2, "Got unexpected next window.\n");
+
+    SetWindowPos(hwnd2, hwnd1, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    next_window = NULL;
+    do
+    {
+        next_window = next_window ? GetWindow(next_window, GW_HWNDNEXT) : GetTopWindow(0);
+    } while (next_window && next_window != hwnd1 && next_window != hwnd2);
+    todo_wine
+    ok(next_window == hwnd1, "Got unexpected next window.\n");
+
+    DestroyWindow(hwnd2);
+    DestroyWindow(hwnd1);
+
     UnregisterClassA(cls.lpszClassName, GetModuleHandleA(0));
 }
 
