@@ -10,7 +10,7 @@ Winelib kann auch benutzt werden, um Windows-Code nativ nach Unix
 zu portieren.
 
 Wine ist Freie Software, die unter der GNU LGPL veröffentlicht wird;
-Bitte lesen Sie die Details in der Datei LICENSE nach.
+Für Details finden Sie die Lizenz in der Datei LICENSE.
 
 
 2. SCHNELLSTART
@@ -41,7 +41,7 @@ Um Wine kompilieren und ausführen zu können, benötigen Sie eines der
 folgenden Betriebssysteme:
 
   Linux version 2.0.36 oder neuer
-  FreeBSD 8.0 oder neuer
+  FreeBSD 12.4 oder neuer
   Solaris x86 9 oder neuer
   NetBSD-current
   Mac OS X 10.8 oder neuer
@@ -52,8 +52,7 @@ Andere Betriebssysteme, die Kernel-Threads unterstützen, werden unter
 Umständen in der Zukunft unterstützt.
 
 FreeBSD-Info:
-  Wine wird generell nicht korrekt unter FreeBSD vor 8.0 funktionieren. Für
-  weitere Informationen überprüfen Sie auch https://wiki.freebsd.org/Wine
+   Für weitere Informationen sehe https://wiki.freebsd.org/Wine
 
 Solaris-Info:
   Höchstwahrscheinlich werden Sie Wine mit der GNU-Toolchain (gcc, gas etc.)
@@ -161,6 +160,9 @@ FAQ:    Die FAQ zu Wine befindet sich unter https://www.winehq.org/FAQ
 
 Wiki:   Das Wine-Wiki finden Sie unter https://wiki.winehq.org
 
+Gitlab: Der aktuelle Wine-Entwicklungsstand ist auf Gitlab verfügbar.
+        Besuchen Sie https://gitlab.winehq.org für weitere Informationen.
+
 Mailing-Listen:
     Es gibt mehrere Mailing-Listen für Wine-Anwender und -Entwickler;
     Schauen Sie sich dazu bitte https://www.winehq.org/forums an.
@@ -172,12 +174,6 @@ Fehler:	Melden Sie Fehler bitte an Wine-Bugzilla unter https://bugs.winehq.org
 
 IRC:    Online-Hilfe ist im IRC-Kanal #WineHQ unter irc.libera.chat verfügbar.
 
-Git:    Der aktuelle Wine-Entwicklungsstand ist über Git verfügbar.
-        Besuchen Sie https://www.winehq.org/git für weitere Informationen.
-
-Wenn Sie etwas hinzufügen oder einen Fehler beheben, senden Sie bitte einen
-Patch (vorzugsweise mit git-format-patch) an die Liste wine-devel@winehq.org,
-damit dieser in die nächste Ausgabe aufgenommen werden kann.
 
 --
 Alexandre Julliard
