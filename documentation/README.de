@@ -52,7 +52,7 @@ Andere Betriebssysteme, die Kernel-Threads unterstützen, werden unter
 Umständen in der Zukunft unterstützt.
 
 FreeBSD-Info:
-   Für weitere Informationen sehe https://wiki.freebsd.org/Wine
+   Für weitere Informationen siehe https://wiki.freebsd.org/Wine
 
 Solaris-Info:
   Höchstwahrscheinlich werden Sie Wine mit der GNU-Toolchain (gcc, gas etc.)
