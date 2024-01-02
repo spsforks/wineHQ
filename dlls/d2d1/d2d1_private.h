@@ -708,10 +708,24 @@ struct d2d_effect_registration * d2d_factory_get_registered_effect(ID2D1Factory 
 void d2d_factory_register_effect(struct d2d_factory *factory,
         struct d2d_effect_registration *effect);
 
+struct d2d_transform_node
+{
+    ID2D1TransformNode *node;
+    struct d2d_transform_node **inputs;
+    UINT32 input_count;
+    struct d2d_transform_node *output;
+    UINT32 output_to_index;
+    struct list entry;
+};
+
 struct d2d_transform_graph
 {
     ID2D1TransformGraph ID2D1TransformGraph_iface;
     LONG refcount;
+    struct d2d_transform_node *input_nodes;
+    UINT32 input_count;
+    struct d2d_transform_node *output_node;
+    struct list nodes;
 };
 
 struct d2d_effect

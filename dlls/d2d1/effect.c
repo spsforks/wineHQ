@@ -20,6 +20,44 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d2d);
 
+static struct d2d_transform_node *d2d_transform_graph_find_node(const struct d2d_transform_graph *graph,
+        const ID2D1TransformNode *node)
+{
+    struct d2d_transform_node *entry;
+
+    LIST_FOR_EACH_ENTRY_REV(entry, &graph->nodes, struct d2d_transform_node, entry)
+    {
+        if (entry->node == node)
+            return entry;
+    }
+    return NULL;
+}
+
+static void d2d_transform_graph_remove_node(struct d2d_transform_graph *graph, struct d2d_transform_node *node)
+{
+    UINT32 i;
+
+    for (i = 0; i < graph->input_count; ++i)
+    {
+        if (graph->input_nodes[i].output == node)
+            graph->input_nodes[i].output = NULL;
+    }
+    if (graph->output_node == node)
+        graph->output_node = NULL;
+    for (i = 0; i < node->input_count; ++i)
+    {
+        if (node->inputs[i])
+            node->inputs[i]->output = NULL;
+    }
+    if (node->output)
+        node->output->inputs[node->output_to_index] = NULL;
+    list_remove(&node->entry);
+
+    ID2D1TransformNode_Release(node->node);
+    free(node->inputs);
+    free(node);
+}
+
 static inline struct d2d_transform_graph *impl_from_ID2D1TransformGraph(ID2D1TransformGraph *iface)
 {
     return CONTAINING_RECORD(iface, struct d2d_transform_graph, ID2D1TransformGraph_iface);
@@ -59,66 +97,158 @@ static ULONG STDMETHODCALLTYPE d2d_transform_graph_Release(ID2D1TransformGraph *
     TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
+    {
+        ID2D1TransformGraph_Clear(iface);
+        free(graph->input_nodes);
         free(graph);
+    }
 
     return refcount;
 }
 
 static UINT32 STDMETHODCALLTYPE d2d_transform_graph_GetInputCount(ID2D1TransformGraph *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
 
-    return 0;
+    TRACE("iface %p\n", iface);
+
+    return graph->input_count;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_SetSingleTransformNode(ID2D1TransformGraph *iface,
         ID2D1TransformNode *node)
 {
-    FIXME("iface %p, node %p stub!\n", iface, node);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    UINT32 input_count, i;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, node %p.\n", iface, node);
+
+    input_count = ID2D1TransformNode_GetInputCount(node);
+    if (input_count != graph->input_count)
+        return E_INVALIDARG;
+
+    ID2D1TransformGraph_Clear(iface);
+
+    if (FAILED(hr = ID2D1TransformGraph_AddNode(iface, node)))
+        return hr;
+    if (FAILED(hr = ID2D1TransformGraph_SetOutputNode(iface, node)))
+        return hr;
+    for (i = 0; i < input_count; ++i)
+    {
+        if (FAILED(hr = ID2D1TransformGraph_ConnectToEffectInput(iface, i, node, i)))
+            return hr;
+    }
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_AddNode(ID2D1TransformGraph *iface, ID2D1TransformNode *node)
 {
-    FIXME("iface %p, node %p stub!\n", iface, node);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *entry;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, node %p.\n", iface, node);
+
+    if (d2d_transform_graph_find_node(graph, node))
+        return E_INVALIDARG;
+
+    if (!(entry = calloc(1, sizeof(*entry))))
+        return E_OUTOFMEMORY;
+
+    entry->input_count = ID2D1TransformNode_GetInputCount(node);
+    if (!(entry->inputs = calloc(entry->input_count, sizeof(*entry->inputs))))
+    {
+        free(entry);
+        return E_OUTOFMEMORY;
+    }
+    ID2D1TransformNode_AddRef(entry->node = node);
+    list_add_tail(&graph->nodes, &entry->entry);
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_RemoveNode(ID2D1TransformGraph *iface, ID2D1TransformNode *node)
 {
-    FIXME("iface %p, node %p stub!\n", iface, node);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *entry;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, node %p.\n", iface, node);
+
+    if (!(entry = d2d_transform_graph_find_node(graph, node)))
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+    d2d_transform_graph_remove_node(graph, entry);
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_SetOutputNode(ID2D1TransformGraph *iface, ID2D1TransformNode *node)
 {
-    FIXME("iface %p, node %p stub!\n", iface, node);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *entry;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, node %p.\n", iface, node);
+
+    if (!(entry = d2d_transform_graph_find_node(graph, node)))
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+    graph->output_node = entry;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_ConnectNode(ID2D1TransformGraph *iface,
         ID2D1TransformNode *from_node, ID2D1TransformNode *to_node, UINT32 index)
 {
-    FIXME("iface %p, from_node %p, to_node %p, index %u stub!\n", iface, from_node, to_node, index);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *from, *to;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, from_node %p, to_node %p, index %u.\n", iface, from_node, to_node, index);
+
+    if (!(from = d2d_transform_graph_find_node(graph, from_node))
+            || !(to = d2d_transform_graph_find_node(graph, to_node)))
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    if (index >= to->input_count)
+        return E_INVALIDARG;
+
+    from->output = to;
+    from->output_to_index = index;
+    to->inputs[index] = from;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_ConnectToEffectInput(ID2D1TransformGraph *iface,
         UINT32 input_index, ID2D1TransformNode *node, UINT32 node_index)
 {
-    FIXME("iface %p, input_index %u, node %p, node_index %u stub!\n", iface, input_index, node, node_index);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *entry;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, input_index %u, node %p, node_index %u.\n", iface, input_index, node, node_index);
+
+    if (!(entry = d2d_transform_graph_find_node(graph, node)))
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    if (input_index >= graph->input_count || node_index >= entry->input_count)
+        return E_INVALIDARG;
+
+    graph->input_nodes[input_index].output = entry;
+    graph->input_nodes[input_index].output_to_index = node_index;
+    entry->inputs[node_index] = &graph->input_nodes[input_index];
+
+    return S_OK;
 }
 
 static void STDMETHODCALLTYPE d2d_transform_graph_Clear(ID2D1TransformGraph *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d2d_transform_graph *graph = impl_from_ID2D1TransformGraph(iface);
+    struct d2d_transform_node *entry, *entry2;
+
+    TRACE("iface %p.\n", iface);
+
+    LIST_FOR_EACH_ENTRY_SAFE(entry, entry2, &graph->nodes, struct d2d_transform_node, entry)
+    {
+        d2d_transform_graph_remove_node(graph, entry);
+    }
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transform_graph_SetPassthroughGraph(ID2D1TransformGraph *iface, UINT32 index)
@@ -148,6 +278,7 @@ static void d2d_transform_graph_init(struct d2d_transform_graph *graph)
 {
     graph->ID2D1TransformGraph_iface.lpVtbl = &d2d_transform_graph_vtbl;
     graph->refcount = 1;
+    list_init(&graph->nodes);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_effect_impl_QueryInterface(ID2D1EffectImpl *iface, REFIID iid, void **out)
@@ -1169,6 +1300,7 @@ static HRESULT STDMETHODCALLTYPE d2d_effect_SetInputCount(ID2D1Effect *iface, UI
 {
     struct d2d_effect *effect = impl_from_ID2D1Effect(iface);
     unsigned int i, min_inputs, max_inputs;
+    struct d2d_transform_graph *graph;
 
     TRACE("iface %p, count %u.\n", iface, count);
 
@@ -1202,6 +1334,13 @@ static HRESULT STDMETHODCALLTYPE d2d_effect_SetInputCount(ID2D1Effect *iface, UI
 
     memset(&effect->inputs[effect->input_count], 0, sizeof(*effect->inputs) * (count - effect->input_count));
     effect->input_count = count;
+
+    /* Allocate input nodes for transform graph. */
+    graph = effect->graph;
+    if (!(graph->input_nodes = realloc(graph->input_nodes, sizeof(*graph->input_nodes) * count)))
+        return E_OUTOFMEMORY;
+    memset(graph->input_nodes, 0, sizeof(*graph->input_nodes) * count);
+    graph->input_count = count;
 
     return S_OK;
 }
