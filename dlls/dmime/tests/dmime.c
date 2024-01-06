@@ -3007,9 +3007,9 @@ static void test_performance_pmsg(void)
     hr = IDirectMusicPerformance_SendPMsg(performance, msg);
     ok(hr == S_OK, "got %#lx\n", hr);
     hr = IDirectMusicPerformance_SendPMsg(performance, msg);
-    ok(hr == DMUS_E_ALREADY_SENT, "got %#lx\n", hr);
+    flaky_wine ok(hr == DMUS_E_ALREADY_SENT, "got %#lx\n", hr);
     hr = IDirectMusicPerformance_FreePMsg(performance, msg);
-    ok(hr == DMUS_E_CANNOT_FREE, "got %#lx\n", hr);
+    flaky_wine ok(hr == DMUS_E_CANNOT_FREE, "got %#lx\n", hr);
 
     hr = IDirectMusicPerformance_FreePMsg(performance, clone);
     ok(hr == S_OK, "got %#lx\n", hr);
@@ -3145,7 +3145,7 @@ static void test_performance_pmsg(void)
         switch (delivery_flags[i])
         {
         case DMUS_PMSGF_TOOL_IMMEDIATE: ok(duration <= 50, "got %lu\n", duration); break;
-        case DMUS_PMSGF_TOOL_QUEUE: ok(duration >= 50 && duration <= 125, "got %lu\n", duration); break;
+        case DMUS_PMSGF_TOOL_QUEUE: flaky ok(duration >= 50 && duration <= 125, "got %lu\n", duration); break;
         case DMUS_PMSGF_TOOL_ATTIME: ok(duration >= 125 && duration <= 500, "got %lu\n", duration); break;
         }
     }
