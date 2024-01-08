@@ -1021,10 +1021,13 @@ INT WINAPI DrawTextExW( HDC hdc, LPWSTR str, INT i_count,
                 }
                 len -= len_seg;
                 str += len_seg;
+                if (dtp) dtp->uiLengthDrawn += len_seg;
+
                 if (len)
                 {
                     assert ((flags & DT_EXPANDTABS) && *str == TAB);
                     len--; str++;
+                    if (dtp) dtp->uiLengthDrawn++;
                     xseg += ((size.cx/tabwidth)+1)*tabwidth;
                     if (prefix_offset != -1)
                     {
@@ -1044,15 +1047,18 @@ INT WINAPI DrawTextExW( HDC hdc, LPWSTR str, INT i_count,
                 }
             }
 	}
-	else if (size.cx > max_width)
-	    max_width = size.cx;
+	else
+    {
+        if (dtp) dtp->uiLengthDrawn += len;
+
+        if (size.cx > max_width)
+	        max_width = size.cx;
+    }
 
         if (invert_y)
 	    y -= lh;
         else
 	    y += lh;
-        if (dtp)
-            dtp->uiLengthDrawn += len;
     }
     while (strPtr && !last_line);
 
