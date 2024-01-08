@@ -89,6 +89,21 @@ struct wayland_cursor
     int hotspot_x, hotspot_y;
 };
 
+struct wayland_scroll_metrics
+{
+    double total_pixels_swiped;
+    double pixels_swiped_in_frame;
+    double pixels_per_ms;
+    uint32_t start_time;
+    uint32_t latest_time;
+    uint32_t stop_time;
+
+    uint32_t number_of_smooth_events;
+
+    /* negative means scrolling backward, 0 means smooth motion */
+    int32_t number_of_discrete_events;
+};
+
 struct wayland_pointer
 {
     struct wl_pointer *wl_pointer;
@@ -99,6 +114,8 @@ struct wayland_pointer
     HWND constraint_hwnd;
     uint32_t enter_serial;
     uint32_t button_serial;
+    struct wayland_scroll_metrics scroll_metrics[2];
+    struct wl_callback *graphics_update_callback;
     struct wayland_cursor cursor;
     pthread_mutex_t mutex;
 };
