@@ -1237,6 +1237,7 @@ START_TEST(xaudio2)
 
     CoInitialize(NULL);
 
+    ok(!xaudio27, "The test was run in with version %d\n", XAUDIO2_VER);
     test_xapo_creation();
 
     if (!(audio = create_xaudio2()))
