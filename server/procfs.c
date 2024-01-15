@@ -75,7 +75,7 @@ static int open_proc_lwpctl( struct thread *thread )
 
     if (thread->unix_pid == -1) return -1;
 
-    sprintf( buffer, "/proc/%u/lwp/%u/lwpctl", thread->unix_pid, thread->unix_tid );
+    sprintf( buffer, "/proc/%u/lwp/%llu/lwpctl", thread->unix_pid, (unsigned long long)thread->unix_tid );
     if ((fd = open( buffer, O_WRONLY )) == -1)
     {
         if (errno == ENOENT)  /* probably got killed */

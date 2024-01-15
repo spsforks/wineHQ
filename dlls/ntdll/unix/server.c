@@ -1476,9 +1476,9 @@ static void send_server_task_port(void)
  *
  * Retrieve the Unix tid to use on the server side for the current thread.
  */
-static int get_unix_tid(void)
+static unix_tid_t get_unix_tid(void)
 {
-    int ret = -1;
+    unix_tid_t ret = -1;
 #ifdef HAVE_PTHREAD_GETTHREADID_NP
     ret = pthread_getthreadid_np();
 #elif defined(linux)
