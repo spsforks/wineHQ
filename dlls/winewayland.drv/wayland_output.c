@@ -40,6 +40,54 @@ static uint32_t next_output_id = 0;
 #define WAYLAND_OUTPUT_CHANGED_LOGICAL_XY 0x04
 #define WAYLAND_OUTPUT_CHANGED_LOGICAL_WH 0x08
 
+static const struct { int32_t width; int32_t height; } common_modes[] = {
+    { 320,  200}, /* CGA 16:10 */
+    { 320,  240}, /* QVGA 4:3 */
+    { 400,  300}, /* qSVGA 4:3 */
+    { 480,  320}, /* HVGA 3:2 */
+    { 512,  384}, /* MAC 4:3 */
+    { 640,  360}, /* nHD 16:9 */
+    { 640,  400}, /* VESA-0100h 16:10 */
+    { 640,  480}, /* VGA 4:3 */
+    { 720,  480}, /* WVGA 3:2 */
+    { 720,  576}, /* PAL 5:4 */
+    { 768,  480}, /* WVGA 16:10 */
+    { 768,  576}, /* PAL* 4:3 */
+    { 800,  600}, /* SVGA 4:3 */
+    { 854,  480}, /* FWVGA 16:9 */
+    { 960,  540}, /* qHD 16:9 */
+    { 960,  640}, /* DVGA 3:2 */
+    {1024,  576}, /* WSVGA 16:9 */
+    {1024,  640}, /* WSVGA 16:10 */
+    {1024,  768}, /* XGA 4:3 */
+    {1152,  864}, /* XGA+ 4:3 */
+    {1280,  720}, /* HD 16:9 */
+    {1280,  768}, /* WXGA 5:3 */
+    {1280,  800}, /* WXGA 16:10 */
+    {1280,  960}, /* SXGA- 4:3 */
+    {1280, 1024}, /* SXGA 5:4 */
+    {1366,  768}, /* FWXGA 16:9 */
+    {1400, 1050}, /* SXGA+ 4:3 */
+    {1440,  900}, /* WSXGA 16:10 */
+    {1600,  900}, /* HD+ 16:9 */
+    {1600, 1200}, /* UXGA 4:3 */
+    {1680, 1050}, /* WSXGA+ 16:10 */
+    {1920, 1080}, /* FHD 16:9 */
+    {1920, 1200}, /* WUXGA 16:10 */
+    {2048, 1152}, /* QWXGA 16:9 */
+    {2048, 1536}, /* QXGA 4:3 */
+    {2560, 1440}, /* QHD 16:9 */
+    {2560, 1600}, /* WQXGA 16:10 */
+    {2560, 2048}, /* QSXGA 5:4 */
+    {2880, 1620}, /* 3K 16:9 */
+    {3200, 1800}, /* QHD+ 16:9 */
+    {3200, 2400}, /* QUXGA 4:3 */
+    {3840, 2160}, /* 4K 16:9 */
+    {3840, 2400}, /* WQUXGA 16:10 */
+    {5120, 2880}, /* 5K 16:9 */
+    {7680, 4320}, /* 8K 16:9 */
+};
+
 /**********************************************************************
  *          Output handling
  */
@@ -102,6 +150,31 @@ static void wayland_output_state_add_mode(struct wayland_output_state *state,
     if (current) state->current_mode = mode;
 }
 
+static void wayland_output_state_add_common_modes(struct wayland_output_state *state)
+{
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(common_modes); i++)
+    {
+        int32_t width = common_modes[i].width;
+        int32_t height = common_modes[i].height;
+
+        /* Skip if this mode is larger than the current (native) mode. */
+        if (width > state->current_mode->width ||
+            height > state->current_mode->height)
+        {
+            TRACE("Skipping mode %dx%d (current: %dx%d)\n",
+                  width, height, state->current_mode->width,
+                  state->current_mode->height);
+            continue;
+        }
+
+        wayland_output_state_add_mode(state, width, height,
+                                      state->current_mode->refresh,
+                                      FALSE);
+    }
+}
+
 static void maybe_init_display_devices(void)
 {
     DWORD desktop_pid = 0;
@@ -136,14 +209,15 @@ static void wayland_output_done(struct wayland_output *output)
 
     if (output->pending_flags & WAYLAND_OUTPUT_CHANGED_MODES)
     {
-        RB_FOR_EACH_ENTRY(mode, &output->pending.modes, struct wayland_output_mode, entry)
-        {
-            wayland_output_state_add_mode(&output->current,
-                                          mode->width, mode->height, mode->refresh,
-                                          mode == output->pending.current_mode);
-        }
-        rb_destroy(&output->pending.modes, wayland_output_mode_free_rb, NULL);
+        rb_destroy(&output->current.modes, wayland_output_mode_free_rb, NULL);
+        output->current.modes = output->pending.modes;
+        output->current.current_mode = output->pending.current_mode;
+        if (!output->current.current_mode)
+            WARN("No current mode reported by compositor\n");
+        else
+            wayland_output_state_add_common_modes(&output->current);
         rb_init(&output->pending.modes, wayland_output_mode_cmp_rb);
+        output->pending.current_mode = NULL;
     }
 
     if (output->pending_flags & WAYLAND_OUTPUT_CHANGED_NAME)
@@ -206,11 +280,13 @@ static void output_handle_mode(void *data, struct wl_output *wl_output,
 {
     struct wayland_output *output = data;
 
+    /* Non-current mode information is deprecated. */
+    if (!(flags & WL_OUTPUT_MODE_CURRENT)) return;
+
     /* Windows apps don't expect a zero refresh rate, so use a default value. */
     if (refresh == 0) refresh = default_refresh;
 
-    wayland_output_state_add_mode(&output->pending, width, height, refresh,
-                                  (flags & WL_OUTPUT_MODE_CURRENT));
+    wayland_output_state_add_mode(&output->pending, width, height, refresh, TRUE);
 
     output->pending_flags |= WAYLAND_OUTPUT_CHANGED_MODES;
 }
