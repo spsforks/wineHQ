@@ -47,6 +47,11 @@ void wayland_init_display_devices(BOOL force)
     NtUserGetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &num_path, &num_mode);
 }
 
+struct wayland_adapter_data
+{
+    char output_name[64];
+};
+
 struct output_info
 {
     int x, y;
@@ -213,13 +218,20 @@ static void wayland_add_device_gpu(const struct gdi_device_manager *device_manag
 }
 
 static void wayland_add_device_adapter(const struct gdi_device_manager *device_manager,
-                                       void *param, INT output_id)
+                                       void *param, INT output_id,
+                                       struct output_info *output_info)
 {
     struct gdi_adapter adapter;
+    struct wayland_adapter_data data;
+
     adapter.id = output_id;
     adapter.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
     if (output_id == 0)
         adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
+
+    lstrcpynA(data.output_name, output_info->output->name, sizeof(data.output_name));
+    adapter.driver_data = &data;
+    adapter.driver_data_len = sizeof(data);
 
     TRACE("id=0x%s state_flags=0x%x\n",
           wine_dbgstr_longlong(adapter.id), (UINT)adapter.state_flags);
@@ -310,25 +322,32 @@ static struct wayland_output_mode *get_matching_output_mode(struct wayland_outpu
 
 static void output_info_init(struct output_info *output_info,
                              struct wayland_output *output,
-                             int adapter_id,
                              const struct gdi_device_manager *device_manager,
                              void *param)
 {
     DEVMODEW devmode = {.dmSize = sizeof(devmode)};
     struct wayland_output_mode *mode;
+    struct wayland_adapter_data data;
+    UINT data_len = sizeof(data);
+    UINT id = 0;
 
     output_info->output = &output->current;
+    output_info->mode = output->current.current_mode;
+    output_info->bpp = 32;
 
-    if (device_manager->get_adapter(adapter_id, &devmode, param) &&
-        (mode = get_matching_output_mode(output, &devmode)))
+    while (device_manager->get_adapter(id, &devmode, &data, &data_len, param))
     {
-        output_info->mode = mode;
-        output_info->bpp = devmode.dmBitsPerPel;
-    }
-    else
-    {
-        output_info->mode = output->current.current_mode;
-        output_info->bpp = 32;
+        if (data_len == sizeof(data) &&
+            !strcmp(output->current.name, data.output_name))
+        {
+            if ((mode = get_matching_output_mode(output, &devmode)))
+            {
+                output_info->mode = mode;
+                output_info->bpp = devmode.dmBitsPerPel;
+            }
+        }
+        data_len = sizeof(data);
+        ++id;
     }
 }
 
@@ -359,9 +378,8 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
         output_info = wl_array_add(&output_info_array, sizeof(*output_info));
         /* TODO: Don't assume that the order of devices matches the order
          * of the outputs in the list. */
-        if (output_info) output_info_init(output_info, output, output_id, device_manager, param);
+        if (output_info) output_info_init(output_info, output, device_manager, param);
         else ERR("Failed to allocate space for output_info\n");
-        output_id++;
     }
 
     output_info_array_arrange_physical_coords(&output_info_array);
@@ -369,10 +387,9 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     /* Populate GDI devices. */
     wayland_add_device_gpu(device_manager, param);
 
-    output_id = 0;
     wl_array_for_each(output_info, &output_info_array)
     {
-        wayland_add_device_adapter(device_manager, param, output_id);
+        wayland_add_device_adapter(device_manager, param, output_id, output_info);
         wayland_add_device_monitor(device_manager, param, output_info);
         wayland_add_device_modes(device_manager, param, output_info);
         output_id++;

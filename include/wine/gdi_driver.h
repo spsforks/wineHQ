@@ -258,6 +258,8 @@ struct gdi_adapter
 {
     ULONG_PTR id;
     DWORD state_flags;
+    void *driver_data;
+    UINT driver_data_len;
 };
 
 struct gdi_monitor
@@ -275,7 +277,7 @@ struct gdi_device_manager
     void (*add_adapter)( const struct gdi_adapter *adapter, void *param );
     void (*add_monitor)( const struct gdi_monitor *monitor, void *param );
     void (*add_mode)( const DEVMODEW *mode, BOOL current, void *param );
-    BOOL (*get_adapter)( UINT id, DEVMODEW *mode, void *param );
+    BOOL (*get_adapter)( UINT id, DEVMODEW *mode, void *data, UINT *data_len, void *param );
 };
 
 #define WINE_DM_UNSUPPORTED 0x80000000
