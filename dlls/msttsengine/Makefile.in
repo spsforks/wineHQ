@@ -1,5 +1,6 @@
-MODULE      = msttsengine.dll
-IMPORTS     = ole32
+MODULE    = msttsengine.dll
+IMPORTS   = $(FLITE_PE_LIBS) ole32
+EXTRAINCL = $(FLITE_PE_CFLAGS)
 
 SOURCES = \
 	main.c \

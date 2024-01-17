@@ -29,9 +29,13 @@
 #include "sapiddk.h"
 #include "sperror.h"
 
+#include "flite.h"
+
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msttsengine);
+
+cst_voice *register_cmu_us_awb(const char *voxdir);
 
 struct ttsengine
 {
@@ -40,7 +44,10 @@ struct ttsengine
     LONG ref;
 
     ISpObjectToken *token;
+    cst_voice *voice;
 };
+
+static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
 
 static inline struct ttsengine *impl_from_ISpTTSEngine(ISpTTSEngine *iface)
 {
@@ -50,6 +57,12 @@ static inline struct ttsengine *impl_from_ISpTTSEngine(ISpTTSEngine *iface)
 static inline struct ttsengine *impl_from_ISpObjectWithToken(ISpObjectWithToken *iface)
 {
     return CONTAINING_RECORD(iface, struct ttsengine, ISpObjectWithToken_iface);
+}
+
+static BOOL WINAPI init_tts(INIT_ONCE *once, void *param, void **ctx)
+{
+    flite_init();
+    return TRUE;
 }
 
 static HRESULT WINAPI ttsengine_QueryInterface(ISpTTSEngine *iface, REFIID iid, void **obj)
@@ -159,12 +172,15 @@ static HRESULT WINAPI objwithtoken_SetObjectToken(ISpObjectWithToken *iface, ISp
 {
     struct ttsengine *This = impl_from_ISpObjectWithToken(iface);
 
-    FIXME("(%p, %p): semi-stub.\n", iface, token);
+    TRACE("(%p, %p).\n", iface, token);
 
     if (!token)
         return E_INVALIDARG;
     if (This->token)
         return SPERR_ALREADY_INITIALIZED;
+
+    if (!(This->voice = register_cmu_us_awb(NULL)))
+        return E_FAIL;
 
     ISpObjectToken_AddRef(token);
     This->token = token;
@@ -204,6 +220,9 @@ HRESULT ttsengine_create(REFIID iid, void **obj)
     struct ttsengine *This;
     HRESULT hr;
 
+    if (!InitOnceExecuteOnce(&init_once, init_tts, NULL, NULL))
+        return E_FAIL;
+
     if (!(This = malloc(sizeof(*This))))
         return E_OUTOFMEMORY;
 
@@ -212,6 +231,7 @@ HRESULT ttsengine_create(REFIID iid, void **obj)
     This->ref = 1;
 
     This->token = NULL;
+    This->voice = NULL;
 
     hr = ISpTTSEngine_QueryInterface(&This->ISpTTSEngine_iface, iid, obj);
     ISpTTSEngine_Release(&This->ISpTTSEngine_iface);
