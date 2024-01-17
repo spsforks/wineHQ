@@ -80,11 +80,11 @@ struct session_op
     struct list entry;
 };
 
-struct queued_topology
+struct topology_entry
 {
     struct list entry;
+    TOPOID topoid;
     IMFTopology *topology;
-    MF_TOPOSTATUS status;
 };
 
 enum session_state
@@ -256,6 +256,7 @@ struct media_session
         BOOL thin;
         float rate;
     } presentation;
+    struct list topologies_queue; /* Topologies queued for playing. */
     struct list topologies;
     struct list commands;
     enum session_state state;
@@ -491,11 +492,74 @@ static HRESULT session_submit_simple_command(struct media_session *session, enum
 
 static void session_clear_queued_topologies(struct media_session *session)
 {
-    struct queued_topology *ptr, *next;
+    struct topology_entry *ptr, *next;
 
-    LIST_FOR_EACH_ENTRY_SAFE(ptr, next, &session->topologies, struct queued_topology, entry)
+    LIST_FOR_EACH_ENTRY_SAFE(ptr, next, &session->topologies_queue, struct topology_entry, entry)
     {
         list_remove(&ptr->entry);
+        IMFTopology_Release(ptr->topology);
+        free(ptr);
+    }
+}
+
+
+static void session_shutdown_topology(struct media_session *session, IMFTopology *topology)
+{
+    unsigned int shutdown, force_shutdown;
+    MF_TOPOLOGY_TYPE node_type;
+    IMFStreamSink *stream_sink;
+    IMFTopologyNode *node;
+    IMFActivate *activate;
+    IMFMediaSink *sink;
+    WORD idx = 0;
+    HRESULT hr;
+
+    force_shutdown = session->state == SESSION_STATE_SHUT_DOWN;
+
+    /* FIXME: should handle async MFTs, but these are not supported by the rest of the pipeline currently. */
+
+    while (SUCCEEDED(IMFTopology_GetNode(topology, idx++, &node)))
+    {
+        if (SUCCEEDED(IMFTopologyNode_GetNodeType(node, &node_type)) &&
+                node_type == MF_TOPOLOGY_OUTPUT_NODE)
+        {
+            shutdown = 1;
+            IMFTopologyNode_GetUINT32(node, &MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, &shutdown);
+
+            if (force_shutdown || shutdown)
+            {
+                if (SUCCEEDED(IMFTopologyNode_GetUnknown(node, &_MF_TOPONODE_IMFActivate, &IID_IMFActivate,
+                        (void **)&activate)))
+                {
+                    if (FAILED(hr = IMFActivate_ShutdownObject(activate)))
+                        WARN("Failed to shut down activation object for the sink, hr %#lx.\n", hr);
+                    IMFActivate_Release(activate);
+                }
+                else if (SUCCEEDED(topology_node_get_object(node, &IID_IMFStreamSink, (void **)&stream_sink)))
+                {
+                    if (SUCCEEDED(IMFStreamSink_GetMediaSink(stream_sink, &sink)))
+                    {
+                        IMFMediaSink_Shutdown(sink);
+                        IMFMediaSink_Release(sink);
+                    }
+
+                    IMFStreamSink_Release(stream_sink);
+                }
+            }
+        }
+
+        IMFTopologyNode_Release(node);
+    }
+}
+
+static void session_release_topologies(struct media_session *session)
+{
+    struct topology_entry *ptr, *next;
+
+    LIST_FOR_EACH_ENTRY_SAFE(ptr, next, &session->topologies, struct topology_entry, entry)
+    {
+        list_remove(&ptr->entry);
+        session_shutdown_topology(session, ptr->topology);
         IMFTopology_Release(ptr->topology);
         free(ptr);
     }
@@ -510,7 +574,7 @@ static void session_set_topo_status(struct media_session *session, HRESULT statu
     if (topo_status == MF_TOPOSTATUS_INVALID)
         return;
 
-    if (list_empty(&session->topologies))
+    if (list_empty(&session->topologies_queue))
     {
         FIXME("Unexpectedly empty topology queue.\n");
         return;
@@ -518,7 +582,7 @@ static void session_set_topo_status(struct media_session *session, HRESULT statu
 
     if (topo_status > session->presentation.topo_status)
     {
-        struct queued_topology *topology = LIST_ENTRY(list_head(&session->topologies), struct queued_topology, entry);
+        struct topology_entry *topology = LIST_ENTRY(list_head(&session->topologies_queue), struct topology_entry, entry);
 
         param.vt = VT_UNKNOWN;
         param.punkVal = (IUnknown *)topology->topology;
@@ -752,57 +816,6 @@ static void release_topo_node(struct topo_node *node)
     free(node);
 }
 
-static void session_shutdown_current_topology(struct media_session *session)
-{
-    unsigned int shutdown, force_shutdown;
-    MF_TOPOLOGY_TYPE node_type;
-    IMFStreamSink *stream_sink;
-    IMFTopology *topology;
-    IMFTopologyNode *node;
-    IMFActivate *activate;
-    IMFMediaSink *sink;
-    WORD idx = 0;
-    HRESULT hr;
-
-    topology = session->presentation.current_topology;
-    force_shutdown = session->state == SESSION_STATE_SHUT_DOWN;
-
-    /* FIXME: should handle async MFTs, but these are not supported by the rest of the pipeline currently. */
-
-    while (SUCCEEDED(IMFTopology_GetNode(topology, idx++, &node)))
-    {
-        if (SUCCEEDED(IMFTopologyNode_GetNodeType(node, &node_type)) &&
-                node_type == MF_TOPOLOGY_OUTPUT_NODE)
-        {
-            shutdown = 1;
-            IMFTopologyNode_GetUINT32(node, &MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, &shutdown);
-
-            if (force_shutdown || shutdown)
-            {
-                if (SUCCEEDED(IMFTopologyNode_GetUnknown(node, &_MF_TOPONODE_IMFActivate, &IID_IMFActivate,
-                        (void **)&activate)))
-                {
-                    if (FAILED(hr = IMFActivate_ShutdownObject(activate)))
-                        WARN("Failed to shut down activation object for the sink, hr %#lx.\n", hr);
-                    IMFActivate_Release(activate);
-                }
-                else if (SUCCEEDED(topology_node_get_object(node, &IID_IMFStreamSink, (void **)&stream_sink)))
-                {
-                    if (SUCCEEDED(IMFStreamSink_GetMediaSink(stream_sink, &sink)))
-                    {
-                        IMFMediaSink_Shutdown(sink);
-                        IMFMediaSink_Release(sink);
-                    }
-
-                    IMFStreamSink_Release(stream_sink);
-                }
-            }
-        }
-
-        IMFTopologyNode_Release(node);
-    }
-}
-
 static void session_clear_command_list(struct media_session *session)
 {
     struct session_op *op, *op2;
@@ -820,9 +833,6 @@ static void session_clear_presentation(struct media_session *session)
     struct media_sink *sink, *sink2;
     struct topo_node *node, *node2;
 
-    session_shutdown_current_topology(session);
-
-    IMFTopology_Clear(session->presentation.current_topology);
     session->presentation.topo_status = MF_TOPOSTATUS_INVALID;
     session->presentation.flags = 0;
 
@@ -1825,11 +1835,11 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
     IMFMediaEvent *event;
     HRESULT hr;
 
-    if (FAILED(hr = IMFTopology_CloneFrom(session->presentation.current_topology, topology)))
-    {
-        WARN("Failed to clone topology, hr %#lx.\n", hr);
-        return hr;
-    }
+    if (session->presentation.current_topology)
+        IMFTopology_Release(session->presentation.current_topology);
+
+    session->presentation.current_topology = topology;
+    IMFTopology_AddRef(topology);
 
     session_collect_nodes(session);
 
@@ -1897,9 +1907,25 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
     return S_OK;
 }
 
+/* Get a topology from the topologies list by it's id. */
+static struct topology_entry *get_topology_entry_by_id(struct media_session *session, TOPOID id)
+{
+    struct topology_entry *entry;
+
+    LIST_FOR_EACH_ENTRY(entry, &session->topologies, struct topology_entry, entry)
+    {
+        if (entry->topoid == id)
+            return entry;
+    }
+
+    return NULL;
+}
+
 static void session_set_topology(struct media_session *session, DWORD flags, IMFTopology *topology)
 {
+    TOPOID topo_id;
     IMFTopology *resolved_topology = NULL;
+    struct topology_entry *topology_entry = NULL;
     HRESULT hr = S_OK;
 
     /* Resolve unless claimed to be full. */
@@ -1907,12 +1933,18 @@ static void session_set_topology(struct media_session *session, DWORD flags, IMF
     {
         if (!(flags & MFSESSION_SETTOPOLOGY_NORESOLUTION))
         {
-            hr = session_bind_output_nodes(topology);
+            IMFTopology_GetTopologyID(topology, &topo_id);
+            if (!(topology_entry = get_topology_entry_by_id(session, topo_id)))
+            {
+                hr = session_bind_output_nodes(topology);
 
-            if (SUCCEEDED(hr))
-                hr = IMFTopoLoader_Load(session->topo_loader, topology, &resolved_topology, NULL /* FIXME? */);
-            if (SUCCEEDED(hr))
-                hr = session_init_media_types(resolved_topology);
+                if (SUCCEEDED(hr))
+                    hr = IMFTopoLoader_Load(session->topo_loader, topology, &resolved_topology, NULL /* FIXME? */);
+                if (SUCCEEDED(hr))
+                    hr = session_init_media_types(resolved_topology);
+            }
+            else
+                resolved_topology = topology_entry->topology;
 
             if (SUCCEEDED(hr))
             {
@@ -1944,14 +1976,22 @@ static void session_set_topology(struct media_session *session, DWORD flags, IMF
     /* With no current topology set it right away, otherwise queue. */
     if (topology)
     {
-        struct queued_topology *queued_topology;
+        struct topology_entry *queued_topology;
+
+        if (!topology_entry && (topology_entry = calloc(1, sizeof(*topology_entry))))
+        {
+            topology_entry->topology = topology;
+            IMFTopology_AddRef(topology_entry->topology);
+
+            list_add_tail(&session->topologies, &topology_entry->entry);
+        }
 
         if ((queued_topology = calloc(1, sizeof(*queued_topology))))
         {
             queued_topology->topology = topology;
             IMFTopology_AddRef(queued_topology->topology);
 
-            list_add_tail(&session->topologies, &queued_topology->entry);
+            list_add_tail(&session->topologies_queue, &queued_topology->entry);
         }
 
         if (session->presentation.topo_status == MF_TOPOSTATUS_INVALID)
@@ -2306,6 +2346,7 @@ static HRESULT WINAPI mfsession_Shutdown(IMFMediaSession *iface)
         session->clock = NULL;
         session_clear_presentation(session);
         session_clear_queued_topologies(session);
+        session_release_topologies(session);
         session_submit_simple_command(session, SESSION_CMD_SHUTDOWN);
     }
     LeaveCriticalSection(&session->cs);
@@ -2352,7 +2393,7 @@ static HRESULT WINAPI mfsession_GetSessionCapabilities(IMFMediaSession *iface, D
 static HRESULT WINAPI mfsession_GetFullTopology(IMFMediaSession *iface, DWORD flags, TOPOID id, IMFTopology **topology)
 {
     struct media_session *session = impl_from_IMFMediaSession(iface);
-    struct queued_topology *queued;
+    struct topology_entry *queued;
     TOPOID topo_id;
     HRESULT hr;
 
@@ -2373,7 +2414,7 @@ static HRESULT WINAPI mfsession_GetFullTopology(IMFMediaSession *iface, DWORD fl
         }
         else
         {
-            LIST_FOR_EACH_ENTRY(queued, &session->topologies, struct queued_topology, entry)
+            LIST_FOR_EACH_ENTRY(queued, &session->topologies_queue, struct topology_entry, entry)
             {
                 if (SUCCEEDED(IMFTopology_GetTopologyID(queued->topology, &topo_id)) && topo_id == id)
                 {
@@ -4307,14 +4348,12 @@ HRESULT WINAPI MFCreateMediaSession(IMFAttributes *config, IMFMediaSession **ses
     object->sink_finalizer_callback.lpVtbl = &session_sink_finalizer_callback_vtbl;
     object->refcount = 1;
     list_init(&object->topologies);
+    list_init(&object->topologies_queue);
     list_init(&object->commands);
     list_init(&object->presentation.sources);
     list_init(&object->presentation.sinks);
     list_init(&object->presentation.nodes);
     InitializeCriticalSection(&object->cs);
-
-    if (FAILED(hr = MFCreateTopology(&object->presentation.current_topology)))
-        goto failed;
 
     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
         goto failed;
