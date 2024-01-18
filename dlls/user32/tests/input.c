@@ -1594,6 +1594,51 @@ done:
     SetCursorPos(pt_org.x, pt_org.y);
 }
 
+static BOOL keyboard_hook_called;
+static BOOL expect_pressed_key;
+static LRESULT CALLBACK keyboard_hook( int code, WPARAM wparam, LPARAM lparam )
+{
+    SHORT key_state;
+
+    keyboard_hook_called = TRUE;
+    key_state = GetKeyState(wparam);
+    if (expect_pressed_key)
+        ok((key_state & 0xFF80) != 0, "Expected key state to be DOWN. Key state: %hx\n", key_state);
+    else
+        ok((key_state & 0xFF80) == 0, "Expected key state to be UP. Key state: %hx\n", key_state);
+
+    return CallNextHookEx( 0, code, wparam, lparam );
+}
+
+static void test_keyboard_hook(void)
+{
+    HWND hwnd;
+    HHOOK hook;
+    MSG message;
+
+    hwnd = CreateWindowA("static", "Title", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                        10, 10, 200, 200, NULL, NULL, NULL, NULL);
+
+    hook = SetWindowsHookExA(WH_KEYBOARD, keyboard_hook, GetModuleHandleA(0), GetCurrentThreadId());
+
+
+    keybd_event(VK_TAB, 0, 0, 0);
+    WaitMessage();
+
+    expect_pressed_key = FALSE;
+    keyboard_hook_called = FALSE;
+    PeekMessageA(&message, 0, WM_KEYDOWN, WM_KEYDOWN, PM_NOREMOVE);
+    ok(keyboard_hook_called == TRUE, "Keyboard hook was not called.\n");
+
+    expect_pressed_key = TRUE;
+    keyboard_hook_called = FALSE;
+    PeekMessageA(&message, 0, WM_KEYDOWN, WM_KEYDOWN, PM_REMOVE);
+    ok(keyboard_hook_called == TRUE, "Keyboard hook was not called.\n");
+
+    UnhookWindowsHookEx(hook);
+    DestroyWindow(hwnd);
+}
+
 static void test_GetMouseMovePointsEx( char **argv )
 {
 #define BUFLIM  64
@@ -5450,6 +5495,7 @@ START_TEST(input)
     test_Input_mouse();
     test_keynames();
     test_mouse_ll_hook();
+    test_keyboard_hook();
     test_key_map();
     test_ToUnicode();
     test_ToAscii();
