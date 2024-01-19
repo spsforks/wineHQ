@@ -24,6 +24,7 @@
 #define COBJMACROS
 #include <windows.h>
 #include "shellapi.h"
+#include "shlwapi.h"
 #include "shlobj.h"
 #include "commoncontrols.h"
 
@@ -43,6 +44,8 @@
     ok(retval == ret ||\
        broken(retval == ret_prewin32),\
        "Expected %d, got %ld\n", ret, retval)
+
+static HRESULT (WINAPI *pSHCreateItemFromParsingName)(PCWSTR,IBindCtx*,REFIID,void**);
 
 static BOOL old_shell32 = FALSE;
 
@@ -92,6 +95,17 @@ static BOOL dir_exists(const CHAR *name)
 static BOOL file_existsW(LPCWSTR name)
 {
   return GetFileAttributesW(name) != INVALID_FILE_ATTRIBUTES;
+}
+
+static BOOL dir_existsW(const WCHAR *name)
+{
+    DWORD attr;
+    BOOL dir;
+
+    attr = GetFileAttributesW(name);
+    dir = ((attr & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY);
+
+    return ((attr != INVALID_FILE_ATTRIBUTES) && dir);
 }
 
 static BOOL file_has_content(const CHAR *name, const CHAR *content)
@@ -2739,11 +2753,41 @@ static BOOL is_old_shell32(void)
     return FALSE;
 }
 
+static void init_function_pointers(void)
+{
+    HMODULE hmod;
+    hmod = GetModuleHandleA("shell32.dll");
+
+#define MAKEFUNC(f) (p##f = (void*)GetProcAddress(hmod, #f))
+    MAKEFUNC(SHCreateItemFromParsingName);
+
+#undef MAKEFUNC
+}
+
 static void test_file_operation(void)
 {
     IFileOperation *operation;
     IUnknown *unk;
     HRESULT hr;
+    IShellItem *shellitem, *shellitem2;
+    BOOL aborted;
+    WCHAR CUR_DIRW[MAX_PATH];
+    WCHAR from[MAX_PATH];
+    WCHAR to[MAX_PATH];
+    WCHAR name1[] = {'t', 'e', 's', 't', '1', '.', 't', 'x', 't', '\0'};
+    WCHAR name2[] = {'t', 'e', 's', 't', '2', '.', 't', 'x', 't', '\0'};
+    WCHAR name3[] = {'t', 'e', 's', 't', '4', '.', 't', 'x', 't', '\0'};
+    WCHAR path[MAX_PATH];
+    WCHAR folder[MAX_PATH];
+    int len;
+    DWORD attributes;
+    GetCurrentDirectoryW(MAX_PATH, CUR_DIRW);
+    len = lstrlenW(CUR_DIRW);
+
+    if(len && (CUR_DIRW[len-1] == '\\'))
+        CUR_DIRW[len-1] = 0;
+    lstrcpyW(to, CUR_DIRW);
+    lstrcpyW(from, CUR_DIRW);
 
     hr = CoCreateInstance(&CLSID_FileOperation, NULL, CLSCTX_INPROC_SERVER,
             &IID_IFileOperation, (void **)&operation);
@@ -2758,6 +2802,189 @@ static void test_file_operation(void)
     hr = IFileOperation_QueryInterface(operation, &IID_IUnknown, (void **)&unk);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
     IUnknown_Release(unk);
+
+    hr = IFileOperation_GetAnyOperationsAborted(operation, &aborted);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(aborted == FALSE, "Got unexpected abored.\n");
+
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == E_UNEXPECTED, "Got hr %#lx.\n", hr);
+
+    hr = IFileOperation_SetOperationFlags(operation, FOF_NO_UI);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IFileOperation_SetOwnerWindow(operation, GetDesktopWindow());
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    if (pSHCreateItemFromParsingName)
+    {
+        /* new directory */
+        hr = pSHCreateItemFromParsingName(from, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_NewItem(operation, shellitem, FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY, name3, NULL, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        PathCombineW(path, from, name3);
+        ok(dir_existsW(path), "Directory %s should exists\n", wine_dbgstr_w(path));
+        attributes = GetFileAttributesW(path);
+        todo_wine
+        ok(attributes == (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY), "Attribute of directory %s expected %x, but got %lx\n",
+                wine_dbgstr_w(path), FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY, attributes);
+        IShellItem_Release(shellitem);
+
+        /* delete directory */
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_DeleteItem(operation, shellitem, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(!dir_existsW(path), "Directory %s should not exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+
+        /* new file */
+        memset(path, 0, sizeof(path));
+        hr = pSHCreateItemFromParsingName(from, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_NewItem(operation, shellitem, FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_READONLY, name1, NULL, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        PathCombineW(path, from, name1);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        attributes = GetFileAttributesW(path);
+        ok(attributes == (FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_READONLY), "Attribute of directory %s expected %x, but got %lx\n",
+                wine_dbgstr_w(path), FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_READONLY, attributes);
+        IShellItem_Release(shellitem);
+
+        /* delete file */
+        SetFileAttributesW(path, attributes & ~FILE_ATTRIBUTE_READONLY);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_DeleteItem(operation, shellitem, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(!file_existsW(path), "Directory %s should not exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        clean_after_shfo_tests();
+
+        /* copy file */
+        memset(path, 0, sizeof(path));
+        PathCombineW(folder, from, name3);
+        CreateDirectoryW(folder, NULL);
+        PathCombineW(path, folder, name1);
+        createTestFileW(path);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = pSHCreateItemFromParsingName(to, NULL, &IID_IShellItem, (void**)&shellitem2);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_CopyItem(operation, shellitem,  shellitem2, NULL, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, to, name1);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        IShellItem_Release(shellitem2);
+
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, from, name1);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = pSHCreateItemFromParsingName(to, NULL, &IID_IShellItem, (void**)&shellitem2);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_CopyItem(operation, shellitem,  shellitem2, name2, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, to, name2);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        IShellItem_Release(shellitem2);
+        clean_after_shfo_tests();
+
+        /* move file */
+        memset(path, 0, sizeof(path));
+        PathCombineW(folder, from, name3);
+        CreateDirectoryW(folder, NULL);
+        PathCombineW(path, folder, name1);
+        createTestFileW(path);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = pSHCreateItemFromParsingName(to, NULL, &IID_IShellItem, (void**)&shellitem2);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_MoveItem(operation, shellitem,  shellitem2, NULL, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(!file_existsW(path), "File %s should not exists\n", wine_dbgstr_w(path));
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, to, name1);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        IShellItem_Release(shellitem2);
+
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, from, name1);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = pSHCreateItemFromParsingName(to, NULL, &IID_IShellItem, (void**)&shellitem2);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_MoveItem(operation, shellitem,  shellitem2, name2, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, to, name2);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, from, name1);
+        ok(!file_existsW(path), "File %s should not exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        IShellItem_Release(shellitem2);
+        clean_after_shfo_tests();
+
+        /* multiply operation */
+        PathCombineW(folder, from, name3);
+        CreateDirectoryW(folder, NULL);
+        PathCombineW(path, folder, name1);
+        createTestFileW(path);
+        hr = pSHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&shellitem);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = pSHCreateItemFromParsingName(to, NULL, &IID_IShellItem, (void**)&shellitem2);
+        ok(hr == S_OK, "SHCreateItemFromParsingName returned %lx\n", hr);
+        hr = IFileOperation_CopyItem(operation, shellitem, shellitem2, name2, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_DeleteItem(operation, shellitem, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, to, name2);
+        ok(file_existsW(path), "File %s should exists\n", wine_dbgstr_w(path));
+        memset(path, 0, sizeof(path));
+        PathCombineW(path, from, name1);
+        ok(!file_existsW(path), "File %s should not exists\n", wine_dbgstr_w(path));
+        IShellItem_Release(shellitem);
+        IShellItem_Release(shellitem2);
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == E_UNEXPECTED, "Got hr %#lx.\n", hr);
+        clean_after_shfo_tests();
+
+        hr = IFileOperation_GetAnyOperationsAborted(operation, &aborted);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(aborted == FALSE, "Got unexpected abored.\n");
+    }
+    else
+    {
+        if (!pSHCreateItemFromParsingName)
+            win_skip("pSHCreateItemFromParsingName not available\n");
+    }
 
     IFileOperation_Release(operation);
 }
@@ -2810,6 +3037,7 @@ START_TEST(shlfileop)
 
     CoInitialize(NULL);
 
+    init_function_pointers();
     test_file_operation();
 
     CoUninitialize();
