@@ -1803,6 +1803,7 @@ struct file_operations
     IFileOperation  IFileOperation_iface;
     LONG            ref;
     DWORD           flags;
+    BOOL            fAnyOperationsAborted;
     struct list     operations;
 };
 
@@ -2001,9 +2002,12 @@ static HRESULT WINAPI file_operation_PerformOperations(IFileOperation *iface)
 
 static HRESULT WINAPI file_operation_GetAnyOperationsAborted(IFileOperation *iface, BOOL *aborted)
 {
-    FIXME("(%p, %p): stub.\n", iface, aborted);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    TRACE("(%p, %p) aborted:%d.\n", iface, aborted, operations->fAnyOperationsAborted);
 
-    return E_NOTIMPL;
+    if (aborted) *aborted = operations->fAnyOperationsAborted;
+
+    return S_OK;
 }
 
 static const IFileOperationVtbl file_operation_vtbl =
