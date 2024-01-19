@@ -118,13 +118,61 @@ static ULONG WINAPI ttsengine_Release(ISpTTSEngine *iface)
     return ref;
 }
 
+static int audio_stream_chunk_cb(const cst_wave *w, int start, int size, int last, cst_audio_streaming_info *asi)
+{
+    ISpTTSEngineSite *site = asi->userdata;
+
+    if (ISpTTSEngineSite_GetActions(site) & SPVES_ABORT)
+        return CST_AUDIO_STREAM_STOP;
+    if (FAILED(ISpTTSEngineSite_Write(site, w->samples + start, size * sizeof(w->samples[0]), NULL)))
+        return CST_AUDIO_STREAM_STOP;
+
+    return CST_AUDIO_STREAM_CONT;
+}
+
 static HRESULT WINAPI ttsengine_Speak(ISpTTSEngine *iface, DWORD flags, REFGUID fmtid,
                                       const WAVEFORMATEX *wfx, const SPVTEXTFRAG *frag_list,
                                       ISpTTSEngineSite *site)
 {
-    FIXME("(%p, %#lx, %s, %p, %p, %p): stub.\n", iface, flags, debugstr_guid(fmtid), wfx, frag_list, site);
+    struct ttsengine *This = impl_from_ISpTTSEngine(iface);
+    cst_audio_streaming_info *asi;
+    char *text = NULL;
+    size_t text_len;
+    cst_wave *wave;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %#lx, %s, %p, %p, %p).\n", iface, flags, debugstr_guid(fmtid), wfx, frag_list, site);
+
+    if (!This->voice)
+        return SPERR_UNINITIALIZED;
+
+    asi = new_audio_streaming_info();
+    asi->asc          = audio_stream_chunk_cb;
+    asi->min_buffsize = get_param_int(This->voice->features, "sample_rate", 16000) * 50 / 1000;
+    asi->userdata     = site;
+    feat_set(This->voice->features, "streaming_info", audio_streaming_info_val(asi));
+
+    for (; frag_list; frag_list = frag_list->pNext)
+    {
+        if (ISpTTSEngineSite_GetActions(site) & SPVES_ABORT)
+            return S_OK;
+
+        text_len = WideCharToMultiByte(CP_UTF8, 0, frag_list->pTextStart, frag_list->ulTextLen, NULL, 0, NULL, NULL);
+        if (!(text = malloc(text_len + 1)))
+            return E_OUTOFMEMORY;
+        WideCharToMultiByte(CP_UTF8, 0, frag_list->pTextStart, frag_list->ulTextLen, text, text_len, NULL, NULL);
+        text[text_len] = '\0';
+
+        if (!(wave = flite_text_to_wave(text, This->voice)))
+        {
+            free(text);
+            return E_FAIL;
+        }
+
+        delete_wave(wave);
+        free(text);
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI ttsengine_GetOutputFormat(ISpTTSEngine *iface, const GUID *fmtid,
