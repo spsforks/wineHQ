@@ -1798,26 +1798,27 @@ HRESULT WINAPI SHMultiFileProperties(IDataObject *pdtobj, DWORD flags)
     return E_NOTIMPL;
 }
 
-struct file_operation
+struct file_operations
 {
-    IFileOperation IFileOperation_iface;
-    LONG ref;
+    IFileOperation  IFileOperation_iface;
+    LONG            ref;
+    struct list     operations;
 };
 
-static inline struct file_operation *impl_from_IFileOperation(IFileOperation *iface)
+static inline struct file_operations *impl_from_IFileOperation(IFileOperation *iface)
 {
-    return CONTAINING_RECORD(iface, struct file_operation, IFileOperation_iface);
+    return CONTAINING_RECORD(iface, struct file_operations, IFileOperation_iface);
 }
 
 static HRESULT WINAPI file_operation_QueryInterface(IFileOperation *iface, REFIID riid, void **out)
 {
-    struct file_operation *operation = impl_from_IFileOperation(iface);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
 
     TRACE("(%p, %s, %p).\n", iface, debugstr_guid(riid), out);
 
     if (IsEqualIID(&IID_IFileOperation, riid) ||
         IsEqualIID(&IID_IUnknown, riid))
-        *out = &operation->IFileOperation_iface;
+        *out = &operations->IFileOperation_iface;
     else
     {
         FIXME("not implemented for %s.\n", debugstr_guid(riid));
@@ -1831,8 +1832,8 @@ static HRESULT WINAPI file_operation_QueryInterface(IFileOperation *iface, REFII
 
 static ULONG WINAPI file_operation_AddRef(IFileOperation *iface)
 {
-    struct file_operation *operation = impl_from_IFileOperation(iface);
-    ULONG ref = InterlockedIncrement(&operation->ref);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    ULONG ref = InterlockedIncrement(&operations->ref);
 
     TRACE("(%p): ref=%lu.\n", iface, ref);
 
@@ -1841,14 +1842,14 @@ static ULONG WINAPI file_operation_AddRef(IFileOperation *iface)
 
 static ULONG WINAPI file_operation_Release(IFileOperation *iface)
 {
-    struct file_operation *operation = impl_from_IFileOperation(iface);
-    ULONG ref = InterlockedDecrement(&operation->ref);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    ULONG ref = InterlockedDecrement(&operations->ref);
 
     TRACE("(%p): ref=%lu.\n", iface, ref);
 
     if (!ref)
     {
-        free(operation);
+        free(operations);
     }
 
     return ref;
@@ -2029,7 +2030,7 @@ static const IFileOperationVtbl file_operation_vtbl =
 
 HRESULT WINAPI IFileOperation_Constructor(IUnknown *outer, REFIID riid, void **out)
 {
-    struct file_operation *object;
+    struct file_operations *object;
     HRESULT hr;
 
     object = calloc(1, sizeof(*object));
@@ -2038,6 +2039,7 @@ HRESULT WINAPI IFileOperation_Constructor(IUnknown *outer, REFIID riid, void **o
 
     object->IFileOperation_iface.lpVtbl = &file_operation_vtbl;
     object->ref = 1;
+    list_init( &object->operations);
 
     hr = IFileOperation_QueryInterface(&object->IFileOperation_iface, riid, out);
     IFileOperation_Release(&object->IFileOperation_iface);
