@@ -1802,6 +1802,7 @@ struct file_operations
 {
     IFileOperation  IFileOperation_iface;
     LONG            ref;
+    DWORD           flags;
     struct list     operations;
 };
 
@@ -1871,9 +1872,13 @@ static HRESULT WINAPI file_operation_Unadvise(IFileOperation *iface, DWORD cooki
 
 static HRESULT WINAPI file_operation_SetOperationFlags(IFileOperation *iface, DWORD flags)
 {
-    FIXME("(%p, %lx): stub.\n", iface, flags);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
 
-    return E_NOTIMPL;
+    TRACE("(%p): flags: %lx.\n", iface, flags);
+
+    operations->flags = flags;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI file_operation_SetProgressMessage(IFileOperation *iface, LPCWSTR message)
