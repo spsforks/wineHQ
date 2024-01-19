@@ -1802,6 +1802,7 @@ struct file_operations
 {
     IFileOperation  IFileOperation_iface;
     LONG            ref;
+    HWND            hwnd;
     DWORD           flags;
     BOOL            fAnyOperationsAborted;
     struct list     operations;
@@ -1905,9 +1906,13 @@ static HRESULT WINAPI file_operation_SetProperties(IFileOperation *iface, IPrope
 
 static HRESULT WINAPI file_operation_SetOwnerWindow(IFileOperation *iface, HWND owner)
 {
-    FIXME("(%p, %p): stub.\n", iface, owner);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
 
-    return E_NOTIMPL;
+    TRACE("(%p): owner: %p.\n", iface, owner);
+
+    operations->hwnd = owner;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI file_operation_ApplyPropertiesToItem(IFileOperation *iface, IShellItem *item)
