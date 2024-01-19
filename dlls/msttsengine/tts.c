@@ -33,7 +33,11 @@
 
 #include "wine/debug.h"
 
+#include "initguid.h"
+
 WINE_DEFAULT_DEBUG_CHANNEL(msttsengine);
+
+DEFINE_GUID(SPDFID_WaveFormatEx, 0xc31adbae, 0x527f, 0x4ff5, 0xa2, 0x30, 0xf6, 0x2b, 0xb6, 0x1f, 0xf7, 0x0c);
 
 cst_voice *register_cmu_us_awb(const char *voxdir);
 
@@ -127,9 +131,26 @@ static HRESULT WINAPI ttsengine_GetOutputFormat(ISpTTSEngine *iface, const GUID 
                                                 const WAVEFORMATEX *wfx, GUID *out_fmtid,
                                                 WAVEFORMATEX **out_wfx)
 {
-    FIXME("(%p, %s, %p, %p, %p): stub.\n", iface, debugstr_guid(fmtid), wfx, out_fmtid, out_wfx);
+    struct ttsengine *This = impl_from_ISpTTSEngine(iface);
 
-    return E_NOTIMPL;
+    TRACE("(%p, %s, %p, %p, %p).\n", iface, debugstr_guid(fmtid), wfx, out_fmtid, out_wfx);
+
+    if (!This->voice)
+        return SPERR_UNINITIALIZED;
+
+    *out_fmtid = SPDFID_WaveFormatEx;
+    if (!(*out_wfx = CoTaskMemAlloc(sizeof(WAVEFORMATEX))))
+        return E_OUTOFMEMORY;
+
+    (*out_wfx)->wFormatTag      = WAVE_FORMAT_PCM;
+    (*out_wfx)->nChannels       = 1;
+    (*out_wfx)->nSamplesPerSec  = get_param_int(This->voice->features, "sample_rate", 16000);
+    (*out_wfx)->wBitsPerSample  = 16;
+    (*out_wfx)->nBlockAlign     = (*out_wfx)->nChannels * (*out_wfx)->wBitsPerSample / 8;
+    (*out_wfx)->nAvgBytesPerSec = (*out_wfx)->nSamplesPerSec * (*out_wfx)->nBlockAlign;
+    (*out_wfx)->cbSize          = 0;
+
+    return S_OK;
 }
 
 static ISpTTSEngineVtbl ttsengine_vtbl =
