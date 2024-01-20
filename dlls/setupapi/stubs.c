@@ -312,16 +312,6 @@ BOOL WINAPI SetupDiGetClassImageIndex(PSP_CLASSIMAGELIST_DATA ClassImageListData
 }
 
 /***********************************************************************
- *      CM_Locate_DevNode_ExA (SETUPAPI.@)
- */
-CONFIGRET WINAPI CM_Locate_DevNode_ExA(PDEVINST pdnDevInst, DEVINSTID_A pDeviceID, ULONG ulFlags, HMACHINE hMachine)
-{
-    FIXME("%p %s 0x%08lx %p: stub\n", pdnDevInst, debugstr_a(pDeviceID), ulFlags, hMachine);
-
-    return CR_FAILURE;
-}
-
-/***********************************************************************
  *      CM_Locate_DevNode_ExW (SETUPAPI.@)
  */
 CONFIGRET WINAPI CM_Locate_DevNode_ExW(PDEVINST pdnDevInst, DEVINSTID_W pDeviceID, ULONG ulFlags, HMACHINE hMachine)

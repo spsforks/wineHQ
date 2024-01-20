@@ -4241,6 +4241,30 @@ CONFIGRET WINAPI CM_Locate_DevNodeW(PDEVINST pdnDevInst, DEVINSTID_W pDeviceID, 
 }
 
 /***********************************************************************
+ *      CM_Locate_DevNode_ExA (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Locate_DevNode_ExA(PDEVINST pdnDevInst, DEVINSTID_A pDeviceID, ULONG ulFlags, HMACHINE hMachine)
+{
+    CONFIGRET ret;
+    int len;
+    WCHAR *buffer;
+
+    len = MultiByteToWideChar(CP_ACP, 0, pDeviceID, -1, NULL, 0);
+
+    buffer = calloc(len, sizeof(WCHAR));
+
+    if (!buffer) return CR_OUT_OF_MEMORY;
+
+    MultiByteToWideChar(CP_ACP, 0, pDeviceID, -1, buffer, len);
+
+    ret = CM_Locate_DevNode_ExW(pdnDevInst, buffer, ulFlags, hMachine);
+
+    free(buffer);
+
+    return ret;
+}
+
+/***********************************************************************
  *      SetupDiGetINFClassA (SETUPAPI.@)
  */
 BOOL WINAPI SetupDiGetINFClassA(PCSTR inf, LPGUID class_guid, PSTR class_name,
