@@ -4265,6 +4265,28 @@ CONFIGRET WINAPI CM_Locate_DevNode_ExA(PDEVINST pdnDevInst, DEVINSTID_A pDeviceI
 }
 
 /***********************************************************************
+ *      CM_Locate_DevNode_ExW (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Locate_DevNode_ExW(PDEVINST pdnDevInst, DEVINSTID_W pDeviceID, ULONG ulFlags, HMACHINE hMachine)
+{
+    FIXME("%p %s 0x%08lx %p: semi-stub\n", pdnDevInst, debugstr_w(pDeviceID), ulFlags, hMachine);
+
+    for (DEVINST i = 0; i < devnode_table_size; i++)
+    {
+        if (!devnode_table[i])
+            break;
+        
+        if (!lstrcmpW(pDeviceID, devnode_table[i]->instanceId))
+        {
+            *pdnDevInst = i;
+            return CR_SUCCESS;
+        }
+    }
+    
+    return CR_NO_SUCH_DEVNODE;
+}
+
+/***********************************************************************
  *      SetupDiGetINFClassA (SETUPAPI.@)
  */
 BOOL WINAPI SetupDiGetINFClassA(PCSTR inf, LPGUID class_guid, PSTR class_name,
