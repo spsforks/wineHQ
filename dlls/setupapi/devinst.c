@@ -4233,6 +4233,14 @@ CONFIGRET WINAPI CM_Locate_DevNodeA(PDEVINST pdnDevInst, DEVINSTID_A pDeviceID, 
 }
 
 /***********************************************************************
+ *      CM_Locate_DevNodeW (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Locate_DevNodeW(PDEVINST pdnDevInst, DEVINSTID_W pDeviceID, ULONG ulFlags)
+{
+    return CM_Locate_DevNode_ExW(pdnDevInst, pDeviceID, ulFlags, NULL);
+}
+
+/***********************************************************************
  *      SetupDiGetINFClassA (SETUPAPI.@)
  */
 BOOL WINAPI SetupDiGetINFClassA(PCSTR inf, LPGUID class_guid, PSTR class_name,
