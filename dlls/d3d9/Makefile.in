@@ -5,6 +5,7 @@ IMPORTS   = dxguid uuid wined3d
 SOURCES = \
 	buffer.c \
 	d3d9_main.c \
+	d3d9on12.c \
 	device.c \
 	directx.c \
 	query.c \

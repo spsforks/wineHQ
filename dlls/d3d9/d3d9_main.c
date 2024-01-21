@@ -75,6 +75,45 @@ HRESULT WINAPI DECLSPEC_HOTPATCH Direct3DCreate9Ex(UINT sdk_version, IDirect3D9E
     return D3D_OK;
 }
 
+IDirect3D9 * WINAPI DECLSPEC_HOTPATCH Direct3DCreate9On12(UINT sdk_version, D3D9ON12_ARGS *override_list, UINT override_entries)
+{
+    struct d3d9 *object;
+    HRESULT hr;
+
+    TRACE("sdk_version %#x, override_list %p, override_entries %#x.\n", sdk_version, override_list, override_entries);
+
+    if (!(object = calloc(1, sizeof(*object))))
+        return NULL;
+
+    if (!d3d9_init(object, TRUE))
+    {
+        WARN("Failed to initialize d3d9.\n");
+        free(object);
+        return NULL;
+    }
+
+    hr = d3d9on12_init(&object->d3d9on12, override_list, override_entries);
+
+    if (hr == E_OUTOFMEMORY)
+    {
+        WARN("Failed to initialize d3d9on12.\n");
+        free(object);
+        return NULL;
+    }
+    else if (hr ==  S_OK)
+    {
+        SetLastError(ERROR_SUCCESS);
+        TRACE("Created d3d9on12 object %p.\n", object->d3d9on12);
+    }
+    else
+    {
+        SetLastError(ERROR_TOO_MANY_POSTS);
+    }
+
+    TRACE("Created d3d9 object %p.\n", object);
+    return (IDirect3D9 *)&object->IDirect3D9Ex_iface;
+}
+
 /* The callback is called on any error encountered during validation, including
  * improper IDirect3DShaderValidator9 method calls.
  * - "file" and "line" are passed through directly from Instruction(). "line"
