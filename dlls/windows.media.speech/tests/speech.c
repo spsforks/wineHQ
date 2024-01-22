@@ -42,7 +42,6 @@
 #define AsyncStatus_Closed 4
 
 #define SPERR_WINRT_INTERNAL_ERROR 0x800455a0
-#define SPERR_WINRT_INCORRECT_FORMAT 0x80131537
 
 #define IHandler_RecognitionResult ITypedEventHandler_SpeechContinuousRecognitionSession_SpeechContinuousRecognitionResultGeneratedEventArgs
 #define IHandler_RecognitionResultVtbl ITypedEventHandler_SpeechContinuousRecognitionSession_SpeechContinuousRecognitionResultGeneratedEventArgsVtbl
@@ -996,7 +995,7 @@ static void test_SpeechSynthesizer(void)
     operation_ss_stream = (void *)0xdeadbeef;
     hr = ISpeechSynthesizer_SynthesizeSsmlToStreamAsync(synthesizer, str, &operation_ss_stream);
     /* Broken on Win 8 + 8.1 */
-    ok(hr == S_OK || broken(hr == SPERR_WINRT_INCORRECT_FORMAT), "ISpeechSynthesizer_SynthesizeSsmlToStreamAsync failed, hr %#lx\n", hr);
+    ok(hr == S_OK || broken(hr == COR_E_FORMAT), "ISpeechSynthesizer_SynthesizeSsmlToStreamAsync failed, hr %#lx\n", hr);
 
     if (hr == S_OK)
     {
@@ -1184,7 +1183,7 @@ static void test_SpeechRecognizer(void)
     ok(ref == 1, "Got unexpected ref %lu.\n", ref);
 
     hr = RoActivateInstance(hstr, &inspectable);
-    ok(hr == S_OK || broken(hr == SPERR_WINRT_INTERNAL_ERROR), "Got unexpected hr %#lx.\n", hr);
+    ok(hr == S_OK || hr == SPERR_WINRT_INTERNAL_ERROR, "Got unexpected hr %#lx.\n", hr);
 
     if (hr == S_OK)
     {
@@ -1403,7 +1402,7 @@ skip_operation:
     }
     else if (hr == SPERR_WINRT_INTERNAL_ERROR) /* Not sure when this triggers. Probably if a language pack is not installed. */
     {
-        win_skip("Could not init SpeechRecognizer with default language!\n");
+        skip("Could not init SpeechRecognizer with default language!\n");
     }
 
 done:
@@ -1620,12 +1619,12 @@ static void test_Recognition(void)
     ok(hr == S_OK, "WindowsCreateString failed, hr %#lx.\n", hr);
 
     hr = RoActivateInstance(hstr, &inspectable);
-    ok(hr == S_OK || broken(hr == SPERR_WINRT_INTERNAL_ERROR || hr == REGDB_E_CLASSNOTREG), "Got unexpected hr %#lx.\n", hr);
+    ok(hr == S_OK || hr == SPERR_WINRT_INTERNAL_ERROR || broken(hr == REGDB_E_CLASSNOTREG), "Got unexpected hr %#lx.\n", hr);
     WindowsDeleteString(hstr);
 
-    if (FAILED(hr))  /* Win 8 and 8.1 and Win10 without enabled SR. */
+    if (FAILED(hr))  /* Win 8 and 8.1 and Win10 without enabled SR. Wine with missing Unix side dependencies. */
     {
-        win_skip("SpeechRecognizer cannot be activated!\n");
+        skip("SpeechRecognizer cannot be activated!\n");
         goto done;
     }
 
