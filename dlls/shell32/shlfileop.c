@@ -1798,6 +1798,17 @@ HRESULT WINAPI SHMultiFileProperties(IDataObject *pdtobj, DWORD flags)
     return E_NOTIMPL;
 }
 
+struct file_operation
+{
+    struct list entry;
+    UINT        wFunc;
+    LPWSTR      pFrom;
+    LPWSTR      pTo;
+    LPWSTR      pNewName;
+    LPWSTR      pTemplateName;
+    DWORD       attributes;
+};
+
 struct file_operations
 {
     IFileOperation  IFileOperation_iface;
@@ -1807,6 +1818,92 @@ struct file_operations
     BOOL            fAnyOperationsAborted;
     struct list     operations;
 };
+
+static HRESULT create_operation( IShellItem *item, IShellItem *folder,
+        LPCWSTR name, UINT func, struct file_operation **out)
+{
+    LPWSTR tmp, from = NULL, to = NULL;
+    HRESULT ret;
+
+    if (!out) return ERROR_INVALID_PARAMETER;
+
+    ret = IShellItem_GetDisplayName(item, SIGDN_FILESYSPATH, &tmp);
+    if (S_OK != ret)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    from = calloc(lstrlenW(tmp) + 2, sizeof(WCHAR));
+    if (!from)
+    {
+        ret = E_OUTOFMEMORY;
+        CoTaskMemFree(tmp);
+        goto end;
+    }
+
+    lstrcpyW(from, tmp);
+    CoTaskMemFree(tmp);
+
+    if (func != FO_DELETE)
+    {
+
+        ret = IShellItem_GetDisplayName(folder, SIGDN_FILESYSPATH, &tmp);
+        if (S_OK != ret)
+        {
+            ret = ERROR_INVALID_PARAMETER;
+            goto end;
+        }
+
+        if (name)
+        {
+            to = calloc(lstrlenW(tmp) + MAX_PATH +  2, sizeof(WCHAR));
+            PathCombineW(to, tmp, name);
+        }
+        else
+        {
+            to = calloc(lstrlenW(tmp) + 2, sizeof(WCHAR));
+            if (!to)
+            {
+                ret = E_OUTOFMEMORY;
+                CoTaskMemFree(tmp);
+                goto end;
+            }
+
+            lstrcpyW(to, tmp);
+        }
+        CoTaskMemFree(tmp);
+	}
+
+    *out = calloc(1, sizeof(struct file_operation));
+    if (!*out)
+    {
+        ret = E_OUTOFMEMORY;
+        goto end;
+    }
+
+    (*out)->wFunc = func;
+    (*out)->pFrom = from;
+    (*out)->pTo = to;
+    return ret;
+
+end:
+    free(from);
+    free(to);
+
+    return ret;
+}
+
+static void free_operation(struct file_operation *opt)
+{
+    if (opt)
+    {
+        free(opt->pNewName);
+        free(opt->pTo);
+        free(opt->pTemplateName);
+        free(opt->pFrom);
+        free(opt);
+    }
+}
 
 static inline struct file_operations *impl_from_IFileOperation(IFileOperation *iface)
 {
@@ -1846,12 +1943,16 @@ static ULONG WINAPI file_operation_AddRef(IFileOperation *iface)
 static ULONG WINAPI file_operation_Release(IFileOperation *iface)
 {
     struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *ptr, *next;
     ULONG ref = InterlockedDecrement(&operations->ref);
 
     TRACE("(%p): ref=%lu.\n", iface, ref);
 
     if (!ref)
     {
+        LIST_FOR_EACH_ENTRY_SAFE( ptr, next, &operations->operations, struct file_operation, entry )
+            free_operation(ptr);
+
         free(operations);
     }
 
@@ -1962,9 +2063,16 @@ static HRESULT WINAPI file_operation_MoveItems(IFileOperation *iface, IUnknown *
 static HRESULT WINAPI file_operation_CopyItem(IFileOperation *iface, IShellItem *item, IShellItem *folder,
         LPCWSTR name, IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %p, %s, %p): stub.\n", iface, item, folder, debugstr_w(name), sink);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *op;
+    HRESULT ret;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %p, %p, %s, %p).\n", iface, item, folder, debugstr_w(name), sink);
+
+    ret = create_operation(item, folder, name, FO_COPY, &op);
+
+    if (ret == S_OK) list_add_tail( &operations->operations, &op->entry );
+    return ret;
 }
 
 static HRESULT WINAPI file_operation_CopyItems(IFileOperation *iface, IUnknown *items, IShellItem *folder)
@@ -2000,9 +2108,37 @@ static HRESULT WINAPI file_operation_NewItem(IFileOperation *iface, IShellItem *
 
 static HRESULT WINAPI file_operation_PerformOperations(IFileOperation *iface)
 {
-    FIXME("(%p): stub.\n", iface);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *ptr, *next;
+    SHFILEOPSTRUCTW shfoW;
+    HRESULT hr = S_OK;
+    DWORD ret;
 
-    return E_NOTIMPL;
+    TRACE("\n");
+
+    if (list_empty(&operations->operations)) return E_UNEXPECTED;
+
+    shfoW.hwnd = operations->hwnd;
+    shfoW.fFlags = operations->flags;
+
+    LIST_FOR_EACH_ENTRY_SAFE( ptr, next, &operations->operations, struct file_operation, entry )
+    {
+        TRACE("func: %d\n", ptr->wFunc);
+
+        shfoW.wFunc = ptr->wFunc;
+        shfoW.pFrom = ptr->pFrom;
+        shfoW.pTo = ptr->pTo;
+
+        ret = SHFileOperationW(&shfoW);
+        if (ret) hr = HRESULT_FROM_WIN32(GetLastError());
+        if (!operations->fAnyOperationsAborted)
+            operations->fAnyOperationsAborted = shfoW.fAnyOperationsAborted;
+
+        list_remove(&ptr->entry);
+        free_operation(ptr);
+    }
+
+    return hr;
 }
 
 static HRESULT WINAPI file_operation_GetAnyOperationsAborted(IFileOperation *iface, BOOL *aborted)
