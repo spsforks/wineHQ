@@ -1458,16 +1458,18 @@ void exit_process( int status )
  *
  * Wait until the thread is no longer suspended.
  */
-void wait_suspend( CONTEXT *context )
+NTSTATUS wait_suspend( CONTEXT *context )
 {
     int saved_errno = errno;
     context_t server_contexts[2];
+    NTSTATUS status;
 
-    contexts_to_server( server_contexts, context );
+    if (context) contexts_to_server( server_contexts, context );
     /* wait with 0 timeout, will only return once the thread is no longer suspended */
-    server_select( NULL, 0, SELECT_INTERRUPTIBLE, 0, server_contexts, NULL );
-    contexts_from_server( context, server_contexts );
+    status = server_select( NULL, 0, SELECT_INTERRUPTIBLE | SELECT_SUSPEND, 0, context ? server_contexts : NULL, NULL );
+    if (context) contexts_from_server( context, server_contexts );
     errno = saved_errno;
+    return status;
 }
 
 
@@ -1513,7 +1515,7 @@ NTSTATUS send_debug_event( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL first_c
         select_op.wait.handles[0] = handle;
 
         contexts_to_server( server_contexts, context );
-        server_select( &select_op, offsetof( select_op_t, wait.handles[1] ), SELECT_INTERRUPTIBLE,
+        server_select( &select_op, offsetof( select_op_t, wait.handles[1] ), SELECT_INTERRUPTIBLE | SELECT_SUSPEND,
                        TIMEOUT_INFINITE, server_contexts, NULL );
 
         SERVER_START_REQ( get_exception_status )

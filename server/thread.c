@@ -1656,6 +1656,14 @@ DECL_HANDLER(select)
         release_object( apc );
     }
 
+    if (!ctx_count && current->context && req->flags & SELECT_SUSPEND)
+    {
+        /* select is called from signal and thread context is required. */
+        set_error( STATUS_MORE_PROCESSING_REQUIRED );
+        reply->signaled = 1;
+        return;
+    }
+
     reply->signaled = select_on( &select_op, op_size, req->cookie, req->flags, req->timeout );
 
     if (get_error() == STATUS_USER_APC && get_reply_max_size() >= sizeof(apc_call_t))

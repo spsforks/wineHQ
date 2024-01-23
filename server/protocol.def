@@ -1237,6 +1237,7 @@ typedef struct
 @END
 #define SELECT_ALERTABLE     1
 #define SELECT_INTERRUPTIBLE 2
+#define SELECT_SUSPEND       4
 
 
 /* Create an event */
