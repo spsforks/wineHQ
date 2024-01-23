@@ -2033,9 +2033,16 @@ static HRESULT WINAPI file_operation_ApplyPropertiesToItems(IFileOperation *ifac
 static HRESULT WINAPI file_operation_RenameItem(IFileOperation *iface, IShellItem *item, LPCWSTR name,
         IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %s, %p): stub.\n", iface, item, debugstr_w(name), sink);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *op;
+    HRESULT ret;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %p, %s, %p).\n", iface, item, debugstr_w(name), sink);
+
+    ret = create_operation(item, item, name, FO_RENAME, &op);
+
+    if (ret == S_OK) list_add_tail( &operations->operations, &op->entry );
+    return ret;
 }
 
 static HRESULT WINAPI file_operation_RenameItems(IFileOperation *iface, IUnknown *items, LPCWSTR name)
@@ -2048,9 +2055,15 @@ static HRESULT WINAPI file_operation_RenameItems(IFileOperation *iface, IUnknown
 static HRESULT WINAPI file_operation_MoveItem(IFileOperation *iface, IShellItem *item, IShellItem *folder,
         LPCWSTR name, IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %p, %s, %p): stub.\n", iface, item, folder, debugstr_w(name), sink);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *op;
+    HRESULT ret;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %p, %p, %s, %p).\n", iface, item, folder, debugstr_w(name), sink);
+    ret = create_operation(item, folder, name, FO_MOVE, &op);
+
+    if (ret == S_OK) list_add_tail( &operations->operations, &op->entry );
+    return ret;
 }
 
 static HRESULT WINAPI file_operation_MoveItems(IFileOperation *iface, IUnknown *items, IShellItem *folder)
@@ -2085,9 +2098,16 @@ static HRESULT WINAPI file_operation_CopyItems(IFileOperation *iface, IUnknown *
 static HRESULT WINAPI file_operation_DeleteItem(IFileOperation *iface, IShellItem *item,
         IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %p): stub.\n", iface, item, sink);
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *op;
+    HRESULT ret;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %p, %p).\n", iface, item, sink);
+
+    ret = create_operation(item, NULL, NULL , FO_DELETE, &op);
+
+    if (ret == S_OK) list_add_tail( &operations->operations, &op->entry );
+    return ret;
 }
 
 static HRESULT WINAPI file_operation_DeleteItems(IFileOperation *iface, IUnknown *items)
