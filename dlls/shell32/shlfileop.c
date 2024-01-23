@@ -55,6 +55,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(shell);
 #define DE_SAMEFILE      0x71
 #define DE_DESTSAMETREE  0x7D
 
+#define FO_NEW         0x5
+
 static DWORD SHNotifyCreateDirectoryA(LPCSTR path, LPSECURITY_ATTRIBUTES sec);
 static DWORD SHNotifyCreateDirectoryW(LPCWSTR path, LPSECURITY_ATTRIBUTES sec);
 static DWORD SHNotifyRemoveDirectoryA(LPCSTR path);
@@ -1905,6 +1907,46 @@ static void free_operation(struct file_operation *opt)
     }
 }
 
+static DWORD new_item(const WCHAR *folder, const WCHAR *name, DWORD attributes, struct file_operations *operations)
+{
+    DWORD ret = ERROR_SUCCESS;
+    WCHAR path[MAX_PATH];
+    HANDLE file;
+
+    if (!(operations->flags & FOF_NOCONFIRMATION) && !PathFileExistsW(folder))
+    {
+        if (!SHELL_ConfirmDialogW(operations->hwnd, ASK_CREATE_FOLDER, PathFindFileNameW(folder), NULL))
+        {
+            operations->fAnyOperationsAborted = TRUE;
+            return ERROR_CANCELLED;
+        }
+        ret = SHNotifyCreateDirectoryW(folder, NULL);
+        if (ERROR_SUCCESS != ret) return ret;
+    }
+
+    PathCombineW(path, folder, name);
+
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        ret = SHNotifyCreateDirectoryW(path, NULL);
+        if (ERROR_SUCCESS == ret)
+        {
+            if (!SetFileAttributesW(path, attributes)) ret = GetLastError();
+        }
+    }
+    else
+    {
+        file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, attributes, NULL);
+
+        if (file != INVALID_HANDLE_VALUE)
+            CloseHandle(file);
+        else
+            ret = GetLastError();
+    }
+
+    return ret;
+}
+
 static inline struct file_operations *impl_from_IFileOperation(IFileOperation *iface)
 {
     return CONTAINING_RECORD(iface, struct file_operations, IFileOperation_iface);
@@ -2120,10 +2162,74 @@ static HRESULT WINAPI file_operation_DeleteItems(IFileOperation *iface, IUnknown
 static HRESULT WINAPI file_operation_NewItem(IFileOperation *iface, IShellItem *folder, DWORD attributes,
         LPCWSTR name, LPCWSTR template, IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %lx, %s, %s, %p): stub.\n", iface, folder, attributes,
+
+    struct file_operations *operations = impl_from_IFileOperation(iface);
+    struct file_operation *op;
+    HRESULT ret;
+    LPWSTR tmp, new = NULL, to = NULL, temp = NULL;
+
+    TRACE("(%p, %p, %lx, %s, %s, %p).\n", iface, folder, attributes,
           debugstr_w(name), debugstr_w(template), sink);
 
-    return E_NOTIMPL;
+    ret = IShellItem_GetDisplayName(folder, SIGDN_FILESYSPATH, &tmp);
+    if (S_OK != ret)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    to = calloc(lstrlenW(tmp) + 1, sizeof(WCHAR));
+    if (!to)
+    {
+        CoTaskMemFree(tmp);
+        ret = E_OUTOFMEMORY;
+        goto end;
+    }
+
+    lstrcpyW(to, tmp);
+    CoTaskMemFree(tmp);
+
+    if (name)
+    {
+        new = calloc(lstrlenW(name) + 1, sizeof(WCHAR));
+        if (!new)
+        {
+            ret = E_OUTOFMEMORY;
+            goto end;
+        }
+        lstrcpyW(new, name);
+    }
+
+    if (template)
+    {
+        temp = calloc(lstrlenW(template) + 1, sizeof(WCHAR));
+        if (!temp)
+        {
+            ret = E_OUTOFMEMORY;
+            goto end;
+        }
+        lstrcpyW(temp, template);
+    }
+
+    op = calloc(1, sizeof(struct file_operation));
+    if (!op)
+    {
+        ret = E_OUTOFMEMORY;
+        goto end;
+    }
+    op->wFunc = FO_NEW;
+    op->pTo = to;
+    op->pNewName = new;
+    op->pTemplateName = temp;
+    op->attributes = attributes;
+    list_add_tail( &operations->operations, &op->entry );
+    return ret;
+
+end:
+    free(new);
+    free(temp);
+    free(to);
+
+    return ret;
 }
 
 static HRESULT WINAPI file_operation_PerformOperations(IFileOperation *iface)
@@ -2144,6 +2250,17 @@ static HRESULT WINAPI file_operation_PerformOperations(IFileOperation *iface)
     LIST_FOR_EACH_ENTRY_SAFE( ptr, next, &operations->operations, struct file_operation, entry )
     {
         TRACE("func: %d\n", ptr->wFunc);
+        if (ptr->wFunc == FO_NEW)
+        {
+            if (ptr->pTemplateName)
+                FIXME("stub template\n");
+
+            ret = new_item(ptr->pTo, ptr->pNewName, ptr->attributes, operations);
+            if (ret) hr = HRESULT_FROM_WIN32(ret);
+            list_remove(&ptr->entry);
+            free_operation(ptr);
+            continue;
+        }
 
         shfoW.wFunc = ptr->wFunc;
         shfoW.pFrom = ptr->pFrom;
