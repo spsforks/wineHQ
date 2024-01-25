@@ -246,13 +246,14 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     device_manager->add_monitor(&monitor, param);
 }
 
-static void populate_devmode(struct wayland_output_mode *output_mode, DEVMODEW *mode)
+static void populate_devmode(struct wayland_output_mode *output_mode, DWORD bpp,
+                             DEVMODEW *mode)
 {
     mode->dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT |
                      DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
     mode->dmDisplayOrientation = DMDO_DEFAULT;
     mode->dmDisplayFlags = 0;
-    mode->dmBitsPerPel = 32;
+    mode->dmBitsPerPel = bpp;
     mode->dmPelsWidth = output_mode->width;
     mode->dmPelsHeight = output_mode->height;
     mode->dmDisplayFrequency = output_mode->refresh / 1000;
@@ -261,21 +262,28 @@ static void populate_devmode(struct wayland_output_mode *output_mode, DEVMODEW *
 static void wayland_add_device_modes(const struct gdi_device_manager *device_manager,
                                      void *param, struct output_info *output_info)
 {
+    static const DWORD bpps[] = {32, 16, 8};
     struct wayland_output_mode *output_mode;
+    int i;
 
     RB_FOR_EACH_ENTRY(output_mode, &output_info->output->modes,
                       struct wayland_output_mode, entry)
     {
-        DEVMODEW mode = {.dmSize = sizeof(mode)};
-        BOOL mode_is_current = output_mode == output_info->output->current_mode;
-        populate_devmode(output_mode, &mode);
-        if (mode_is_current)
+        for (i = 0; i < ARRAY_SIZE(bpps); i++)
         {
-            mode.dmFields |= DM_POSITION;
-            mode.dmPosition.x = output_info->x;
-            mode.dmPosition.y = output_info->y;
+            DEVMODEW mode = {.dmSize = sizeof(mode)};
+            BOOL mode_is_current = output_mode == output_info->output->current_mode &&
+                                   bpps[i] == 32;
+
+            populate_devmode(output_mode, bpps[i], &mode);
+            if (mode_is_current)
+            {
+                mode.dmFields |= DM_POSITION;
+                mode.dmPosition.x = output_info->x;
+                mode.dmPosition.y = output_info->y;
+            }
+            device_manager->add_mode(&mode, mode_is_current, param);
         }
-        device_manager->add_mode(&mode, mode_is_current, param);
     }
 }
 
