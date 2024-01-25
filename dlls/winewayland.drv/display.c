@@ -47,11 +47,6 @@ void wayland_init_display_devices(BOOL force)
     NtUserGetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &num_path, &num_mode);
 }
 
-struct wayland_adapter_data
-{
-    char output_name[64];
-};
-
 struct output_info
 {
     int x, y;
@@ -230,6 +225,10 @@ static void wayland_add_device_adapter(const struct gdi_device_manager *device_m
         adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
 
     lstrcpynA(data.output_name, output_info->output->name, sizeof(data.output_name));
+    data.scale_width = ((double)output_info->output->current_mode->width) /
+                       output_info->mode->width;
+    data.scale_height = ((double)output_info->output->current_mode->height) /
+                        output_info->mode->height;
     adapter.driver_data = &data;
     adapter.driver_data_len = sizeof(data);
 

@@ -6631,3 +6631,20 @@ NTSTATUS WINAPI NtUserDisplayConfigGetDeviceInfo( DISPLAYCONFIG_DEVICE_INFO_HEAD
         return STATUS_INVALID_PARAMETER;
     }
 }
+
+void WINAPI __wine_get_adapter_driver_data( UNICODE_STRING *devname, void *data, UINT *data_len )
+{
+    struct adapter *adapter;
+
+    if ((adapter = find_adapter( devname )))
+    {
+        *data_len = min( *data_len, adapter->driver_data_len );
+        if (data && adapter->driver_data)
+            memcpy( data, adapter->driver_data, *data_len );
+        adapter_release( adapter );
+    }
+    else
+    {
+        *data_len = 0;
+    }
+}

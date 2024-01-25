@@ -215,6 +215,13 @@ struct wayland_shm_buffer
     HRGN damage_region;
 };
 
+struct wayland_adapter_data
+{
+    char output_name[64];
+    /* How much larger the native mode is compared to current mode. */
+    double scale_width, scale_height;
+};
+
 /**********************************************************************
  *          Wayland initialization
  */

@@ -2140,6 +2140,12 @@ HWND SYSCALL_API NtUserWindowFromPoint( LONG x, LONG y )
     __ASM_SYSCALL_FUNC( __id_NtUserWindowFromPoint );
 }
 
+BOOL SYSCALL_API __wine_get_adapter_driver_data( UNICODE_STRING *devname,
+                                                 void *data, UINT *data_len )
+{
+    __ASM_SYSCALL_FUNC( __id___wine_get_adapter_driver_data );
+}
+
 BOOL SYSCALL_API __wine_get_file_outline_text_metric( const WCHAR *path, TEXTMETRICW *otm,
                                                       UINT *em_square, WCHAR *face_name )
 {
