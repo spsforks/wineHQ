@@ -1253,8 +1253,8 @@ static void add_gpu( const struct gdi_gpu *gpu, void *param )
     {
         ctx->mutex = get_display_device_init_mutex();
         pthread_mutex_lock( &display_lock );
-        prepare_devices();
     }
+    if (gpu_index == 0) prepare_devices();
 
     sprintf( buffer, "PCI\\VEN_%04X&DEV_%04X&SUBSYS_%08X&REV_%02X\\%08X",
              gpu->vendor_id, gpu->device_id, gpu->subsys_id, gpu->revision_id, gpu_index );
@@ -1634,12 +1634,33 @@ static void add_mode( const DEVMODEW *mode, BOOL current, void *param )
     }
 }
 
+static struct display_device *find_adapter_device_by_id( UINT index );
+
+static BOOL get_adapter( UINT adapter_idx, DEVMODEW *mode, void *param )
+{
+    struct device_manager_ctx *ctx = param;
+    struct display_device *device;
+    struct adapter *adapter = NULL;
+
+    if (!ctx->mutex)
+    {
+        ctx->mutex = get_display_device_init_mutex();
+        pthread_mutex_lock( &display_lock );
+    }
+
+    if (!(device = find_adapter_device_by_id( adapter_idx ))) return FALSE;
+    adapter = CONTAINING_RECORD( device, struct adapter, dev );
+
+    return adapter_get_current_settings( adapter, mode );
+}
+
 static const struct gdi_device_manager device_manager =
 {
     add_gpu,
     add_adapter,
     add_monitor,
     add_mode,
+    get_adapter,
 };
 
 static void reset_display_manager_ctx( struct device_manager_ctx *ctx )
@@ -1899,12 +1920,18 @@ static void desktop_add_mode( const DEVMODEW *mode, BOOL current, void *param )
     }
 }
 
+static BOOL desktop_get_adapter( UINT id, DEVMODEW *mode, void *param )
+{
+    return FALSE;
+}
+
 static const struct gdi_device_manager desktop_device_manager =
 {
     desktop_add_gpu,
     desktop_add_adapter,
     desktop_add_monitor,
     desktop_add_mode,
+    desktop_get_adapter,
 };
 
 static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
