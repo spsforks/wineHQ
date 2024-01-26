@@ -631,6 +631,24 @@ static void wayland_configure_window(HWND hwnd)
     NtUserSetWindowPos(hwnd, 0, 0, 0, window_width, window_height, flags);
 }
 
+static void wayland_refresh_window(HWND hwnd)
+{
+    struct wayland_win_data *data;
+
+    if (!(data = wayland_win_data_get(hwnd))) return;
+
+    if (data->wayland_surface)
+    {
+        pthread_mutex_lock(&data->wayland_surface->mutex);
+        wayland_win_data_get_config(data, &data->wayland_surface->window);
+        if (wayland_surface_reconfigure(data->wayland_surface))
+            wl_surface_commit(data->wayland_surface->wl_surface);
+        pthread_mutex_unlock(&data->wayland_surface->mutex);
+    }
+
+    wayland_win_data_release(data);
+}
+
 /**********************************************************************
  *           WAYLAND_WindowMessage
  */
@@ -647,6 +665,9 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_WAYLAND_SET_FOREGROUND:
         NtUserSetForegroundWindow(hwnd);
+        return 0;
+    case WM_WAYLAND_REFRESH:
+        wayland_refresh_window(hwnd);
         return 0;
     default:
         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);

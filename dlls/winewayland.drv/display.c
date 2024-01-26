@@ -398,5 +398,10 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     pthread_mutex_unlock(&process_wayland.output_mutex);
 
+    /* Refresh all windows to ensure they have been committed with proper
+     * scaling applied. */
+    if (process_wayland.initialized)
+        NtUserPostMessage(HWND_BROADCAST, WM_WAYLAND_REFRESH, 0, 0);
+
     return TRUE;
 }
