@@ -51,6 +51,8 @@ struct output_info
 {
     int x, y;
     struct wayland_output_state *output;
+    struct wayland_output_mode *mode;
+    UINT bpp;
 };
 
 static int output_info_cmp_primary_x_y(const void *va, const void *vb)
@@ -71,10 +73,10 @@ static int output_info_cmp_primary_x_y(const void *va, const void *vb)
 
 static inline BOOL output_info_overlap(struct output_info *a, struct output_info *b)
 {
-    return b->x < a->x + a->output->current_mode->width &&
-           b->x + b->output->current_mode->width > a->x &&
-           b->y < a->y + a->output->current_mode->height &&
-           b->y + b->output->current_mode->height > a->y;
+    return b->x < a->x + a->mode->width &&
+           b->x + b->mode->width > a->x &&
+           b->y < a->y + a->mode->height &&
+           b->y + b->mode->height > a->y;
 }
 
 /* Map a point to one of the four quadrants of our 2d coordinate space:
@@ -156,16 +158,16 @@ static BOOL output_info_array_resolve_overlaps(struct wl_array *output_info_arra
             rel_x = (move->output->logical_x - anchor->output->logical_x +
                      (x_use_end ? move->output->logical_w : 0)) /
                     (double)anchor->output->logical_w;
-            move->x = anchor->x + anchor->output->current_mode->width * rel_x -
-                      (x_use_end ? move->output->current_mode->width : 0);
+            move->x = anchor->x + anchor->mode->width * rel_x -
+                      (x_use_end ? move->mode->width : 0);
 
             /* Similarly for the Y axis. */
             y_use_end = move->output->logical_y < anchor->output->logical_y;
             rel_y = (move->output->logical_y - anchor->output->logical_y +
                      (y_use_end ? move->output->logical_h : 0)) /
                     (double)anchor->output->logical_h;
-            move->y = anchor->y + anchor->output->current_mode->height * rel_y -
-                      (y_use_end ? move->output->current_mode->height : 0);
+            move->y = anchor->y + anchor->mode->height * rel_y -
+                      (y_use_end ? move->mode->height : 0);
         }
     }
 
@@ -231,8 +233,8 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     struct gdi_monitor monitor = {0};
 
     SetRect(&monitor.rc_monitor, output_info->x, output_info->y,
-            output_info->x + output_info->output->current_mode->width,
-            output_info->y + output_info->output->current_mode->height);
+            output_info->x + output_info->mode->width,
+            output_info->y + output_info->mode->height);
 
     /* We don't have a direct way to get the work area in Wayland. */
     monitor.rc_work = monitor.rc_monitor;
@@ -272,8 +274,8 @@ static void wayland_add_device_modes(const struct gdi_device_manager *device_man
         for (i = 0; i < ARRAY_SIZE(bpps); i++)
         {
             DEVMODEW mode = {.dmSize = sizeof(mode)};
-            BOOL mode_is_current = output_mode == output_info->output->current_mode &&
-                                   bpps[i] == 32;
+            BOOL mode_is_current = output_mode == output_info->mode &&
+                                   bpps[i] == output_info->bpp;
 
             populate_devmode(output_mode, bpps[i], &mode);
             if (mode_is_current)
@@ -285,6 +287,14 @@ static void wayland_add_device_modes(const struct gdi_device_manager *device_man
             device_manager->add_mode(&mode, mode_is_current, param);
         }
     }
+}
+
+static void output_info_init(struct output_info *output_info,
+                             struct wayland_output *output)
+{
+    output_info->output = &output->current;
+    output_info->mode = output->current.current_mode;
+    output_info->bpp = 32;
 }
 
 /***********************************************************************
@@ -312,7 +322,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     {
         if (!output->current.current_mode) continue;
         output_info = wl_array_add(&output_info_array, sizeof(*output_info));
-        if (output_info) output_info->output = &output->current;
+        if (output_info) output_info_init(output_info, output);
         else ERR("Failed to allocate space for output_info\n");
     }
 
