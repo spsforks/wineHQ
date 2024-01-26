@@ -326,6 +326,11 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     return TRUE;
 }
 
+static void refresh_hwnd(HWND hwnd)
+{
+    NtUserPostMessage(hwnd, WM_WAYLAND_REFRESH, 0, 0);
+}
+
 /***********************************************************************
  *      NotifyVirtualDevices (WAYLAND.@)
  */
@@ -344,4 +349,8 @@ void WAYLAND_NotifyVirtualDevices(const struct gdi_virtual *virtual)
     process_wayland.virtual = malloc(virtual_size);
     if (process_wayland.virtual) memcpy(process_wayland.virtual, virtual, virtual_size);
     pthread_mutex_unlock(&process_wayland.output_mutex);
+
+    /* Refresh all windows to ensure they have been committed with proper
+     * scaling applied. */
+    enum_process_windows(refresh_hwnd);
 }

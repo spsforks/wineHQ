@@ -62,6 +62,7 @@ enum wayland_window_message
     WM_WAYLAND_INIT_DISPLAY_DEVICES = WM_WINE_FIRST_DRIVER_MSG,
     WM_WAYLAND_CONFIGURE,
     WM_WAYLAND_SET_FOREGROUND,
+    WM_WAYLAND_REFRESH,
 };
 
 enum wayland_surface_config_state
@@ -321,6 +322,8 @@ static inline BOOL asciiz_to_unicodez(WCHAR *dst, const char *src, size_t n)
     if (!n) p[-1] = 0; else *p = 0;
     return !!n;
 }
+
+void enum_process_windows(void (*cb)(HWND hwnd));
 
 /**********************************************************************
  *          USER driver functions
