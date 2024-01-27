@@ -383,7 +383,7 @@ void DOSVM_SetPMHandler16( BYTE intnum, FARPROC16 handler )
  *
  * Execute Wine interrupt handler procedure.
  */
-static void DOSVM_CallBuiltinHandler( CONTEXT *context, BYTE intnum )
+void DOSVM_CallBuiltinHandler( CONTEXT *context, BYTE intnum )
 {
     /*
      * FIXME: Make all builtin interrupt calls go via this routine.
