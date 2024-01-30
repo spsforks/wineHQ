@@ -92,6 +92,48 @@ static void align_video_info_planes(struct wg_format *format, gsize plane_align,
     }
 }
 
+static void update_format_width_padding(struct wg_format *max, struct wg_format *min)
+{
+    max->u.video.padding.right += max->u.video.width - min->u.video.width;
+    max->u.video.width = min->u.video.width;
+}
+
+static void update_format_height_padding(struct wg_format *max, struct wg_format *min)
+{
+    max->u.video.padding.bottom += abs(max->u.video.height) - abs(min->u.video.height);
+    max->u.video.height = (max->u.video.height < 0 ? -1 : 1) * abs(min->u.video.height);
+}
+
+static void update_format_padding(struct wg_format *input_format, struct wg_format *output_format)
+{
+    if (input_format->major_type == WG_MAJOR_TYPE_VIDEO)
+    {
+        input_format->u.video.width += input_format->u.video.padding.left + input_format->u.video.padding.right;
+        input_format->u.video.height += input_format->u.video.padding.top + input_format->u.video.padding.bottom;
+    }
+
+    if (output_format->major_type == WG_MAJOR_TYPE_VIDEO)
+    {
+        output_format->u.video.width += output_format->u.video.padding.left + output_format->u.video.padding.right;
+        output_format->u.video.height += output_format->u.video.padding.top + output_format->u.video.padding.bottom;
+    }
+
+    if (input_format->major_type != output_format->major_type)
+        return;
+    if (input_format->major_type != WG_MAJOR_TYPE_VIDEO)
+        return;
+
+    if (input_format->u.video.width > output_format->u.video.width)
+        update_format_width_padding(input_format, output_format);
+    else
+        update_format_width_padding(output_format, input_format);
+
+    if (abs(input_format->u.video.height) > abs(output_format->u.video.height))
+        update_format_height_padding(input_format, output_format);
+    else
+        update_format_height_padding(output_format, input_format);
+}
+
 typedef struct
 {
     GstVideoBufferPool parent;
@@ -433,6 +475,8 @@ NTSTATUS wg_transform_create(void *args)
     if (!(transform->allocator = wg_allocator_create()))
         goto out;
     transform->attrs = *params->attrs;
+
+    update_format_padding(&input_format, &output_format);
     transform->input_format = input_format;
     transform->output_format = output_format;
 
@@ -964,18 +1008,13 @@ NTSTATUS wg_transform_read_data(void *args)
         wg_format_from_caps(&output_format, output_caps);
         if (output_format.major_type == WG_MAJOR_TYPE_VIDEO)
         {
-            output_format.u.video.padding.left = align.padding_left;
-            output_format.u.video.width += output_format.u.video.padding.left;
-            output_format.u.video.padding.right = align.padding_right;
-            output_format.u.video.width += output_format.u.video.padding.right;
-            output_format.u.video.padding.top = align.padding_top;
-            output_format.u.video.height += output_format.u.video.padding.top;
-            output_format.u.video.padding.bottom = align.padding_bottom;
-            output_format.u.video.height += output_format.u.video.padding.bottom;
-            GST_INFO("new video padding rect %s", wine_dbgstr_rect(&output_format.u.video.padding));
-
             if (transform->output_format.u.video.height < 0)
                 output_format.u.video.height *= -1;
+            output_format.u.video.padding.left = align.padding_left;
+            output_format.u.video.padding.right = align.padding_right;
+            output_format.u.video.padding.top = align.padding_top;
+            output_format.u.video.padding.bottom = align.padding_bottom;
+            GST_INFO("new video padding rect %s", wine_dbgstr_rect(&output_format.u.video.padding));
         }
 
         if (format)

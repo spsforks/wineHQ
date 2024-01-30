@@ -7394,17 +7394,32 @@ static void test_video_processor(void)
         .sample_time = 0, .sample_duration = 10000000,
         .buffer_count = 1, .buffers = &rgb32_buffer_desc,
     };
+    const struct buffer_desc rgb32_buffer_desc_todo =
+    {
+        .length = actual_width * actual_height * 4,
+        .compare = compare_rgb32, .dump = dump_rgb32, .rect = {.top = 12, .right = 82, .bottom = 96},
+        .todo_length = TRUE,
+    };
+    const struct sample_desc rgb32_sample_desc_todo =
+    {
+        .attributes = output_sample_attributes,
+        .sample_time = 0, .sample_duration = 10000000,
+        .buffer_count = 1, .buffers = &rgb32_buffer_desc_todo,
+        .todo_length = TRUE,
+    };
 
     const struct buffer_desc rgb32_cropped_buffer_desc =
     {
         .length = 82 * 84 * 4,
         .compare = compare_rgb32, .dump = dump_rgb32,
+        .todo_length = TRUE
     };
     const struct sample_desc rgb32_cropped_sample_desc =
     {
         .attributes = output_sample_attributes,
         .sample_time = 0, .sample_duration = 10000000,
         .buffer_count = 1, .buffers = &rgb32_cropped_buffer_desc,
+        .todo_length = TRUE
     };
 
     const struct buffer_desc rgb555_buffer_desc =
@@ -7492,7 +7507,7 @@ static void test_video_processor(void)
         },
         {
             .input_type_desc = rgb32_with_aperture, .output_type_desc = rgb32_with_aperture,
-            .output_sample_desc = &rgb32_sample_desc, .result_bitmap = L"rgb32frame.bmp",
+            .output_sample_desc = &rgb32_sample_desc_todo, .result_bitmap = L"rgb32frame.bmp",
             .broken = TRUE /* old Windows version incorrectly rescale */
         },
         {
@@ -7515,7 +7530,7 @@ static void test_video_processor(void)
         },
         {
             .input_type_desc = rgb32_no_aperture, .output_type_desc = rgb32_with_aperture,
-            .output_sample_desc = &rgb32_sample_desc, .result_bitmap = L"rgb32frame-bogus.bmp",
+            .output_sample_desc = &rgb32_sample_desc_todo, .result_bitmap = L"rgb32frame-bogus.bmp",
         },
         {
             .input_type_desc = rgb32_with_aperture, .output_type_desc = rgb32_no_aperture,
@@ -7843,23 +7858,6 @@ static void test_video_processor(void)
         check_mft_set_input_type(transform, test->input_type_desc);
         check_mft_get_input_current_type(transform, test->input_type_desc);
 
-        if (i >= 15)
-        {
-            IMFMediaType *media_type;
-            HRESULT hr;
-
-            hr = MFCreateMediaType(&media_type);
-            ok(hr == S_OK, "MFCreateMediaType returned hr %#lx.\n", hr);
-            init_media_type(media_type, test->output_type_desc, -1);
-            hr = IMFTransform_SetOutputType(transform, 0, media_type, 0);
-            todo_wine
-            ok(hr == S_OK, "SetOutputType returned %#lx.\n", hr);
-            IMFMediaType_Release(media_type);
-
-            winetest_pop_context();
-            continue;
-        }
-
         check_mft_set_output_type_required(transform, test->output_type_desc);
         check_mft_set_output_type(transform, test->output_type_desc, S_OK);
         check_mft_get_output_current_type(transform, test->output_type_desc);
@@ -7969,6 +7967,7 @@ static void test_video_processor(void)
             ok(ref == 1, "Release returned %ld\n", ref);
 
             ret = check_mf_sample_collection(output_samples, test->output_sample_desc, test->result_bitmap);
+            todo_wine_if(i == 10 || i == 15)
             ok(ret <= test->delta || broken(test->broken), "got %lu%% diff\n", ret);
             IMFCollection_Release(output_samples);
 
@@ -8007,8 +8006,8 @@ static void test_video_processor(void)
     check_mft_set_output_type(transform, rgb32_no_aperture, S_OK);
     check_mft_get_output_current_type(transform, rgb32_no_aperture);
 
-    check_mft_set_input_type_(__LINE__, transform, nv12_with_aperture, TRUE);
-    check_mft_get_input_current_type_(__LINE__, transform, nv12_with_aperture, TRUE, FALSE);
+    check_mft_set_input_type(transform, nv12_with_aperture);
+    check_mft_get_input_current_type(transform, nv12_with_aperture);
 
     /* output type is the same as before */
     check_mft_get_output_current_type(transform, rgb32_no_aperture);
