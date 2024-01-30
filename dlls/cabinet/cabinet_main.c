@@ -40,30 +40,160 @@ WINE_DEFAULT_DEBUG_CHANNEL(cabinet);
 /***********************************************************************
  * DllGetVersion (CABINET.2)
  *
- * Retrieves version information of the 'CABINET.DLL'
+ * Retrieves version information of the 'CABINET.DLL' using the
+ * CABINETDLLVERSIONINFO structure
  *
  * PARAMS
- *     pdvi [O] pointer to version information structure.
+ *     cabVerInfo [O] pointer to CABINETDLLVERSIONINFO structure.
  *
  * RETURNS
- *     Success: S_OK
- *     Failure: E_INVALIDARG
+ *     This function has no return value
  *
  * NOTES
- *     Supposedly returns version from IE6SP1RP1
+ *     Success: cabVerInfo points to mutet CABINETDLLVERSIONINFO structure
+ *     Failure: cabVerInfo points to unmutet CABINETDLLVERSIONINFO structure
+ *     Use GetLastError() to find out more about why the function failed
+ *
  */
-HRESULT WINAPI DllGetVersion (DLLVERSIONINFO *pdvi)
+
+VOID WINAPI cabinet_dll_get_version (PCABINETDLLVERSIONINFO cabVerInfo)
 {
-  WARN("hmmm... not right version number \"5.1.1106.1\"?\n");
 
-  if (pdvi->cbSize != sizeof(DLLVERSIONINFO)) return E_INVALIDARG;
+    LPCSTR              filename;
+    LPCSTR              subBlock;
+    DWORD               lenVersionInfo;
+    VOID                *data;
+    VOID                *buffer;
+    UINT                lenRoot;
+    DWORD               *handleVerInfo;
+    VS_FIXEDFILEINFO    *versionInfo;
 
-  pdvi->dwMajorVersion = 5;
-  pdvi->dwMinorVersion = 1;
-  pdvi->dwBuildNumber = 1106;
-  pdvi->dwPlatformID = 1;
+    filename = "Cabinet.dll";
+    subBlock = "\\";
+    lenRoot = 0;
 
-  return S_OK;
+    if (cabVerInfo == NULL){
+        SetLastError(ERROR_INVALID_PARAMETER);
+        TRACE("Bad Parameter: Error = %ld.\n", GetLastError());
+        return;
+    }
+
+    handleVerInfo = malloc(sizeof(DWORD));
+    if (handleVerInfo == NULL){
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create handleVerInfo: Out of memory: Error = %ld.\n", GetLastError());
+        return;
+    }
+
+    lenVersionInfo = GetFileVersionInfoSizeA(filename, handleVerInfo);
+    if (lenVersionInfo == 0){
+        TRACE("Cannot set lenVersionInfo: Couldn't parse File Version Info Size: Error = %ld.\n", GetLastError());
+        return;
+    }
+
+    data=HeapAlloc(GetProcessHeap(), 0, lenVersionInfo);
+    if (data == NULL) {
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create data: Out of memory: Error = %ld.\n", GetLastError());
+        return;
+    }
+
+
+    if (GetFileVersionInfoA(filename, 0, lenVersionInfo, data) == 0){
+        TRACE("Cannot get FileVersionInfo: Couldn't parse File Version Info Ressource: Error = %ld.\n", GetLastError());
+        return;
+    }
+
+    if (VerQueryValueA(data, subBlock, &buffer, &lenRoot) == 0){
+        TRACE("Cannot query version info: Couldn't parse File Version Info Value: Error = %ld.\n", GetLastError());
+        return;
+    }
+    else
+    {
+        if (lenRoot != 0)
+        {
+            versionInfo = (VS_FIXEDFILEINFO *)buffer;
+            if (versionInfo->dwSignature == 0xfeef04bd)
+            {
+                cabVerInfo->cbStruct = sizeof(CABINETDLLVERSIONINFO);
+                cabVerInfo->dwFileVersionMS = versionInfo->dwFileVersionMS;
+                cabVerInfo->dwFileVersionLS = versionInfo->dwFileVersionLS;
+            }
+            else
+            {
+                TRACE("Cannot verify struct: Version information has wrong signature: Error = %ld.\n", GetLastError());
+                return;
+            }
+        }
+        else
+        {
+            TRACE("Cannot access struct: The length of the buffer holding version information is 0: Error = %ld.\n", GetLastError());
+            return;
+        }
+    }
+}
+
+/***********************************************************************
+ * GetDllVersion (CABINET.2)
+ *
+ * Returns the version of the Cabinet.dll
+ *
+ * PARAMS
+ *     This function has to parameters
+ *
+ * RETURNS
+ *     Success: cabDllVer: string of Cabinet.dll version
+ *     Failure: empty string.
+ *     Use GetLastError() to find out more about why the function failed
+ *
+ */
+
+LPCSTR WINAPI GetDllVersion(void)
+{
+    PCABINETDLLVERSIONINFO  cabVerInfo;
+    LPSTR                   cabDllVer;
+    int                     sizeVerInfo;
+    DWORD                   FileVersionMS;
+    DWORD                   FileVersionLS;
+    int                     majorV;
+    int                     minorV;
+    int                     buildV;
+    int                     revisV;
+
+    cabVerInfo = malloc(sizeof(CABINETDLLVERSIONINFO));
+    if(cabVerInfo == NULL) {
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create cabVerInfo: Out of memory: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    cabinet_dll_get_version(cabVerInfo);
+    if (cabVerInfo->cbStruct==0) {
+        TRACE("Cannot access struct: The length of the version information structure is 0: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    FileVersionMS = cabVerInfo->dwFileVersionMS;
+    FileVersionLS = cabVerInfo->dwFileVersionLS;
+
+    /*length of 4 DWORDs + buffer*/
+    sizeVerInfo = 32;
+
+    cabDllVer = malloc(sizeVerInfo);
+    if (cabDllVer == NULL) {
+        SetLastError(ERROR_OUTOFMEMORY);
+        TRACE("Cannot create cabDllVer: Out of memory: Error = %ld.\n", GetLastError());
+        return "";
+    }
+
+    majorV = (int)( FileVersionMS >> 16 ) & 0xffff;
+    minorV = (int)( FileVersionMS >>  0 ) & 0xffff;
+    buildV = (int)( FileVersionLS >> 16 ) & 0xffff;
+    revisV = (int)( FileVersionLS >>  0 ) & 0xffff;
+
+    snprintf(cabDllVer, sizeVerInfo, "%d.%d.%d.%d\n",majorV,minorV,buildV,revisV);
+
+    return cabDllVer;
 }
 
 /* FDI callback functions */
