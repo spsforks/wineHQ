@@ -38,6 +38,7 @@
 #include "mferror.h"
 
 #include "unix_private.h"
+#include "wine/debug.h"
 
 #define GST_SAMPLE_FLAG_WG_CAPS_CHANGED (GST_MINI_OBJECT_FLAG_LAST << 0)
 
@@ -543,16 +544,16 @@ NTSTATUS wg_transform_set_output_format(void *args)
 {
     struct wg_transform_set_output_format_params *params = args;
     struct wg_transform *transform = get_transform(params->transform);
-    const struct wg_format *format = params->format;
+    struct wg_format output_format = *params->format;
     GstSample *sample;
     GstCaps *caps;
 
-    if (!(caps = transform_format_to_caps(transform, format)))
+    if (!(caps = transform_format_to_caps(transform, &output_format)))
     {
-        GST_ERROR("Failed to convert format %p to caps.", format);
+        GST_ERROR("Failed to convert format to caps.");
         return STATUS_UNSUCCESSFUL;
     }
-    transform->output_format = *format;
+    transform->output_format = output_format;
 
     GST_INFO("transform %p output caps %"GST_PTR_FORMAT, transform, caps);
 
@@ -574,7 +575,7 @@ NTSTATUS wg_transform_set_output_format(void *args)
     if (transform->video_flip)
     {
         const char *value;
-        if (transform->input_is_flipped != wg_format_video_is_flipped(format))
+        if (transform->input_is_flipped != wg_format_video_is_flipped(&output_format))
             value = "vertical-flip";
         else
             value = "none";
@@ -881,29 +882,32 @@ NTSTATUS wg_transform_read_data(void *args)
 
     if (GST_MINI_OBJECT_FLAG_IS_SET(transform->output_sample, GST_SAMPLE_FLAG_WG_CAPS_CHANGED))
     {
+        struct wg_format output_format;
+
         GST_MINI_OBJECT_FLAG_UNSET(transform->output_sample, GST_SAMPLE_FLAG_WG_CAPS_CHANGED);
 
         GST_INFO("transform %p output caps %"GST_PTR_FORMAT, transform, output_caps);
 
-        if (format)
+        wg_format_from_caps(&output_format, output_caps);
+        if (output_format.major_type == WG_MAJOR_TYPE_VIDEO)
         {
-            wg_format_from_caps(format, output_caps);
+            output_format.u.video.padding.left = align.padding_left;
+            output_format.u.video.width += output_format.u.video.padding.left;
+            output_format.u.video.padding.right = align.padding_right;
+            output_format.u.video.width += output_format.u.video.padding.right;
+            output_format.u.video.padding.top = align.padding_top;
+            output_format.u.video.height += output_format.u.video.padding.top;
+            output_format.u.video.padding.bottom = align.padding_bottom;
+            output_format.u.video.height += output_format.u.video.padding.bottom;
+            GST_INFO("new video padding rect %s", wine_dbgstr_rect(&output_format.u.video.padding));
 
-            if (format->major_type == WG_MAJOR_TYPE_VIDEO)
-            {
-                GST_INFO("Returning video alignment left %u, top %u, right %u, bottom %u.", align.padding_left,
-                        align.padding_top, align.padding_right, align.padding_bottom);
-
-                format->u.video.padding.left = align.padding_left;
-                format->u.video.width += format->u.video.padding.left;
-                format->u.video.padding.right = align.padding_right;
-                format->u.video.width += format->u.video.padding.right;
-                format->u.video.padding.top = align.padding_top;
-                format->u.video.height += format->u.video.padding.top;
-                format->u.video.padding.bottom = align.padding_bottom;
-                format->u.video.height += format->u.video.padding.bottom;
-            }
+            if (transform->output_format.u.video.height < 0)
+                output_format.u.video.height *= -1;
         }
+
+        if (format)
+            *format = output_format;
+        transform->output_format = output_format;
 
         params->result = MF_E_TRANSFORM_STREAM_CHANGE;
         GST_INFO("Format changed detected, returning no output");
