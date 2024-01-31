@@ -1210,6 +1210,18 @@ BOOL ANDROID_ProcessEvents( DWORD mask )
     return FALSE;
 }
 
+static BOOL init_device(void)
+{
+    HWND hwnd = NtUserGetDesktopWindow();
+    struct android_win_data *data;
+
+    init_event_queue();
+    start_android_device();
+    if (!(data = alloc_win_data( hwnd ))) return FALSE;
+    release_win_data( data );
+    return TRUE;
+}
+
 /**********************************************************************
  *           ANDROID_CreateWindow
  */
@@ -1217,15 +1229,8 @@ BOOL ANDROID_CreateWindow( HWND hwnd )
 {
     TRACE( "%p\n", hwnd );
 
-    if (hwnd == NtUserGetDesktopWindow())
-    {
-        struct android_win_data *data;
-
-        init_event_queue();
-        start_android_device();
-        if (!(data = alloc_win_data( hwnd ))) return FALSE;
-        release_win_data( data );
-    }
+    if (hwnd == NtUserGetDesktopWindow() && !screen_width)
+        return init_device();
     return TRUE;
 }
 
@@ -1662,6 +1667,7 @@ LRESULT ANDROID_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
  */
 BOOL ANDROID_CreateDesktop( const WCHAR *name, UINT width, UINT height )
 {
+    if (!(screen_width || init_device())) return FALSE;
     /* wait until we receive the surface changed event */
     while (!screen_width)
     {
@@ -1672,5 +1678,5 @@ BOOL ANDROID_CreateDesktop( const WCHAR *name, UINT width, UINT height )
         }
         process_events( QS_ALLINPUT );
     }
-    return 0;
+    return TRUE;
 }
