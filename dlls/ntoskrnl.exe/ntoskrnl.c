@@ -3908,14 +3908,16 @@ static void WINAPI ldr_notify_callback(ULONG reason, LDR_DLL_NOTIFICATION_DATA *
 
 static WCHAR* get_absolute_imagepath( WCHAR *path, DWORD size, DWORD offset )
 {
+    static const WCHAR separator[] = L"\\";
     WCHAR buffer[MAX_PATH];
     LPWSTR str;
 
     GetWindowsDirectoryW(buffer, MAX_PATH);
 
     str = HeapAlloc(GetProcessHeap(), 0,
-                    (size - offset + lstrlenW(buffer)) * sizeof(WCHAR));
+                    (size - offset + lstrlenW(buffer) + lstrlenW(separator)) * sizeof(WCHAR));
     lstrcpyW(str, buffer);
+    lstrcatW(str, separator);
     lstrcatW(str, path + offset);
     HeapFree( GetProcessHeap(), 0, path );
     return str;
@@ -3926,6 +3928,7 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
 {
     static const WCHAR driversW[] = L"\\drivers\\";
     static const WCHAR systemrootW[] = L"\\SystemRoot\\";
+    static const WCHAR system32W[] = L"System32";
     static const WCHAR postfixW[] = L".sys";
     static const WCHAR ntprefixW[] = L"\\??\\";
     static const WCHAR ImagePathW[] = L"ImagePath";
@@ -3959,7 +3962,9 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
         }
 
         if (!wcsnicmp( path, systemrootW, 12 ))
-            str = path = get_absolute_imagepath( path, size, 11 );
+            str = path = get_absolute_imagepath( path, size, 12 );
+        else if (!wcsnicmp( path, system32W, 8 ))
+            str = path = get_absolute_imagepath( path, size, 0 );
         else if (!wcsncmp( path, ntprefixW, 4 ))
             str = path + 4;
         else
