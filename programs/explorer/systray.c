@@ -33,6 +33,16 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(systray);
 
+struct notify_data_icon
+{
+    /* data for the icon bitmap */
+    UINT width;
+    UINT height;
+    UINT planes;
+    UINT bpp;
+    char buffer[];
+};
+
 struct notify_data  /* platform-independent format for NOTIFYICONDATA */
 {
     LONG  hWnd;
@@ -51,10 +61,7 @@ struct notify_data  /* platform-independent format for NOTIFYICONDATA */
     DWORD dwInfoFlags;
     GUID  guidItem;
     /* data for the icon bitmap */
-    UINT width;
-    UINT height;
-    UINT planes;
-    UINT bpp;
+    struct notify_data_icon icons[];
 };
 
 #define ICON_DISPLAY_HIDDEN -1
@@ -801,11 +808,13 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 {
     struct icon *icon = NULL;
     const struct notify_data *data;
+    const struct notify_data_icon *data_icon;
     NOTIFYICONDATAW nid;
     int ret = FALSE;
 
     if (cds->cbData < sizeof(*data)) return FALSE;
     data = cds->lpData;
+    data_icon = &data->icons[0];
 
     nid.cbSize           = sizeof(nid);
     nid.hWnd             = LongToHandle( data->hWnd );
@@ -825,24 +834,41 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 
     /* FIXME: if statement only needed because we don't support interprocess
      * icon handles */
-    if ((nid.uFlags & NIF_ICON) && cds->cbData > sizeof(*data))
+    if ((nid.uFlags & NIF_ICON) && cds->cbData > ((char*)data_icon - (char*)data) + sizeof(struct notify_data_icon))
     {
         LONG cbMaskBits;
         LONG cbColourBits;
-        const char *buffer = (const char *)(data + 1);
 
-        cbMaskBits = (data->width * data->height + 15) / 16 * 2;
-        cbColourBits = (data->planes * data->width * data->height * data->bpp + 15) / 16 * 2;
+        cbMaskBits = (data_icon->width * data_icon->height + 15) / 16 * 2;
+        cbColourBits = (data_icon->planes * data_icon->width * data_icon->height * data_icon->bpp + 15) / 16 * 2;
 
-        if (cds->cbData < sizeof(*data) + cbMaskBits + cbColourBits)
+        if (cds->cbData < sizeof(*data) + sizeof(*data_icon) + cbMaskBits + cbColourBits)
         {
             ERR( "buffer underflow\n" );
             return FALSE;
         }
-        nid.hIcon = CreateIcon(NULL, data->width, data->height, data->planes, data->bpp,
-                               buffer, buffer + cbMaskBits);
+        nid.hIcon = CreateIcon(NULL, data_icon->width, data_icon->height, data_icon->planes, data_icon->bpp,
+                               &data_icon->buffer[0], &data_icon->buffer[cbMaskBits]);
+        data_icon = (const struct notify_data_icon*)&data_icon->buffer[cbMaskBits + cbColourBits];
     }
 
+    if ((nid.uFlags & NIF_INFO) && cds->cbData > ((char*)data_icon - (char*)data) + sizeof(struct notify_data_icon))
+    {
+        /* Balloon icon */
+        LONG cbMaskBits;
+        LONG cbColourBits;
+
+        cbMaskBits = (data_icon->width * data_icon->height + 15) / 16 * 2;
+        cbColourBits = (data_icon->planes * data_icon->width * data_icon->height * data_icon->bpp + 15) / 16 * 2;
+
+        if (cds->cbData < sizeof(*data) + sizeof(*data_icon) + cbMaskBits + cbColourBits)
+        {
+            WINE_ERR("buffer underflow\n");
+            return FALSE;
+        }
+        nid.hBalloonIcon = CreateIcon(NULL, data_icon->width, data_icon->height, data_icon->planes, data_icon->bpp,
+                               &data_icon->buffer[0], &data_icon->buffer[cbMaskBits]);
+    }
     /* try forwarding to the display driver first */
     if (cds->dwData == NIM_ADD || !(icon = get_icon( nid.hWnd, nid.uID )))
     {
@@ -877,6 +903,7 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
 
 done:
     if (nid.hIcon) DestroyIcon( nid.hIcon );
+    if (nid.hBalloonIcon) DestroyIcon( nid.hBalloonIcon );
     sync_taskbar_buttons();
     return ret;
 }
