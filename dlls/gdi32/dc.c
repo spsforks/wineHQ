@@ -1114,7 +1114,11 @@ BOOL WINAPI SetBrushOrgEx( HDC hdc, INT x, INT y, POINT *oldorg )
  */
 BOOL WINAPI FixBrushOrgEx( HDC hdc, INT x, INT y, POINT *oldorg )
 {
-    return SetBrushOrgEx( hdc, x, y, oldorg );
+    /* From Windows 2000 function don't do anything and returns FALSE */
+    if (LOBYTE(LOWORD(GetVersion())) >= 5)
+        return FALSE;
+
+    return SetBrushOrgEx(hdc, x, y, oldorg);
 }
 
 /***********************************************************************
