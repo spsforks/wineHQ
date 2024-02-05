@@ -1940,12 +1940,14 @@ static struct host_adapter *get_primary_host_adapter( struct device_manager_ctx 
     return NULL;
 }
 
-static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
+static void desktop_add_host_adapter( struct host_adapter *host_adapter,
+                                      UINT screen_width, UINT screen_height,
+                                      struct device_manager_ctx *ctx )
 {
-    static const struct gdi_gpu gpu;
-    static const struct gdi_adapter adapter =
+    DEVMODEW current, mode =
     {
-        .state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE | DISPLAY_DEVICE_VGA_COMPATIBLE,
+        .dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY,
+        .dmDisplayFrequency = 60,
     };
     struct gdi_monitor monitor =
     {
@@ -1988,46 +1990,16 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
         {1920, 1200},
         {2560, 1600}
     };
-
-    struct device_manager_ctx desktop_ctx = {0};
-    struct host_adapter *primary;
-    UINT screen_width, screen_height, max_width, max_height;
-    unsigned int depths[] = {8, 16, 0};
-    DEVMODEW current, mode =
-    {
-        .dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY,
-        .dmDisplayFrequency = 60,
-    };
+    unsigned int depths[] = {8, 16, host_adapter->bpp};
+    UINT max_width = host_adapter->width, max_height = host_adapter->height;
     UINT i, j;
 
-    if (!force) return TRUE;
-    /* in virtual desktop mode, read the device list from the user driver but expose virtual devices */
-    if (!update_display_devices( &desktop_device_manager, TRUE, &desktop_ctx )) return FALSE;
-
-    if ((primary = get_primary_host_adapter( &desktop_ctx )))
-    {
-        max_width = primary->width;
-        max_height = primary->height;
-        depths[ARRAY_SIZE(depths) - 1] = primary->bpp;
-    }
-    else
-    {
-        max_width = max_height = 0;
-    }
-
-    if (!get_default_desktop_size( &screen_width, &screen_height ))
-    {
-        screen_width = max_width;
-        screen_height = max_height;
-    }
-
-    add_gpu( &gpu, ctx );
-    add_adapter( &adapter, ctx );
+    add_adapter( &host_adapter->gdi, ctx );
     if (!read_adapter_mode( ctx->adapter_key, ENUM_CURRENT_SETTINGS, &current ))
     {
         current = mode;
         current.dmFields |= DM_POSITION;
-        current.dmBitsPerPel = primary ? primary->bpp : 0;
+        current.dmBitsPerPel = host_adapter->bpp;
         current.dmPelsWidth = screen_width;
         current.dmPelsHeight = screen_height;
     }
@@ -2067,6 +2039,51 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
             if (is_same_devmode( &mode, &current )) add_mode( &current, TRUE, ctx );
             else add_mode( &mode, FALSE, ctx );
         }
+    }
+}
+
+static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
+{
+    static const struct gdi_gpu gpu;
+
+    struct device_manager_ctx desktop_ctx = {0};
+    UINT i;
+
+    if (!force) return TRUE;
+    /* in virtual desktop mode, read the device list from the user driver but expose virtual devices */
+    if (!update_display_devices( &desktop_device_manager, TRUE, &desktop_ctx )) return FALSE;
+
+    add_gpu( &gpu, ctx );
+
+    for (i = 0; i < desktop_ctx.adapter_count; ++i)
+    {
+        struct host_adapter *host_adapter = &desktop_ctx.host_adapters[i];
+        if (!host_adapter->gdi.virtual_id[0]) continue;
+        desktop_add_host_adapter( host_adapter, host_adapter->width, host_adapter->height, ctx );
+    }
+
+    /* If the driver has not specified any adapters to pass through to the visual
+     * configuration, use a single virtual desktop adapter. */
+    if (ctx->adapter_count == 0)
+    {
+        struct host_adapter *primary = get_primary_host_adapter( &desktop_ctx );
+        struct host_adapter default_primary =
+        {
+            .gdi.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP |
+                               DISPLAY_DEVICE_PRIMARY_DEVICE |
+                               DISPLAY_DEVICE_VGA_COMPATIBLE,
+        };
+        UINT screen_width, screen_height;
+
+        if (!primary) primary = &default_primary;
+
+        if (!get_default_desktop_size( &screen_width, &screen_height ))
+        {
+            screen_width = primary->width;
+            screen_height = primary->height;
+        }
+
+        desktop_add_host_adapter( primary, screen_width, screen_height, ctx );
     }
 
     return TRUE;

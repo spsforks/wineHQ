@@ -258,6 +258,7 @@ struct gdi_adapter
 {
     ULONG_PTR id;
     DWORD state_flags;
+    WCHAR virtual_id[128];
 };
 
 struct gdi_monitor
