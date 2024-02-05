@@ -1132,6 +1132,14 @@ static unsigned int format_date( WCHAR *bufferW, LONGLONG time )
     return asciiz_to_unicode( bufferW, buffer );
 }
 
+struct host_adapter
+{
+    struct gdi_adapter gdi;
+    UINT width;
+    UINT height;
+    UINT bpp;
+};
+
 struct device_manager_ctx
 {
     unsigned int gpu_count;
@@ -1146,10 +1154,7 @@ struct device_manager_ctx
     LUID gpu_luid;
     HKEY adapter_key;
     /* for the virtual desktop settings */
-    BOOL is_primary;
-    UINT primary_bpp;
-    UINT primary_width;
-    UINT primary_height;
+    struct host_adapter *host_adapters;
 };
 
 static void link_device( const WCHAR *instance, const WCHAR *class )
@@ -1652,6 +1657,7 @@ static void reset_display_manager_ctx( struct device_manager_ctx *ctx )
         last_query_display_time = 0;
     }
     if (ctx->gpu_count) cleanup_devices();
+    free( ctx->host_adapters );
 
     memset( ctx, 0, sizeof(*ctx) );
     if ((ctx->mutex = mutex)) prepare_devices();
@@ -1880,7 +1886,19 @@ static void desktop_add_gpu( const struct gdi_gpu *gpu, void *param )
 static void desktop_add_adapter( const struct gdi_adapter *adapter, void *param )
 {
     struct device_manager_ctx *ctx = param;
-    ctx->is_primary = !!(adapter->state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE);
+    struct host_adapter *new_adapters, *host_adapter;
+
+    if (!(adapter->state_flags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)) return;
+
+    new_adapters = realloc( ctx->host_adapters,
+                            sizeof(*ctx->host_adapters) * (ctx->adapter_count + 1) );
+    if (!new_adapters) return;
+    ctx->host_adapters = new_adapters;
+    ++ctx->adapter_count;
+    host_adapter = &ctx->host_adapters[ctx->adapter_count - 1];
+
+    memset( host_adapter, 0, sizeof(*host_adapter) );
+    host_adapter->gdi = *adapter;
 }
 
 static void desktop_add_monitor( const struct gdi_monitor *monitor, void *param )
@@ -1890,12 +1908,16 @@ static void desktop_add_monitor( const struct gdi_monitor *monitor, void *param 
 static void desktop_add_mode( const DEVMODEW *mode, BOOL current, void *param )
 {
     struct device_manager_ctx *ctx = param;
+    struct host_adapter *host_adapter;
 
-    if (ctx->is_primary && current)
+    if (!ctx->adapter_count) return;
+    host_adapter = &ctx->host_adapters[ctx->adapter_count - 1];
+
+    if (current)
     {
-        ctx->primary_bpp = mode->dmBitsPerPel;
-        ctx->primary_width = mode->dmPelsWidth;
-        ctx->primary_height = mode->dmPelsHeight;
+        host_adapter->bpp = mode->dmBitsPerPel;
+        host_adapter->width = mode->dmPelsWidth;
+        host_adapter->height = mode->dmPelsHeight;
     }
 }
 
@@ -1906,6 +1928,17 @@ static const struct gdi_device_manager desktop_device_manager =
     desktop_add_monitor,
     desktop_add_mode,
 };
+
+static struct host_adapter *get_primary_host_adapter( struct device_manager_ctx *ctx )
+{
+    UINT i;
+    for (i = 0; i < ctx->adapter_count; i++)
+    {
+        if (ctx->host_adapters[i].gdi.state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE)
+            return &ctx->host_adapters[i];
+    }
+    return NULL;
+}
 
 static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
 {
@@ -1957,6 +1990,7 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
     };
 
     struct device_manager_ctx desktop_ctx = {0};
+    struct host_adapter *primary;
     UINT screen_width, screen_height, max_width, max_height;
     unsigned int depths[] = {8, 16, 0};
     DEVMODEW current, mode =
@@ -1970,9 +2004,16 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
     /* in virtual desktop mode, read the device list from the user driver but expose virtual devices */
     if (!update_display_devices( &desktop_device_manager, TRUE, &desktop_ctx )) return FALSE;
 
-    max_width = desktop_ctx.primary_width;
-    max_height = desktop_ctx.primary_height;
-    depths[ARRAY_SIZE(depths) - 1] = desktop_ctx.primary_bpp;
+    if ((primary = get_primary_host_adapter( &desktop_ctx )))
+    {
+        max_width = primary->width;
+        max_height = primary->height;
+        depths[ARRAY_SIZE(depths) - 1] = primary->bpp;
+    }
+    else
+    {
+        max_width = max_height = 0;
+    }
 
     if (!get_default_desktop_size( &screen_width, &screen_height ))
     {
@@ -1986,7 +2027,7 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
     {
         current = mode;
         current.dmFields |= DM_POSITION;
-        current.dmBitsPerPel = desktop_ctx.primary_bpp;
+        current.dmBitsPerPel = primary ? primary->bpp : 0;
         current.dmPelsWidth = screen_width;
         current.dmPelsHeight = screen_height;
     }
