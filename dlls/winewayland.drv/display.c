@@ -325,3 +325,23 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     return TRUE;
 }
+
+/***********************************************************************
+ *      NotifyVirtualDevices (WAYLAND.@)
+ */
+void WAYLAND_NotifyVirtualDevices(const struct gdi_virtual *virtual)
+{
+    const struct gdi_virtual *v = virtual;
+    size_t virtual_size;
+
+    for (v = virtual; v->mode.dmSize; ++v)
+        TRACE("%s => %s\n", wine_dbgstr_w(v->mode.dmDeviceName), wine_dbgstr_w(v->virtual_id));
+
+    virtual_size = (v - virtual + 1) * sizeof(*v);
+
+    pthread_mutex_lock(&process_wayland.output_mutex);
+    free(process_wayland.virtual);
+    process_wayland.virtual = malloc(virtual_size);
+    if (process_wayland.virtual) memcpy(process_wayland.virtual, virtual, virtual_size);
+    pthread_mutex_unlock(&process_wayland.output_mutex);
+}

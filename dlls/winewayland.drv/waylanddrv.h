@@ -128,6 +128,7 @@ struct wayland
     struct wayland_keyboard keyboard;
     struct wayland_pointer pointer;
     struct wl_list output_list;
+    struct gdi_virtual *virtual;
     /* Protects the output_list and the wayland_output.current states. */
     pthread_mutex_t output_mutex;
 };
@@ -328,6 +329,7 @@ static inline BOOL asciiz_to_unicodez(WCHAR *dst, const char *src, size_t n)
 BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset);
 LRESULT WAYLAND_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 void WAYLAND_DestroyWindow(HWND hwnd);
+void WAYLAND_NotifyVirtualDevices(const struct gdi_virtual *virtual);
 void WAYLAND_SetCursor(HWND hwnd, HCURSOR hcursor);
 LRESULT WAYLAND_SysCommand(HWND hwnd, WPARAM wparam, LPARAM lparam);
 BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manager,

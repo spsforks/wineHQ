@@ -158,6 +158,41 @@ static void wayland_win_data_release(struct wayland_win_data *data)
     pthread_mutex_unlock(&win_data_mutex);
 }
 
+static double get_window_mode_change_scale(HWND hwnd)
+{
+    MONITORINFOEXW mi = {.cbSize = sizeof(mi)};
+    HMONITOR hmon;
+    struct gdi_virtual *virtual;
+    struct wayland_output *output;
+    double scale = 1.0;
+    WCHAR name[128];
+
+    if (!(hmon = NtUserMonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY)) ||
+        !NtUserGetMonitorInfo(hmon, (MONITORINFO *)&mi))
+        return 1.0;
+
+    pthread_mutex_lock(&process_wayland.output_mutex);
+
+    for (virtual = process_wayland.virtual; virtual && virtual->mode.dmSize; ++virtual)
+    {
+        if (wcscmp(virtual->mode.dmDeviceName, mi.szDevice)) continue;
+        wl_list_for_each(output, &process_wayland.output_list, link)
+        {
+            asciiz_to_unicodez(name, output->current.name, ARRAY_SIZE(name));
+            if (wcscmp(name, virtual->virtual_id)) continue;
+            if (!output->current.mode.width || !output->current.mode.height) continue;
+            scale = min(output->current.mode.width / (double)virtual->mode.dmPelsWidth,
+                        output->current.mode.height / (double)virtual->mode.dmPelsHeight);
+            break;
+        }
+        break;
+    }
+
+    pthread_mutex_unlock(&process_wayland.output_mutex);
+
+    return scale;
+}
+
 static void wayland_win_data_get_config(struct wayland_win_data *data,
                                         struct wayland_window_config *conf)
 {
@@ -185,6 +220,8 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
 
     conf->state = window_state;
     conf->scale = NtUserGetDpiForWindow(data->hwnd) / 96.0;
+    /* Adjust the window scale for the current display mode. */
+    conf->scale /= get_window_mode_change_scale(data->hwnd);
     conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;
     conf->managed = data->managed;
 }
