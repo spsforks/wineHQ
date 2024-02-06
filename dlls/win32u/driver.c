@@ -813,6 +813,10 @@ static BOOL nulldrv_UpdateDisplayDevices( const struct gdi_device_manager *manag
     return FALSE;
 }
 
+static void nulldrv_NotifyVirtualDevices( const struct gdi_virtual *virtual )
+{
+}
+
 static BOOL nulldrv_CreateDesktop( const WCHAR *name, UINT width, UINT height )
 {
     return TRUE;
@@ -1218,6 +1222,11 @@ static BOOL loaderdrv_UpdateDisplayDevices( const struct gdi_device_manager *man
     return load_driver()->pUpdateDisplayDevices( manager, force, param );
 }
 
+static void loaderdrv_NotifyVirtualDevices( const struct gdi_virtual *virtual )
+{
+    load_driver()->pNotifyVirtualDevices( virtual );
+}
+
 static BOOL loaderdrv_CreateDesktop( const WCHAR *name, UINT width, UINT height )
 {
     return load_driver()->pCreateDesktop( name, width, height );
@@ -1303,6 +1312,7 @@ static const struct user_driver_funcs lazy_load_driver =
     loaderdrv_GetCurrentDisplaySettings,
     loaderdrv_GetDisplayDepth,
     loaderdrv_UpdateDisplayDevices,
+    loaderdrv_NotifyVirtualDevices,
     /* windowing functions */
     loaderdrv_CreateDesktop,
     loaderdrv_CreateWindow,
@@ -1390,6 +1400,7 @@ void __wine_set_user_driver( const struct user_driver_funcs *funcs, UINT version
     SET_USER_FUNC(GetCurrentDisplaySettings);
     SET_USER_FUNC(GetDisplayDepth);
     SET_USER_FUNC(UpdateDisplayDevices);
+    SET_USER_FUNC(NotifyVirtualDevices);
     SET_USER_FUNC(CreateDesktop);
     SET_USER_FUNC(CreateWindow);
     SET_USER_FUNC(DesktopWindowProc);

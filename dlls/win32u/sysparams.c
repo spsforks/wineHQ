@@ -2147,6 +2147,32 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
     return TRUE;
 }
 
+static struct gdi_virtual *get_virtual_settings( void )
+{
+    struct gdi_virtual *virtual, *settings;
+    struct adapter *adapter;
+
+    /* allocate an extra entry for easier iteration */
+    if (!(settings = calloc( list_count( &adapters ) + 1, sizeof(*settings) ))) return NULL;
+    virtual = settings;
+
+    LIST_FOR_EACH_ENTRY( adapter, &adapters, struct adapter, entry )
+    {
+        virtual->mode.dmSize = sizeof(DEVMODEW);
+        if (!adapter_get_current_settings( adapter, &virtual->mode ))
+        {
+            free( settings );
+            return NULL;
+        }
+
+        lstrcpyW( virtual->mode.dmDeviceName, adapter->dev.device_name );
+        memcpy( virtual->virtual_id, adapter->virtual_id, sizeof(virtual->virtual_id) );
+        ++virtual;
+    }
+
+    return settings;
+}
+
 BOOL update_display_cache( BOOL force )
 {
     static const WCHAR wine_service_station_name[] =
@@ -2155,6 +2181,7 @@ BOOL update_display_cache( BOOL force )
     struct device_manager_ctx ctx = {0};
     BOOL was_virtual_desktop, ret;
     WCHAR name[MAX_PATH];
+    BOOL force_desktop_update = FALSE;
 
     /* services do not have any adapters, only a virtual monitor */
     if (NtUserGetObjectInformation( winstation, UOI_NAME, name, sizeof(name), NULL )
@@ -2174,6 +2201,7 @@ BOOL update_display_cache( BOOL force )
     if (ret && is_virtual_desktop())
     {
         reset_display_manager_ctx( &ctx );
+        force_desktop_update = force || !was_virtual_desktop;
         ret = desktop_update_display_devices( force || !was_virtual_desktop, &ctx );
     }
 
@@ -2195,6 +2223,16 @@ BOOL update_display_cache( BOOL force )
         }
 
         return update_display_cache( TRUE );
+    }
+
+    if (force_desktop_update)
+    {
+        struct gdi_virtual *settings;
+        pthread_mutex_lock( &display_lock );
+        settings = get_virtual_settings();
+        if (settings) user_driver->pNotifyVirtualDevices( settings );
+        pthread_mutex_unlock( &display_lock );
+        free(settings);
     }
 
     return TRUE;

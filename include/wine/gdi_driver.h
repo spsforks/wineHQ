@@ -278,6 +278,12 @@ struct gdi_device_manager
     void (*add_mode)( const DEVMODEW *mode, BOOL current, void *param );
 };
 
+struct gdi_virtual
+{
+    DEVMODEW mode;
+    WCHAR virtual_id[128];
+};
+
 #define WINE_DM_UNSUPPORTED 0x80000000
 
 struct tagUPDATELAYEREDWINDOWINFO;
@@ -322,6 +328,7 @@ struct user_driver_funcs
     BOOL    (*pGetCurrentDisplaySettings)(LPCWSTR,BOOL,LPDEVMODEW);
     INT     (*pGetDisplayDepth)(LPCWSTR,BOOL);
     BOOL    (*pUpdateDisplayDevices)(const struct gdi_device_manager *,BOOL,void*);
+    void    (*pNotifyVirtualDevices)(const struct gdi_virtual *);
     /* windowing functions */
     BOOL    (*pCreateDesktop)(const WCHAR *,UINT,UINT);
     BOOL    (*pCreateWindow)(HWND);
