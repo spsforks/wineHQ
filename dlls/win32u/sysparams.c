@@ -183,6 +183,7 @@ static const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
 static const WCHAR symbolic_link_valueW[] =
     {'S','y','m','b','o','l','i','c','L','i','n','k','V','a','l','u','e',0};
 static const WCHAR state_flagsW[] = {'S','t','a','t','e','F','l','a','g','s',0};
+static const WCHAR virtual_idW[] = {'V','i','r','t','u','a','l','I','D',0};
 static const WCHAR gpu_idW[] = {'G','P','U','I','D',0};
 static const WCHAR hardware_idW[] = {'H','a','r','d','w','a','r','e','I','D',0};
 static const WCHAR device_descW[] = {'D','e','v','i','c','e','D','e','s','c',0};
@@ -243,6 +244,7 @@ struct adapter
     const WCHAR *config_key;
     unsigned int mode_count;
     DEVMODEW *modes;
+    WCHAR virtual_id[128];
 };
 
 #define MONITOR_INFO_HAS_MONITOR_ID 0x00000001
@@ -759,6 +761,10 @@ static BOOL read_display_adapter_settings( unsigned int index, struct adapter *i
     /* StateFlags */
     if (query_reg_value( hkey, state_flagsW, value, sizeof(buffer) ) && value->Type == REG_DWORD)
         info->dev.state_flags = *(const DWORD *)value->Data;
+
+    /* VirtualID */
+    if (query_reg_value( hkey, virtual_idW, value, sizeof(buffer) ) && value->Type == REG_SZ)
+        memcpy( info->virtual_id, value_str, value->DataLength );
 
     /* Interface name */
     info->dev.interface_name[0] = 0;
@@ -1484,6 +1490,8 @@ static void add_adapter( const struct gdi_adapter *adapter, void *param )
                    (lstrlenW( ctx->gpuid ) + 1) * sizeof(WCHAR) );
     set_reg_value( ctx->adapter_key, state_flagsW, REG_DWORD, &adapter->state_flags,
                    sizeof(adapter->state_flags) );
+    set_reg_value( ctx->adapter_key, virtual_idW, REG_SZ , adapter->virtual_id,
+                   (lstrlenW( ctx->gpuid ) + 1) * sizeof(WCHAR) );
 }
 
 static void add_monitor( const struct gdi_monitor *monitor, void *param )
@@ -1940,6 +1948,48 @@ static struct host_adapter *get_primary_host_adapter( struct device_manager_ctx 
     return NULL;
 }
 
+static HKEY get_adapter_key_for_virtual_id( WCHAR *virtual_id )
+{
+    char buffer[4096];
+    KEY_NAME_INFORMATION *key = (KEY_NAME_INFORMATION *)buffer;
+    KEY_VALUE_PARTIAL_INFORMATION *value = (KEY_VALUE_PARTIAL_INFORMATION *)buffer;
+    WCHAR bufferW[MAX_PATH];
+    DWORD len, i, j;
+    HKEY hkey, gpu_key = NULL, adapter_key = NULL;
+
+    len = asciiz_to_unicode( bufferW, "System\\CurrentControlSet\\Control\\Video" ) / sizeof(WCHAR) - 1;
+    hkey = reg_open_key( config_key, bufferW, len * sizeof(WCHAR) );
+    i = 0;
+
+    while (!NtEnumerateKey( hkey, i++, KeyNameInformation, key, sizeof(buffer), &len ))
+    {
+        gpu_key = reg_open_key( NULL, key->Name, key->NameLength );
+        j = 0;
+
+        while (!NtEnumerateKey( gpu_key, j++, KeyNameInformation, key, sizeof(buffer), &len ))
+        {
+            adapter_key = reg_open_key( NULL, key->Name, key->NameLength );
+
+            if (query_reg_value( adapter_key, virtual_idW, value, sizeof(buffer) ) &&
+                value->Type == REG_SZ && !wcscmp( (WCHAR *)value->Data, virtual_id ))
+            {
+                goto done;
+            }
+
+            NtClose( adapter_key );
+            adapter_key = NULL;
+        }
+
+        NtClose( gpu_key );
+        gpu_key = NULL;
+    }
+
+done:
+    NtClose( gpu_key );
+    NtClose( hkey );
+    return adapter_key;
+}
+
 static void desktop_add_host_adapter( struct host_adapter *host_adapter,
                                       UINT screen_width, UINT screen_height,
                                       struct device_manager_ctx *ctx )
@@ -1993,9 +2043,16 @@ static void desktop_add_host_adapter( struct host_adapter *host_adapter,
     unsigned int depths[] = {8, 16, host_adapter->bpp};
     UINT max_width = host_adapter->width, max_height = host_adapter->height;
     UINT i, j;
+    HKEY adapter_key = NULL;
+
+    if (host_adapter->gdi.virtual_id[0])
+        adapter_key = get_adapter_key_for_virtual_id( host_adapter->gdi.virtual_id );
 
     add_adapter( &host_adapter->gdi, ctx );
-    if (!read_adapter_mode( ctx->adapter_key, ENUM_CURRENT_SETTINGS, &current ))
+
+    if (!adapter_key) adapter_key = ctx->adapter_key;
+
+    if (!read_adapter_mode( adapter_key, ENUM_CURRENT_SETTINGS, &current ))
     {
         current = mode;
         current.dmFields |= DM_POSITION;
@@ -2003,6 +2060,7 @@ static void desktop_add_host_adapter( struct host_adapter *host_adapter,
         current.dmPelsWidth = screen_width;
         current.dmPelsHeight = screen_height;
     }
+    if (adapter_key != ctx->adapter_key) NtClose( adapter_key );
 
     monitor.rc_monitor.right = current.dmPelsWidth;
     monitor.rc_monitor.bottom = current.dmPelsHeight;
