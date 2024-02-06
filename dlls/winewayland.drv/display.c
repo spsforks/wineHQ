@@ -211,13 +211,19 @@ static void wayland_add_device_gpu(const struct gdi_device_manager *device_manag
 }
 
 static void wayland_add_device_adapter(const struct gdi_device_manager *device_manager,
-                                       void *param, INT output_id)
+                                       void *param, INT output_id,
+                                       struct output_info *output_info)
 {
     struct gdi_adapter adapter;
     adapter.id = output_id;
     adapter.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
     if (output_id == 0)
         adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
+    if (!asciiz_to_unicodez(adapter.virtual_id, output_info->output->name,
+                            sizeof(adapter.virtual_id) / sizeof(WCHAR)))
+    {
+        WARN("output name too long, truncating\n");
+    }
 
     TRACE("id=0x%s state_flags=0x%x\n",
           wine_dbgstr_longlong(adapter.id), (UINT)adapter.state_flags);
@@ -307,7 +313,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     wl_array_for_each(output_info, &output_info_array)
     {
-        wayland_add_device_adapter(device_manager, param, output_id);
+        wayland_add_device_adapter(device_manager, param, output_id, output_info);
         wayland_add_device_monitor(device_manager, param, output_info);
         wayland_add_device_modes(device_manager, param, output_info);
         output_id++;

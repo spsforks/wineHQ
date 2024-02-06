@@ -310,6 +310,17 @@ static inline LRESULT send_message(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 RGNDATA *get_region_data(HRGN region);
 
+/* Returns TRUE if dst contains a complete unicode copy of src, FALSE if truncation
+ * occurred. If n > 0 dst is always NULL terminated. */
+static inline BOOL asciiz_to_unicodez(WCHAR *dst, const char *src, size_t n)
+{
+    WCHAR *p = dst;
+    if (!n) return FALSE;
+    while (n && *src) { *p++ = *src++; n--; }
+    if (!n) p[-1] = 0; else *p = 0;
+    return !!n;
+}
+
 /**********************************************************************
  *          USER driver functions
  */
