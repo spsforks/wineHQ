@@ -1,8 +1,8 @@
 1 stub @
 2 stub @
 3 stub @
-4 stub @
-5 stub @
+4 stdcall -noname StgConvertVariantToProperty(ptr long ptr ptr long long ptr)
+5 stdcall -noname StgConvertPropertyToVariant(ptr long ptr ptr)
 6 stub @
 7 stub @
 8 stub @
@@ -17,17 +17,17 @@
 @ stdcall PropStgNameToFmtId(wstr ptr)
 @ stdcall ReadClassStg(ptr ptr)
 @ stdcall ReadClassStm(ptr ptr)
-@ stub StgCreateDocfile
-@ stub StgCreateDocfileOnILockBytes
+@ stdcall StgCreateDocfile(wstr long long ptr)
+@ stdcall StgCreateDocfileOnILockBytes(ptr long long ptr)
 @ stdcall StgCreatePropSetStg(ptr long ptr)
-@ stub StgCreatePropStg
-@ stub StgCreateStorageEx
+@ stdcall StgCreatePropStg(ptr ptr ptr long long ptr)
+@ stdcall StgCreateStorageEx(wstr long long long ptr ptr ptr ptr)
 @ stdcall StgIsStorageFile(wstr)
 @ stdcall StgIsStorageILockBytes(ptr)
-@ stub StgOpenPropStg
-@ stub StgOpenStorage
-@ stub StgOpenStorageEx
-@ stub StgOpenStorageOnILockBytes
-@ stub StgSetTimes
+@ stdcall StgOpenPropStg(ptr ptr long long ptr)
+@ stdcall StgOpenStorage(wstr ptr long ptr long ptr)
+@ stdcall StgOpenStorageEx(wstr long long long ptr ptr ptr ptr)
+@ stdcall StgOpenStorageOnILockBytes(ptr ptr long ptr long ptr)
+@ stdcall StgSetTimes(wstr ptr ptr ptr)
 @ stdcall WriteClassStg(ptr ptr)
 @ stdcall WriteClassStm(ptr ptr)

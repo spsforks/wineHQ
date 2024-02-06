@@ -159,13 +159,6 @@ struct DirEntry
 
 HRESULT FileLockBytesImpl_Construct(HANDLE hFile, DWORD openFlags, LPCWSTR pwcsName, ILockBytes **pLockBytes);
 
-/*************************************************************************
- * Ole Convert support
- */
-
-HRESULT STORAGE_CreateOleStream(IStorage*, DWORD);
-HRESULT OLECONVERT_CreateCompObjStream(LPSTORAGE pStorage, LPCSTR strOleTypeName);
-
 enum swmr_mode
 {
   SWMR_None,
