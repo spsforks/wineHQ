@@ -4434,7 +4434,7 @@ static void test_thread_context(void)
 #undef COMPARE
 }
 
-static void test_continue(BOOL testContinueEx)
+static void test_continue(BOOL testContinueEx, BOOL alertable)
 {
     struct context_pair {
         CONTEXT before;
@@ -4569,15 +4569,18 @@ static void test_continue(BOOL testContinueEx)
     memcpy( func_ptr, call_func, sizeof(call_func) );
     FlushInstructionCache( GetCurrentProcess(), func_ptr, sizeof(call_func) );
 
+    apc_count = 0;
+    pNtQueueApcThread( GetCurrentThread(), apc_func, 0x1234 + apc_count, 0x5678, 0xdeadbeef );
+
     if (testContinueEx)
     {
         CONTINUE_OPTIONS opts = { 0 };
         opts.ContinueType = CONTINUE_UNWIND; /* Nothing else is implemented */
-        opts.ContinueFlags = 0; /* Disable test alert */
+        opts.ContinueFlags = alertable ? CONTINUE_FLAG_TEST_ALERT : 0;
         func_ptr( &contexts, &opts, NtContinueEx, pRtlCaptureContext );
     } else
     {
-        func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+        func_ptr( &contexts, (void *)(intptr_t)alertable, NtContinue, pRtlCaptureContext );
     }
 
 #define COMPARE(reg) \
@@ -4604,6 +4607,11 @@ static void test_continue(BOOL testContinueEx)
             *(&contexts.after.Xmm0.High + i*2), *(&contexts.after.Xmm0.Low + i*2) );
 
 #undef COMPARE
+
+    ok(apc_count == (alertable ? 1 : 0), "mismatch apc_count=%d alertable=%d\n", apc_count, alertable);
+
+    /* clear APC when not alertable */
+    NtTestAlert();
 }
 
 static void test_wow64_context(void)
@@ -9232,7 +9240,7 @@ static void test_debug_service(DWORD numexc)
     /* not supported */
 }
 
-static void test_continue(BOOL testContinueEx)
+static void test_continue(BOOL testContinueEx, BOOL alertable)
 {
     struct context_pair {
         CONTEXT before;
@@ -9339,15 +9347,18 @@ static void test_continue(BOOL testContinueEx)
 #define COMPARE_INDEXED(reg) \
     ok( contexts.before.reg == contexts.after.reg, "wrong " #reg " i: %u, %p/%p\n", i, (void *)(ULONG64)contexts.before.reg, (void *)(ULONG64)contexts.after.reg )
 
+    apc_count = 0;
+    pNtQueueApcThread( GetCurrentThread(), apc_func, 0x1234 + apc_count, 0x5678, 0xdeadbeef );
+
     if (testContinueEx)
     {
         CONTINUE_OPTIONS opts = { 0 };
         opts.ContinueType = CONTINUE_UNWIND; /* Nothing else is implemented */
-        opts.ContinueFlags = 0; /* Disable test alert */
+        opts.ContinueFlags = alertable ? CONTINUE_FLAG_TEST_ALERT : 0;
         func_ptr( &contexts, &opts, NtContinueEx, pRtlCaptureContext );
     } else
     {
-        func_ptr( &contexts, FALSE, NtContinue, pRtlCaptureContext );
+        func_ptr( &contexts, (void *)(intptr_t)alertable, NtContinue, pRtlCaptureContext );
     }
 
     for (i = 1; i < 29; i++) COMPARE_INDEXED( X[i] );
@@ -9361,6 +9372,11 @@ static void test_continue(BOOL testContinueEx)
         COMPARE_INDEXED( V[i].High );
     }
 #undef COMPARE
+
+    ok(apc_count == (alertable ? 1 : 0), "mismatch apc_count=%d alertable=%d\n", apc_count, alertable);
+
+    /* clear APC when not alertable */
+    NtTestAlert();
 }
 
 static BOOL hook_called;
@@ -13007,8 +13023,10 @@ START_TEST(exception)
     test_debug_registers_wow64();
     test_debug_service(1);
     test_simd_exceptions();
-    test_continue(FALSE /* NtContinue */);
-    test_continue(TRUE /* NtContinueEx */);
+    test_continue(FALSE /* NtContinue   */, FALSE /* not alertable */);
+    test_continue(FALSE /* NtContinue   */, TRUE  /* alertable     */);
+    test_continue(TRUE  /* NtContinueEx */, FALSE /* not alertable */);
+    test_continue(TRUE  /* NtContinueEx */, TRUE  /* alertable     */);
     test_virtual_unwind();
     test___C_specific_handler();
     test_restore_context();
@@ -13027,8 +13045,10 @@ START_TEST(exception)
 
 #elif defined(__aarch64__)
 
-    test_continue(FALSE /* NtContinue */);
-    test_continue(TRUE /* NtContinueEx */);
+    test_continue(FALSE /* NtContinue   */, FALSE /* not alertable */);
+    test_continue(FALSE /* NtContinue   */, TRUE  /* alertable     */);
+    test_continue(TRUE  /* NtContinueEx */, FALSE /* not alertable */);
+    test_continue(TRUE  /* NtContinueEx */, TRUE  /* alertable     */);
     test_virtual_unwind();
     test_nested_exception();
     test_collided_unwind();
