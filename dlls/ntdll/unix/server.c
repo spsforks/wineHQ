@@ -1490,10 +1490,6 @@ static unix_tid_t get_unix_tid(void)
     mach_port_deallocate(mach_task_self(), ret);
 #elif defined(__NetBSD__)
     ret = _lwp_self();
-#elif defined(__FreeBSD__)
-    long lwpid;
-    thr_self( &lwpid );
-    ret = lwpid;
 #elif defined(__DragonFly__)
     ret = lwp_gettid();
 #endif
