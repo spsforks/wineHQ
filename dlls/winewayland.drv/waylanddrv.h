@@ -62,6 +62,7 @@ enum wayland_window_message
     WM_WAYLAND_INIT_DISPLAY_DEVICES = WM_WINE_FIRST_DRIVER_MSG,
     WM_WAYLAND_CONFIGURE,
     WM_WAYLAND_SET_FOREGROUND,
+    WM_WAYLAND_REFRESH,
 };
 
 enum wayland_surface_config_state
@@ -214,6 +215,13 @@ struct wayland_shm_buffer
     BOOL busy;
     LONG ref;
     HRGN damage_region;
+};
+
+struct wayland_adapter_data
+{
+    char output_name[64];
+    /* How much larger the native mode is compared to current mode. */
+    double scale_width, scale_height;
 };
 
 /**********************************************************************

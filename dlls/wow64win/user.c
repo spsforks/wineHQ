@@ -4874,3 +4874,9 @@ NTSTATUS WINAPI wow64___wine_send_input( UINT *args )
     ERR( "not supported\n" );
     return 0;
 }
+
+NTSTATUS WINAPI wow64___wine_get_adapter_driver_data( UINT *args )
+{
+    ERR( "not supported\n" );
+    return 0;
+}

@@ -1406,5 +1406,6 @@ static inline BOOL NtUserShowOwnedPopups( HWND hwnd, BOOL show )
 
 /* Wine extensions */
 W32KAPI BOOL WINAPI __wine_send_input( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput );
+W32KAPI void WINAPI __wine_get_adapter_driver_data( UNICODE_STRING *devname, void *data, UINT *data_len );
 
 #endif /* _NTUSER_ */

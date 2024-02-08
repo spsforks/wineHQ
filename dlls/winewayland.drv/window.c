@@ -162,6 +162,8 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
                                         struct wayland_window_config *conf)
 {
     enum wayland_surface_config_state window_state = 0;
+    MONITORINFOEXW mi = {.cbSize = sizeof(mi)};
+    HMONITOR hmon;
     DWORD style;
 
     conf->rect = data->window_rect;
@@ -187,6 +189,21 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
     conf->scale = NtUserGetDpiForWindow(data->hwnd) / 96.0;
     conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;
     conf->managed = data->managed;
+
+    /* Adjust the window scale for the current display mode. */
+    if ((hmon = NtUserMonitorFromWindow(data->hwnd, MONITOR_DEFAULTTOPRIMARY)) &&
+        NtUserGetMonitorInfo(hmon, (MONITORINFO *)&mi))
+    {
+        struct wayland_adapter_data adapter_data;
+        UINT adapter_data_len = sizeof(adapter_data);
+        UNICODE_STRING dev;
+
+        RtlInitUnicodeString(&dev, mi.szDevice);
+        __wine_get_adapter_driver_data(&dev, &adapter_data, &adapter_data_len);
+
+        if (adapter_data_len == sizeof(adapter_data))
+            conf->scale /= min(adapter_data.scale_width, adapter_data.scale_height);
+    }
 }
 
 static void wayland_win_data_update_wayland_surface(struct wayland_win_data *data)
@@ -614,6 +631,24 @@ static void wayland_configure_window(HWND hwnd)
     NtUserSetWindowPos(hwnd, 0, 0, 0, window_width, window_height, flags);
 }
 
+static void wayland_refresh_window(HWND hwnd)
+{
+    struct wayland_win_data *data;
+
+    if (!(data = wayland_win_data_get(hwnd))) return;
+
+    if (data->wayland_surface)
+    {
+        pthread_mutex_lock(&data->wayland_surface->mutex);
+        wayland_win_data_get_config(data, &data->wayland_surface->window);
+        if (wayland_surface_reconfigure(data->wayland_surface))
+            wl_surface_commit(data->wayland_surface->wl_surface);
+        pthread_mutex_unlock(&data->wayland_surface->mutex);
+    }
+
+    wayland_win_data_release(data);
+}
+
 /**********************************************************************
  *           WAYLAND_WindowMessage
  */
@@ -630,6 +665,9 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_WAYLAND_SET_FOREGROUND:
         NtUserSetForegroundWindow(hwnd);
+        return 0;
+    case WM_WAYLAND_REFRESH:
+        wayland_refresh_window(hwnd);
         return 0;
     default:
         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);

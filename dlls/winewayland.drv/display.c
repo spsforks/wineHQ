@@ -51,6 +51,8 @@ struct output_info
 {
     int x, y;
     struct wayland_output_state *output;
+    struct wayland_output_mode *mode;
+    UINT bpp;
 };
 
 static int output_info_cmp_primary_x_y(const void *va, const void *vb)
@@ -71,10 +73,10 @@ static int output_info_cmp_primary_x_y(const void *va, const void *vb)
 
 static inline BOOL output_info_overlap(struct output_info *a, struct output_info *b)
 {
-    return b->x < a->x + a->output->current_mode->width &&
-           b->x + b->output->current_mode->width > a->x &&
-           b->y < a->y + a->output->current_mode->height &&
-           b->y + b->output->current_mode->height > a->y;
+    return b->x < a->x + a->mode->width &&
+           b->x + b->mode->width > a->x &&
+           b->y < a->y + a->mode->height &&
+           b->y + b->mode->height > a->y;
 }
 
 /* Map a point to one of the four quadrants of our 2d coordinate space:
@@ -156,16 +158,16 @@ static BOOL output_info_array_resolve_overlaps(struct wl_array *output_info_arra
             rel_x = (move->output->logical_x - anchor->output->logical_x +
                      (x_use_end ? move->output->logical_w : 0)) /
                     (double)anchor->output->logical_w;
-            move->x = anchor->x + anchor->output->current_mode->width * rel_x -
-                      (x_use_end ? move->output->current_mode->width : 0);
+            move->x = anchor->x + anchor->mode->width * rel_x -
+                      (x_use_end ? move->mode->width : 0);
 
             /* Similarly for the Y axis. */
             y_use_end = move->output->logical_y < anchor->output->logical_y;
             rel_y = (move->output->logical_y - anchor->output->logical_y +
                      (y_use_end ? move->output->logical_h : 0)) /
                     (double)anchor->output->logical_h;
-            move->y = anchor->y + anchor->output->current_mode->height * rel_y -
-                      (y_use_end ? move->output->current_mode->height : 0);
+            move->y = anchor->y + anchor->mode->height * rel_y -
+                      (y_use_end ? move->mode->height : 0);
         }
     }
 
@@ -211,13 +213,24 @@ static void wayland_add_device_gpu(const struct gdi_device_manager *device_manag
 }
 
 static void wayland_add_device_adapter(const struct gdi_device_manager *device_manager,
-                                       void *param, INT output_id)
+                                       void *param, INT output_id,
+                                       struct output_info *output_info)
 {
     struct gdi_adapter adapter;
+    struct wayland_adapter_data data;
+
     adapter.id = output_id;
     adapter.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
     if (output_id == 0)
         adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
+
+    lstrcpynA(data.output_name, output_info->output->name, sizeof(data.output_name));
+    data.scale_width = ((double)output_info->output->current_mode->width) /
+                       output_info->mode->width;
+    data.scale_height = ((double)output_info->output->current_mode->height) /
+                        output_info->mode->height;
+    adapter.driver_data = &data;
+    adapter.driver_data_len = sizeof(data);
 
     TRACE("id=0x%s state_flags=0x%x\n",
           wine_dbgstr_longlong(adapter.id), (UINT)adapter.state_flags);
@@ -231,8 +244,8 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     struct gdi_monitor monitor = {0};
 
     SetRect(&monitor.rc_monitor, output_info->x, output_info->y,
-            output_info->x + output_info->output->current_mode->width,
-            output_info->y + output_info->output->current_mode->height);
+            output_info->x + output_info->mode->width,
+            output_info->y + output_info->mode->height);
 
     /* We don't have a direct way to get the work area in Wayland. */
     monitor.rc_work = monitor.rc_monitor;
@@ -246,13 +259,14 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     device_manager->add_monitor(&monitor, param);
 }
 
-static void populate_devmode(struct wayland_output_mode *output_mode, DEVMODEW *mode)
+static void populate_devmode(struct wayland_output_mode *output_mode, DWORD bpp,
+                             DEVMODEW *mode)
 {
     mode->dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT |
                      DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
     mode->dmDisplayOrientation = DMDO_DEFAULT;
     mode->dmDisplayFlags = 0;
-    mode->dmBitsPerPel = 32;
+    mode->dmBitsPerPel = bpp;
     mode->dmPelsWidth = output_mode->width;
     mode->dmPelsHeight = output_mode->height;
     mode->dmDisplayFrequency = output_mode->refresh / 1000;
@@ -261,21 +275,78 @@ static void populate_devmode(struct wayland_output_mode *output_mode, DEVMODEW *
 static void wayland_add_device_modes(const struct gdi_device_manager *device_manager,
                                      void *param, struct output_info *output_info)
 {
+    static const DWORD bpps[] = {32, 16, 8};
     struct wayland_output_mode *output_mode;
+    int i;
 
     RB_FOR_EACH_ENTRY(output_mode, &output_info->output->modes,
                       struct wayland_output_mode, entry)
     {
-        DEVMODEW mode = {.dmSize = sizeof(mode)};
-        BOOL mode_is_current = output_mode == output_info->output->current_mode;
-        populate_devmode(output_mode, &mode);
-        if (mode_is_current)
+        for (i = 0; i < ARRAY_SIZE(bpps); i++)
         {
-            mode.dmFields |= DM_POSITION;
-            mode.dmPosition.x = output_info->x;
-            mode.dmPosition.y = output_info->y;
+            DEVMODEW mode = {.dmSize = sizeof(mode)};
+            BOOL mode_is_current = output_mode == output_info->mode &&
+                                   bpps[i] == output_info->bpp;
+
+            populate_devmode(output_mode, bpps[i], &mode);
+            if (mode_is_current)
+            {
+                mode.dmFields |= DM_POSITION;
+                mode.dmPosition.x = output_info->x;
+                mode.dmPosition.y = output_info->y;
+            }
+            device_manager->add_mode(&mode, mode_is_current, param);
         }
-        device_manager->add_mode(&mode, mode_is_current, param);
+    }
+}
+
+static struct wayland_output_mode *get_matching_output_mode(struct wayland_output *output,
+                                                            DEVMODEW *devmode)
+{
+    struct wayland_output_mode *output_mode;
+
+    RB_FOR_EACH_ENTRY(output_mode, &output->current.modes,
+                      struct wayland_output_mode, entry)
+    {
+        if (devmode->dmPelsWidth == output_mode->width &&
+            devmode->dmPelsHeight == output_mode->height &&
+            output_mode->refresh / 1000 == devmode->dmDisplayFrequency)
+         {
+            return output_mode;
+         }
+    }
+
+    return NULL;
+}
+
+static void output_info_init(struct output_info *output_info,
+                             struct wayland_output *output,
+                             const struct gdi_device_manager *device_manager,
+                             void *param)
+{
+    DEVMODEW devmode = {.dmSize = sizeof(devmode)};
+    struct wayland_output_mode *mode;
+    struct wayland_adapter_data data;
+    UINT data_len = sizeof(data);
+    UINT id = 0;
+
+    output_info->output = &output->current;
+    output_info->mode = output->current.current_mode;
+    output_info->bpp = 32;
+
+    while (device_manager->get_adapter(id, &devmode, &data, &data_len, param))
+    {
+        if (data_len == sizeof(data) &&
+            !strcmp(output->current.name, data.output_name))
+        {
+            if ((mode = get_matching_output_mode(output, &devmode)))
+            {
+                output_info->mode = mode;
+                output_info->bpp = devmode.dmBitsPerPel;
+            }
+        }
+        data_len = sizeof(data);
+        ++id;
     }
 }
 
@@ -304,7 +375,9 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     {
         if (!output->current.current_mode) continue;
         output_info = wl_array_add(&output_info_array, sizeof(*output_info));
-        if (output_info) output_info->output = &output->current;
+        /* TODO: Don't assume that the order of devices matches the order
+         * of the outputs in the list. */
+        if (output_info) output_info_init(output_info, output, device_manager, param);
         else ERR("Failed to allocate space for output_info\n");
     }
 
@@ -315,7 +388,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     wl_array_for_each(output_info, &output_info_array)
     {
-        wayland_add_device_adapter(device_manager, param, output_id);
+        wayland_add_device_adapter(device_manager, param, output_id, output_info);
         wayland_add_device_monitor(device_manager, param, output_info);
         wayland_add_device_modes(device_manager, param, output_info);
         output_id++;
@@ -324,6 +397,11 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     wl_array_release(&output_info_array);
 
     pthread_mutex_unlock(&process_wayland.output_mutex);
+
+    /* Refresh all windows to ensure they have been committed with proper
+     * scaling applied. */
+    if (process_wayland.initialized)
+        NtUserPostMessage(HWND_BROADCAST, WM_WAYLAND_REFRESH, 0, 0);
 
     return TRUE;
 }

@@ -183,6 +183,7 @@ static const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
 static const WCHAR symbolic_link_valueW[] =
     {'S','y','m','b','o','l','i','c','L','i','n','k','V','a','l','u','e',0};
 static const WCHAR state_flagsW[] = {'S','t','a','t','e','F','l','a','g','s',0};
+static const WCHAR driver_dataW[] = {'D','r','i','v','e','r','D','a','t','a',0};
 static const WCHAR gpu_idW[] = {'G','P','U','I','D',0};
 static const WCHAR hardware_idW[] = {'H','a','r','d','w','a','r','e','I','D',0};
 static const WCHAR device_descW[] = {'D','e','v','i','c','e','D','e','s','c',0};
@@ -243,6 +244,8 @@ struct adapter
     const WCHAR *config_key;
     unsigned int mode_count;
     DEVMODEW *modes;
+    unsigned char *driver_data;
+    UINT driver_data_len;
 };
 
 #define MONITOR_INFO_HAS_MONITOR_ID 0x00000001
@@ -476,6 +479,7 @@ static void adapter_release( struct adapter *adapter )
     if (!InterlockedDecrement( &adapter->refcount ))
     {
         free( adapter->modes );
+        free( adapter->driver_data );
         free( adapter );
     }
 }
@@ -759,6 +763,21 @@ static BOOL read_display_adapter_settings( unsigned int index, struct adapter *i
     /* StateFlags */
     if (query_reg_value( hkey, state_flagsW, value, sizeof(buffer) ) && value->Type == REG_DWORD)
         info->dev.state_flags = *(const DWORD *)value->Data;
+
+    /* DriverData */
+    if (query_reg_value( hkey, driver_dataW, value, sizeof(buffer) ) && value->Type == REG_BINARY)
+    {
+        info->driver_data = malloc( value->DataLength );
+        if (info->driver_data)
+        {
+            memcpy( info->driver_data, value->Data, value->DataLength );
+            info->driver_data_len = value->DataLength;
+        }
+        else
+        {
+            info->driver_data_len = 0;
+        }
+    }
 
     /* Interface name */
     info->dev.interface_name[0] = 0;
@@ -1253,8 +1272,8 @@ static void add_gpu( const struct gdi_gpu *gpu, void *param )
     {
         ctx->mutex = get_display_device_init_mutex();
         pthread_mutex_lock( &display_lock );
-        prepare_devices();
     }
+    if (gpu_index == 0) prepare_devices();
 
     sprintf( buffer, "PCI\\VEN_%04X&DEV_%04X&SUBSYS_%08X&REV_%02X\\%08X",
              gpu->vendor_id, gpu->device_id, gpu->subsys_id, gpu->revision_id, gpu_index );
@@ -1479,6 +1498,11 @@ static void add_adapter( const struct gdi_adapter *adapter, void *param )
                    (lstrlenW( ctx->gpuid ) + 1) * sizeof(WCHAR) );
     set_reg_value( ctx->adapter_key, state_flagsW, REG_DWORD, &adapter->state_flags,
                    sizeof(adapter->state_flags) );
+    if (adapter->driver_data && adapter->driver_data_len)
+    {
+        set_reg_value( ctx->adapter_key, driver_dataW, REG_BINARY,
+                       adapter->driver_data, adapter->driver_data_len );
+    }
 }
 
 static void add_monitor( const struct gdi_monitor *monitor, void *param )
@@ -1634,12 +1658,39 @@ static void add_mode( const DEVMODEW *mode, BOOL current, void *param )
     }
 }
 
+static struct display_device *find_adapter_device_by_id( UINT index );
+
+static BOOL get_adapter( UINT adapter_idx, DEVMODEW *mode, void *data, UINT *data_len, void *param )
+{
+    struct device_manager_ctx *ctx = param;
+    struct display_device *device;
+    struct adapter *adapter = NULL;
+
+    if (!ctx->mutex)
+    {
+        ctx->mutex = get_display_device_init_mutex();
+        pthread_mutex_lock( &display_lock );
+    }
+
+    if (!(device = find_adapter_device_by_id( adapter_idx ))) return FALSE;
+    adapter = CONTAINING_RECORD( device, struct adapter, dev );
+
+    if (!adapter_get_current_settings( adapter, mode )) return FALSE;
+
+    *data_len = min( *data_len, adapter->driver_data_len );
+    if (data && adapter->driver_data)
+        memcpy( data, adapter->driver_data, *data_len );
+
+    return TRUE;
+}
+
 static const struct gdi_device_manager device_manager =
 {
     add_gpu,
     add_adapter,
     add_monitor,
     add_mode,
+    get_adapter,
 };
 
 static void reset_display_manager_ctx( struct device_manager_ctx *ctx )
@@ -1899,12 +1950,18 @@ static void desktop_add_mode( const DEVMODEW *mode, BOOL current, void *param )
     }
 }
 
+static BOOL desktop_get_adapter( UINT id, DEVMODEW *mode, void *data, UINT *data_len, void *param )
+{
+    return FALSE;
+}
+
 static const struct gdi_device_manager desktop_device_manager =
 {
     desktop_add_gpu,
     desktop_add_adapter,
     desktop_add_monitor,
     desktop_add_mode,
+    desktop_get_adapter,
 };
 
 static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
@@ -6572,5 +6629,22 @@ NTSTATUS WINAPI NtUserDisplayConfigGetDeviceInfo( DISPLAYCONFIG_DEVICE_INFO_HEAD
     default:
         FIXME( "Unimplemented packet type %u.\n", packet->type );
         return STATUS_INVALID_PARAMETER;
+    }
+}
+
+void WINAPI __wine_get_adapter_driver_data( UNICODE_STRING *devname, void *data, UINT *data_len )
+{
+    struct adapter *adapter;
+
+    if ((adapter = find_adapter( devname )))
+    {
+        *data_len = min( *data_len, adapter->driver_data_len );
+        if (data && adapter->driver_data)
+            memcpy( data, adapter->driver_data, *data_len );
+        adapter_release( adapter );
+    }
+    else
+    {
+        *data_len = 0;
     }
 }
