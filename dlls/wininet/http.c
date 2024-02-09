@@ -4535,7 +4535,7 @@ static BOOL HTTP_ParseDateAsAsctime(LPCWSTR value, FILETIME *ft)
     /* asctime() doesn't report a timezone, but some web servers do, so accept
      * with or without GMT.
      */
-    if (*ptr && wcscmp(ptr, L"GMT"))
+    if (*ptr && (wcscmp(ptr, L"GMT") && wcscmp(ptr, L"UTC")))
     {
         ERR("unexpected timezone %s\n", debugstr_w(ptr));
         return FALSE;
@@ -4612,7 +4612,7 @@ static BOOL HTTP_ParseRfc1123Date(LPCWSTR value, FILETIME *ft)
     while (iswspace(*ptr))
         ptr++;
 
-    if (wcscmp(ptr, L"GMT"))
+    if (wcscmp(ptr, L"GMT") && wcscmp(ptr, L"UTC"))
     {
         ERR("unexpected time zone %s\n", debugstr_w(ptr));
         return FALSE;
@@ -4729,7 +4729,7 @@ static BOOL HTTP_ParseRfc850Date(LPCWSTR value, FILETIME *ft)
     while (iswspace(*ptr))
         ptr++;
 
-    if (wcscmp(ptr, L"GMT"))
+    if (wcscmp(ptr, L"GMT") && wcscmp(ptr, L"UTC"))
     {
         ERR("unexpected time zone %s\n", debugstr_w(ptr));
         return FALSE;
