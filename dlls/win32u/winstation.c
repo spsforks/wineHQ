@@ -42,12 +42,21 @@ WINE_DECLARE_DEBUG_CHANNEL(win);
 
 BOOL is_virtual_desktop(void)
 {
-    HANDLE desktop = NtUserGetThreadDesktop( GetCurrentThreadId() );
+    struct user_thread_info *thread_info = get_user_thread_info();
     USEROBJECTFLAGS flags = {0};
+    HANDLE desktop;
     DWORD len;
+    BOOL ret;
 
+    if (thread_info->cached_is_virtual_desktop)
+        return thread_info->cached_is_virtual_desktop > 0;
+
+    desktop = NtUserGetThreadDesktop( GetCurrentThreadId() );
     if (!NtUserGetObjectInformation( desktop, UOI_FLAGS, &flags, sizeof(flags), &len )) return FALSE;
-    return !!(flags.dwFlags & DF_WINE_VIRTUAL_DESKTOP);
+    ret = !!(flags.dwFlags & DF_WINE_VIRTUAL_DESKTOP);
+
+    thread_info->cached_is_virtual_desktop = ret ? 1 : -1;
+    return ret;
 }
 
 /***********************************************************************
@@ -261,6 +270,7 @@ BOOL WINAPI NtUserSetThreadDesktop( HDESK handle )
     {
         struct user_thread_info *thread_info = get_user_thread_info();
         struct user_key_state_info *key_state_info = thread_info->key_state;
+        thread_info->cached_is_virtual_desktop = 0;
         thread_info->client_info.top_window = 0;
         thread_info->client_info.msg_window = 0;
         if (key_state_info) key_state_info->time = 0;
