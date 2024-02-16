@@ -730,6 +730,31 @@ static NTSTATUS copy_buffer(GstBuffer *buffer, GstCaps *caps, struct wg_sample *
     return STATUS_SUCCESS;
 }
 
+static void sample_set_flags_from_buffer(struct wg_sample *sample, GstBuffer *buffer, gsize total_size)
+{
+    if (GST_BUFFER_PTS_IS_VALID(buffer))
+    {
+        sample->flags |= WG_SAMPLE_FLAG_HAS_PTS;
+        sample->pts = GST_BUFFER_PTS(buffer) / 100;
+    }
+    if (GST_BUFFER_DURATION_IS_VALID(buffer))
+    {
+        GstClockTime duration = GST_BUFFER_DURATION(buffer) / 100;
+
+        duration = (duration * sample->size) / total_size;
+        GST_BUFFER_DURATION(buffer) -= duration * 100;
+        if (GST_BUFFER_PTS_IS_VALID(buffer))
+            GST_BUFFER_PTS(buffer) += duration * 100;
+
+        sample->flags |= WG_SAMPLE_FLAG_HAS_DURATION;
+        sample->duration = duration;
+    }
+    if (!GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT))
+        sample->flags |= WG_SAMPLE_FLAG_SYNC_POINT;
+    if (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT))
+        sample->flags |= WG_SAMPLE_FLAG_DISCONTINUITY;
+}
+
 static NTSTATUS read_transform_output_data(GstBuffer *buffer, GstCaps *caps, gsize plane_align,
         struct wg_sample *sample)
 {
@@ -762,27 +787,7 @@ static NTSTATUS read_transform_output_data(GstBuffer *buffer, GstCaps *caps, gsi
         return status;
     }
 
-    if (GST_BUFFER_PTS_IS_VALID(buffer))
-    {
-        sample->flags |= WG_SAMPLE_FLAG_HAS_PTS;
-        sample->pts = GST_BUFFER_PTS(buffer) / 100;
-    }
-    if (GST_BUFFER_DURATION_IS_VALID(buffer))
-    {
-        GstClockTime duration = GST_BUFFER_DURATION(buffer) / 100;
-
-        duration = (duration * sample->size) / total_size;
-        GST_BUFFER_DURATION(buffer) -= duration * 100;
-        if (GST_BUFFER_PTS_IS_VALID(buffer))
-            GST_BUFFER_PTS(buffer) += duration * 100;
-
-        sample->flags |= WG_SAMPLE_FLAG_HAS_DURATION;
-        sample->duration = duration;
-    }
-    if (!GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT))
-        sample->flags |= WG_SAMPLE_FLAG_SYNC_POINT;
-    if (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT))
-        sample->flags |= WG_SAMPLE_FLAG_DISCONTINUITY;
+    sample_set_flags_from_buffer(sample, buffer, total_size);
 
     if (needs_copy)
     {
