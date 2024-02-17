@@ -7394,32 +7394,17 @@ static void test_video_processor(void)
         .sample_time = 0, .sample_duration = 10000000,
         .buffer_count = 1, .buffers = &rgb32_buffer_desc,
     };
-    const struct buffer_desc rgb32_buffer_desc_todo =
-    {
-        .length = actual_width * actual_height * 4,
-        .compare = compare_rgb32, .dump = dump_rgb32, .rect = {.top = 12, .right = 82, .bottom = 96},
-        .todo_length = TRUE,
-    };
-    const struct sample_desc rgb32_sample_desc_todo =
-    {
-        .attributes = output_sample_attributes,
-        .sample_time = 0, .sample_duration = 10000000,
-        .buffer_count = 1, .buffers = &rgb32_buffer_desc_todo,
-        .todo_length = TRUE,
-    };
 
     const struct buffer_desc rgb32_cropped_buffer_desc =
     {
         .length = 82 * 84 * 4,
         .compare = compare_rgb32, .dump = dump_rgb32,
-        .todo_length = TRUE
     };
     const struct sample_desc rgb32_cropped_sample_desc =
     {
         .attributes = output_sample_attributes,
         .sample_time = 0, .sample_duration = 10000000,
         .buffer_count = 1, .buffers = &rgb32_cropped_buffer_desc,
-        .todo_length = TRUE
     };
 
     const struct buffer_desc rgb555_buffer_desc =
@@ -7507,7 +7492,7 @@ static void test_video_processor(void)
         },
         {
             .input_type_desc = rgb32_with_aperture, .output_type_desc = rgb32_with_aperture,
-            .output_sample_desc = &rgb32_sample_desc_todo, .result_bitmap = L"rgb32frame.bmp",
+            .output_sample_desc = &rgb32_sample_desc, .result_bitmap = L"rgb32frame.bmp",
             .broken = TRUE /* old Windows version incorrectly rescale */
         },
         {
@@ -7530,7 +7515,7 @@ static void test_video_processor(void)
         },
         {
             .input_type_desc = rgb32_no_aperture, .output_type_desc = rgb32_with_aperture,
-            .output_sample_desc = &rgb32_sample_desc_todo, .result_bitmap = L"rgb32frame-bogus.bmp",
+            .output_sample_desc = &rgb32_sample_desc, .result_bitmap = L"rgb32frame-bogus.bmp",
         },
         {
             .input_type_desc = rgb32_with_aperture, .output_type_desc = rgb32_no_aperture,
@@ -7967,7 +7952,6 @@ static void test_video_processor(void)
             ok(ref == 1, "Release returned %ld\n", ref);
 
             ret = check_mf_sample_collection(output_samples, test->output_sample_desc, test->result_bitmap);
-            todo_wine_if(i == 10 || i == 15)
             ok(ret <= test->delta || broken(test->broken), "got %lu%% diff\n", ret);
             IMFCollection_Release(output_samples);
 

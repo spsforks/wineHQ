@@ -75,6 +75,18 @@ static void align_video_info_planes(struct wg_format *format, gsize plane_align,
 
     align->padding_right = ((plane_align + 1) - (info->width & plane_align)) & plane_align;
     align->padding_bottom = ((plane_align + 1) - (info->height & plane_align)) & plane_align;
+    align->padding_right = max(align->padding_right, format->u.video.padding.right);
+    align->padding_bottom = max(align->padding_bottom, format->u.video.padding.bottom);
+    align->padding_top = format->u.video.padding.top;
+    align->padding_left = format->u.video.padding.left;
+
+    if (format->u.video.height < 0)
+    {
+        gsize top = align->padding_top;
+        align->padding_top = align->padding_bottom;
+        align->padding_bottom = top;
+    }
+
     align->stride_align[0] = plane_align;
     align->stride_align[1] = plane_align;
     align->stride_align[2] = plane_align;
@@ -106,18 +118,6 @@ static void update_format_height_padding(struct wg_format *max, struct wg_format
 
 static void update_format_padding(struct wg_format *input_format, struct wg_format *output_format)
 {
-    if (input_format->major_type == WG_MAJOR_TYPE_VIDEO)
-    {
-        input_format->u.video.width += input_format->u.video.padding.left + input_format->u.video.padding.right;
-        input_format->u.video.height += input_format->u.video.padding.top + input_format->u.video.padding.bottom;
-    }
-
-    if (output_format->major_type == WG_MAJOR_TYPE_VIDEO)
-    {
-        output_format->u.video.width += output_format->u.video.padding.left + output_format->u.video.padding.right;
-        output_format->u.video.height += output_format->u.video.padding.top + output_format->u.video.padding.bottom;
-    }
-
     if (input_format->major_type != output_format->major_type)
         return;
     if (input_format->major_type != WG_MAJOR_TYPE_VIDEO)
@@ -476,6 +476,7 @@ NTSTATUS wg_transform_create(void *args)
         goto out;
     transform->attrs = *params->attrs;
 
+    /* GStreamer cannot include the buffer padding in the frame sizes but MF does, make sure the formats have the same */
     update_format_padding(&input_format, &output_format);
     transform->input_format = input_format;
     transform->output_format = output_format;
@@ -655,6 +656,13 @@ NTSTATUS wg_transform_set_output_format(void *args)
     struct wg_format output_format = *params->format;
     GstSample *sample;
     GstCaps *caps;
+
+    if (output_format.major_type == WG_MAJOR_TYPE_VIDEO)
+    {
+        /* GStreamer cannot include the buffer padding in the frame sizes but MF does, make sure the formats have the same */
+        update_format_width_padding(&output_format, &transform->output_format);
+        update_format_height_padding(&output_format, &transform->output_format);
+    }
 
     if (!(caps = transform_format_to_caps(transform, &output_format)))
     {
