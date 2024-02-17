@@ -4502,17 +4502,127 @@ INT WINAPI UrlCompareW(const WCHAR *url1, const WCHAR *url2, BOOL ignore_slash)
 
 HRESULT WINAPI UrlFixupW(const WCHAR *url, WCHAR *translatedUrl, DWORD maxChars)
 {
-    DWORD srcLen;
+    DWORD src_len, dst_len, len;
+    DWORD colon_pos = 0, pos = 0;
+    WCHAR *helper_str = NULL;
+    WCHAR *save_str = translatedUrl;
 
-    FIXME("%s, %p, %ld stub\n", wine_dbgstr_w(url), translatedUrl, maxChars);
+    static const WCHAR *url_scheme[] = { L"", L"ftp", L"https", L"gopher", L"mailto", L"news",
+                                  L"nntp", L"telnet", L"wais", L"file", L"mk",
+                                  L"http", L"shell", L"snews", L"local",
+                                  L"javascript", L"vbscript", L"about", L"res",
+                                  L"ms-shell-rooted", L"ms-shell-idlist", L"hcp"};
+    FIXME("%s, %p, %ld semi-stub\n", wine_dbgstr_w(url), translatedUrl, maxChars);
 
     if (!url)
         return E_FAIL;
 
-    srcLen = lstrlenW(url) + 1;
+    /*
+     * First check for known, valid and typo free scheme
+     */
+    for (pos=1; pos<ARRAY_SIZE(url_scheme); pos++)
+    {
+        len = wcslen(url_scheme[pos]);
+        if ( (len+1 <= wcslen(url)) && (!_wcsnicmp(url, url_scheme[pos], len)) && (L':' == url[len]) )
+        {
+            if (len+2 >= maxChars)
+                return S_FALSE;
 
-    /* For now just copy the URL directly */
-    lstrcpynW(translatedUrl, url, (maxChars < srcLen) ? maxChars : srcLen);
+            lstrcpynW(save_str, url, len+2);
+            url += len+1;
+            goto scheme_done;
+        }
+    }
+
+    /*
+     * url has to contain at least one colon.
+     * The scheme part length has a minimum of 2 characters.
+     * Output buffer length has to be minimum of 3 characters, scheme + colon.
+     *
+     * Return S_FALSE if url and buffer do not meet this minimum requirements.
+     */
+    helper_str = wcschr(url, L':');
+    if (!helper_str)
+        return S_FALSE;
+
+    /*
+     * Colon should not be at the beginning
+     */
+    colon_pos = helper_str-url;
+    if (helper_str && (1 >= colon_pos))
+        return S_FALSE;
+    /*
+     * Check if string fits into maxChars
+     */
+    // TODO: Use own buffer for adjustments, output buffer may not fit before fix
+    if (colon_pos >= maxChars && maxChars < 3)
+        return S_FALSE;
+
+    /*
+     * Set potential scheme
+     */
+    lstrcpynW(save_str, url, pos+2);
+    url = url + colon_pos + 1;
+
+    /*
+     * Find schemes with trailing or leading typos
+     */
+    for (pos=1; pos<ARRAY_SIZE(url_scheme); pos++)
+    {
+        /* http is always prefered before https, if string has typos */
+        len = wcslen(url_scheme[pos]);
+        if (!_wcsnicmp(url_scheme[pos], L"https", len+1))
+        {
+            continue;
+        }
+        if ( (len <= wcslen(save_str)) && (StrStrIW(save_str, url_scheme[pos])) )
+        {
+            /*
+             * check if string fits into maxChars
+             */
+            if (len+1 >= maxChars)
+                return S_FALSE;
+
+            lstrcpynW(save_str, url_scheme[pos], len+1);
+            lstrcatW(save_str, L":");
+            goto scheme_done;
+        }
+    }
+
+    /* Return false in most remaining cases should be safe */
+    return S_FALSE;
+
+    /* Concat scheme + rest */
+scheme_done:
+    /*
+     * Concat L"://"" for ftp, http, https scheme * else ":"
+     */
+    if ( 0 == lstrcmpW(save_str, L"ftp:") ||
+         0 == lstrcmpW(save_str, L"http:") ||
+         0 == lstrcmpW(save_str, L"https:") )
+    {
+        if ( url[0] == L'\\'  || url[0] == L'/' )
+        {
+            url++;
+            if ( url[0] == L'\\'  || url[0] == L'/' )
+                url++;
+        }
+        lstrcatW(save_str, L"//");
+    }
+    /*
+     * Remove leading "/", "\" and ":" from url.
+     * Output already have them if needed
+     */
+    while ( url[0] == L'\\'  || url[0] == L'/' )
+    {
+        lstrcatW(save_str, L"/");
+        url++;
+    }
+
+    /* Add the URL path */
+    src_len = lstrlenW(url) + 1;
+    dst_len = maxChars - lstrlenW(save_str);
+    lstrcpynW(save_str+lstrlenW(save_str), url, (dst_len < src_len) ? dst_len : src_len);
 
     return S_OK;
 }
