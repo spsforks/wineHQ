@@ -1023,7 +1023,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
         if (!CGPointMakeWithDictionaryRepresentation(hotSpotDict, &hotSpot))
             hotSpot = CGPointZero;
-        hotSpot = cgpoint_mac_from_win(hotSpot);
+        hotSpot = cgpoint_mac_from_win(hotSpot, retina_on);
         self.cursor = [[[NSCursor alloc] initWithImage:image hotSpot:NSPointFromCGPoint(hotSpot)] autorelease];
         [image release];
         [self unhideCursor];
@@ -2550,7 +2550,7 @@ int macdrv_set_cursor_position(CGPoint pos)
     __block int ret;
 
     OnMainThread(^{
-        ret = [[WineApplicationController sharedController] setCursorPosition:cgpoint_mac_from_win(pos)];
+        ret = [[WineApplicationController sharedController] setCursorPosition:cgpoint_mac_from_win(pos, retina_on)];
     });
 
     return ret;

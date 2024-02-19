@@ -207,9 +207,9 @@ static inline CGSize cgsize_win_from_mac(CGSize size)
     return size;
 }
 
-static inline CGPoint cgpoint_mac_from_win(CGPoint point)
+static inline CGPoint cgpoint_mac_from_win(CGPoint point, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         point.x /= 2;
         point.y /= 2;
