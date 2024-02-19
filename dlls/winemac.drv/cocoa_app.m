@@ -1017,7 +1017,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
         NSDictionary* frame = cursorFrames[cursorFrame];
         CGImageRef cgimage = (CGImageRef)frame[@"image"];
         CGSize size = CGSizeMake(CGImageGetWidth(cgimage), CGImageGetHeight(cgimage));
-        NSImage* image = [[NSImage alloc] initWithCGImage:cgimage size:NSSizeFromCGSize(cgsize_mac_from_win(size))];
+        NSImage* image = [[NSImage alloc] initWithCGImage:cgimage size:NSSizeFromCGSize(cgsize_mac_from_win(size, retina_on))];
         CFDictionaryRef hotSpotDict = (CFDictionaryRef)frame[@"hotSpot"];
         CGPoint hotSpot;
 

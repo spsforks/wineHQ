@@ -3640,7 +3640,7 @@ void macdrv_set_window_min_max_sizes(macdrv_window w, CGSize min_size, CGSize ma
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window setWineMinSize:NSSizeFromCGSize(cgsize_mac_from_win(min_size)) maxSize:NSSizeFromCGSize(cgsize_mac_from_win(max_size))];
+        [window setWineMinSize:NSSizeFromCGSize(cgsize_mac_from_win(min_size, retina_on)) maxSize:NSSizeFromCGSize(cgsize_mac_from_win(max_size, retina_on))];
     });
 }
 

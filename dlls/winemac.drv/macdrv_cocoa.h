@@ -185,9 +185,9 @@ static inline CGRect cgrect_win_from_mac(CGRect rect, int retina_scale)
     return rect;
 }
 
-static inline CGSize cgsize_mac_from_win(CGSize size)
+static inline CGSize cgsize_mac_from_win(CGSize size, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         size.width /= 2;
         size.height /= 2;
