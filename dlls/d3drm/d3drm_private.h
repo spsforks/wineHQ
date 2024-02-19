@@ -135,6 +135,7 @@ struct d3drm_device
     DWORD width;
     HWND window;
     BOOL needs_update;
+    struct list update_callbacks;
 };
 
 struct d3drm_face

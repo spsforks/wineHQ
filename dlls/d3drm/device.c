@@ -218,6 +218,7 @@ HRESULT d3drm_device_init(struct d3drm_device *device, UINT version, IDirectDraw
     device->height = desc.dwHeight;
 
     device->needs_update = FALSE;
+    list_init(&device->update_callbacks);
 
     return hr;
 }
@@ -710,18 +711,27 @@ static HRESULT WINAPI d3drm_device1_InitFromClipper(IDirect3DRMDevice *iface,
         clipper, guid, width, height);
 }
 
+struct update_callback
+{
+    struct list entry;
+    D3DRMUPDATECALLBACK cb;
+    void *ctx;
+};
+
 static HRESULT WINAPI d3drm_device3_Update(IDirect3DRMDevice3 *iface)
 {
     struct d3drm_device *device = impl_from_IDirect3DRMDevice3(iface);
+    struct update_callback *callback;
     HRESULT hr = D3DRM_OK;
 
     TRACE("iface %p.\n", iface);
 
     if (device->needs_update)
     {
+        RECT rt_rect = { 0, 0, device->width, device->height };
+
         if (device->primary_surface)
         {
-            RECT rt_rect = { 0, 0, device->width, device->height };
             RECT ps_rect = rt_rect;
 
             ClientToScreen(device->window, (POINT *)&ps_rect.left);
@@ -734,7 +744,19 @@ static HRESULT WINAPI d3drm_device3_Update(IDirect3DRMDevice3 *iface)
                 device->render_target, &rt_rect, DDBLT_WAIT, NULL);
         }
 
+        LIST_FOR_EACH_ENTRY(callback, &device->update_callbacks, struct update_callback, entry)
+        {
+            callback->cb(&device->IDirect3DRMDevice_iface, callback->ctx, 1, (D3DRECT *)&rt_rect);
+        }
+
         device->needs_update = FALSE;
+    }
+    else
+    {
+        LIST_FOR_EACH_ENTRY(callback, &device->update_callbacks, struct update_callback, entry)
+        {
+            callback->cb(&device->IDirect3DRMDevice_iface, callback->ctx, 0, NULL);
+        }
     }
 
     return hr;
@@ -758,52 +780,101 @@ static HRESULT WINAPI d3drm_device1_Update(IDirect3DRMDevice *iface)
     return d3drm_device3_Update(&device->IDirect3DRMDevice3_iface);
 }
 
+HRESULT d3drm_device_add_update_callback(struct d3drm_device *device, D3DRMUPDATECALLBACK cb, void *ctx)
+{
+    struct update_callback *callback;
+
+    if (!cb)
+        return D3DRMERR_BADVALUE;
+
+    if (!(callback = malloc(sizeof(*callback))))
+        return E_OUTOFMEMORY;
+
+    callback->cb = cb;
+    callback->ctx = ctx;
+
+    list_add_tail(&device->update_callbacks, &callback->entry);
+    return D3DRM_OK;
+}
+
+HRESULT d3drm_device_delete_update_callback(struct d3drm_device *device, D3DRMUPDATECALLBACK cb, void *ctx)
+{
+    struct update_callback *callback;
+
+    if (!cb)
+        return D3DRMERR_BADVALUE;
+
+    LIST_FOR_EACH_ENTRY(callback, &device->update_callbacks, struct update_callback, entry)
+    {
+        if (callback->cb == cb && callback->ctx == ctx)
+        {
+            list_remove(&callback->entry);
+            free(callback);
+            break;
+        }
+    }
+
+    return D3DRM_OK;
+}
+
 static HRESULT WINAPI d3drm_device3_AddUpdateCallback(IDirect3DRMDevice3 *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice3(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_add_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device2_AddUpdateCallback(IDirect3DRMDevice2 *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice2(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_add_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device1_AddUpdateCallback(IDirect3DRMDevice *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_add_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device3_DeleteUpdateCallback(IDirect3DRMDevice3 *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice3(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_delete_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device2_DeleteUpdateCallback(IDirect3DRMDevice2 *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice2(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_delete_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device1_DeleteUpdateCallback(IDirect3DRMDevice *iface,
         D3DRMUPDATECALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_device_delete_update_callback(device, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_device3_SetBufferCount(IDirect3DRMDevice3 *iface, DWORD count)

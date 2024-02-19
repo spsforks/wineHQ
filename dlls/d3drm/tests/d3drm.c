@@ -8306,22 +8306,22 @@ static void test_update_1(void)
 
     /* A NULL callback is not allowed */
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, NULL, NULL);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, NULL, NULL);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from delete update callback, hr %#lx.\n", hr);
 
     /* Callbacks receive no rectangles if the viewport hasn't been notified of updates */
     ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
     ctx.rect_count = -1;
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, NULL);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
     ok(ctx.rect.x1 == LONG_MIN && ctx.rect.y1 == LONG_MIN && ctx.rect.x2 == LONG_MIN && ctx.rect.y2 == LONG_MIN,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
 
@@ -8358,17 +8358,16 @@ static void test_update_1(void)
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
     ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_modify_rect, NULL);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_modify_rect, NULL);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
-    todo_wine
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
     ok(ctx.rect.x1 == 999999 && ctx.rect.y1 <= vrect.top &&
        ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
@@ -8379,13 +8378,12 @@ static void test_update_1(void)
     hr = IDirect3DRMViewport_Clear(viewport);
     ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
-    todo_wine
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
     ok(ctx.rect.x1 <= vrect.left && ctx.rect.y1 <= vrect.top &&
        ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
@@ -8442,12 +8440,12 @@ static void test_update_3(void)
     ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
     ctx.rect_count = -1;
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
     ok(ctx.rect.x1 == LONG_MIN && ctx.rect.y1 == LONG_MIN && ctx.rect.x2 == LONG_MIN && ctx.rect.y2 == LONG_MIN,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
 
@@ -8484,17 +8482,16 @@ static void test_update_3(void)
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
     ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_modify_rect, NULL);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_modify_rect, NULL);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
-    todo_wine
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
     ok(ctx.rect.x1 == 999999 && ctx.rect.y1 <= vrect.top &&
        ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
@@ -8505,13 +8502,12 @@ static void test_update_3(void)
     hr = IDirect3DRMViewport2_Clear(viewport, D3DRMCLEAR_ALL);
     ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
-    todo_wine ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
-    todo_wine
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
     ok(ctx.rect.x1 <= vrect.left && ctx.rect.y1 <= vrect.top &&
        ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
             "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
@@ -8655,14 +8651,14 @@ static void test_update_surfaces_1(void)
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
     ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_surf_color, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_surf_color, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
     ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
-    todo_wine ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
+    ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
 
     /* Draw at the window handle location, regardless of clipper alterations */
     clip_list->rdh.rcBound.left += 10;
@@ -8810,14 +8806,14 @@ static void test_update_surfaces_3(void)
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
     ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_surf_color, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_surf_color, &ctx);
-    todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
     ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
-    todo_wine ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
+    ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
 
     /* Draw at the window handle location, regardless of clipper alterations */
     clip_list_size = 0;
