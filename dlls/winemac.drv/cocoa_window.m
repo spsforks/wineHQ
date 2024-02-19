@@ -2204,7 +2204,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                                forWindow:self];
 
         event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
-        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
         event->window_frame_changed.fullscreen = isFullscreen;
         event->window_frame_changed.in_resize = resizing;
         event->window_frame_changed.skip_size_move_loop = skipSizeMove;
@@ -2584,7 +2584,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
                     event = macdrv_create_event(WINDOW_RESTORE_REQUESTED, self);
                     event->window_restore_requested.keep_frame = TRUE;
-                    event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+                    event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
                     [queue postEvent:event];
                     macdrv_release_event(event);
 
@@ -3108,7 +3108,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             query = macdrv_create_query();
             query->type = QUERY_RESIZE_SIZE;
             query->window = (macdrv_window)[self retain];
-            query->resize_size.rect = cgrect_win_from_mac(NSRectToCGRect(rect));
+            query->resize_size.rect = cgrect_win_from_mac(NSRectToCGRect(rect), retina_on);
             query->resize_size.from_left = resizingFromLeft;
             query->resize_size.from_top = resizingFromTop;
 
@@ -3138,7 +3138,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
             event = macdrv_create_event(WINDOW_RESTORE_REQUESTED, self);
             event->window_restore_requested.keep_frame = TRUE;
-            event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+            event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
             [queue postEvent:event];
             macdrv_release_event(event);
         }
@@ -3463,7 +3463,7 @@ void macdrv_get_cocoa_window_frame(macdrv_window w, CGRect* out_frame)
 
         frame = [window contentRectForFrameRect:[window wine_fractionalFrame]];
         [[WineApplicationController sharedController] flipRect:&frame];
-        *out_frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+        *out_frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
     });
 }
 

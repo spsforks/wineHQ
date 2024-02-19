@@ -172,9 +172,9 @@ static inline CGRect cgrect_mac_from_win(CGRect rect, int retina_scale)
     return rect;
 }
 
-static inline CGRect cgrect_win_from_mac(CGRect rect)
+static inline CGRect cgrect_win_from_mac(CGRect rect, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         rect.origin.x *= 2;
         rect.origin.y *= 2;
