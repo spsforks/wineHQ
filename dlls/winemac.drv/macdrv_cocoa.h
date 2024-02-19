@@ -218,9 +218,9 @@ static inline CGPoint cgpoint_mac_from_win(CGPoint point, int retina_scale)
     return point;
 }
 
-static inline CGPoint cgpoint_win_from_mac(CGPoint point)
+static inline CGPoint cgpoint_win_from_mac(CGPoint point, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         point.x *= 2;
         point.y *= 2;

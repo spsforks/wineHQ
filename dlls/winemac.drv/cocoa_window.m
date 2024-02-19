@@ -3238,7 +3238,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         NSDragOperation ret;
         NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
-        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt));
+        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt), retina_on);
         NSPasteboard* pb = [sender draggingPasteboard];
 
         macdrv_query* query = macdrv_create_query();
@@ -3261,7 +3261,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         BOOL ret;
         NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
-        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt));
+        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt), retina_on);
         NSPasteboard* pb = [sender draggingPasteboard];
 
         macdrv_query* query = macdrv_create_query();
