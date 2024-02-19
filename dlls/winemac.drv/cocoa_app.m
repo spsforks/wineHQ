@@ -2573,7 +2573,7 @@ int macdrv_clip_cursor(CGRect r)
         CGRect rect = r;
 
         if (!CGRectIsInfinite(rect))
-            rect = cgrect_mac_from_win(rect);
+            rect = cgrect_mac_from_win(rect, retina_on);
 
         if (!CGRectIsInfinite(rect))
         {

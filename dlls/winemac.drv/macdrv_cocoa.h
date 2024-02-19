@@ -159,9 +159,9 @@ extern int retina_enabled;  /* Whether Retina mode is enabled via registry setti
 extern int retina_on;       /* Whether Retina mode is currently active (enabled and display is in default mode). */
 extern int enable_app_nap;
 
-static inline CGRect cgrect_mac_from_win(CGRect rect)
+static inline CGRect cgrect_mac_from_win(CGRect rect, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         rect.origin.x /= 2;
         rect.origin.y /= 2;
