@@ -219,6 +219,9 @@ struct range_entry
 static struct range_entry *free_ranges;
 static struct range_entry *free_ranges_end;
 
+static void *dummy_page;
+static pthread_mutex_t dummy_page_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 static inline BOOL is_beyond_limit( const void *addr, size_t size, const void *limit )
 {
@@ -6073,14 +6076,58 @@ NTSTATUS WINAPI NtFlushInstructionCache( HANDLE handle, const void *addr, SIZE_T
 }
 
 
+static BOOL try_mprotect( void )
+{
+#if !defined(__i386__) && !defined(__x86_64__)
+    static int once = 0;
+#endif
+    BOOL success = FALSE;
+    char *mem;
+
+    pthread_mutex_lock(&dummy_page_mutex);
+    mem = dummy_page;
+    if (!mem)
+    {
+        /* Allocate one page of memory that we can call mprotect() on */
+        mem = anon_mmap_alloc( page_size, PROT_READ | PROT_WRITE );
+        if (mem == MAP_FAILED)
+            goto failed;
+        /* Lock page into memory so that it is not unmapped between the calls to mprotect() below */
+        if (mlock( mem, page_size ))
+            goto failed;
+        dummy_page = mem;
+    }
+    /* Make dummy page writable */
+    success = !mprotect( mem, page_size, PROT_READ | PROT_WRITE );
+    if (!success)
+        goto failed;
+    /* Make the page dirty to prevent the kernel from skipping the global TLB flush */
+    InterlockedIncrement((volatile LONG*)mem);
+    /* Change the page protection to PROT_NONE to force the kernel to send an IPI to all threads of this process,
+       which has the side effect of executing a memory barrier in those threads */
+    success = !mprotect( mem, page_size, PROT_NONE );
+#if !defined(__i386__) && !defined(__x86_64__)
+    /* Some ARMv8 processors can broadcast TLB invalidations using the TLBI instruction,
+       the madvise trick does not work on those. Print a fixme on all non-x86 architectures. */
+    if (success && !once++)
+        FIXME( "memory barrier may not work on this platform\n" );
+#endif
+failed:
+    pthread_mutex_unlock(&dummy_page_mutex);
+    return success;
+}
+
+
 /**********************************************************************
  *           NtFlushProcessWriteBuffers  (NTDLL.@)
  */
 NTSTATUS WINAPI NtFlushProcessWriteBuffers(void)
 {
     static int once = 0;
-    if (!once++) FIXME( "stub\n" );
-    return STATUS_SUCCESS;
+    if (try_mprotect())
+        return STATUS_SUCCESS;
+    if (!once++) FIXME( "no implementation available on this platform\n" );
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 
