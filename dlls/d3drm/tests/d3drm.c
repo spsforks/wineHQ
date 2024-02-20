@@ -8327,27 +8327,27 @@ static void test_update_1(void)
 
     /* Area cannot extend beyond viewport */
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left - 1, vrect.top, vrect.right - 1, vrect.bottom);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top - 1, vrect.right, vrect.bottom - 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.right + 1, vrect.bottom);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.right, vrect.bottom + 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     /* Point 1 cannot be left of or above Point 2 */
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.left, vrect.top + 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.left + 1, vrect.top);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top + 1, vrect.left, vrect.top);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     /* Anything else is allowed, including a single point */
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left, vrect.top);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left + 1, vrect.top + 1);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     /* Update just to flush force updates */
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
@@ -8356,7 +8356,7 @@ static void test_update_1(void)
     ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
     ctx.rect_count = -1;
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_modify_rect, NULL);
     todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
@@ -8453,27 +8453,27 @@ static void test_update_3(void)
 
     /* Area cannot extend beyond viewport */
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left - 1, vrect.top, vrect.right - 1, vrect.bottom);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top - 1, vrect.right, vrect.bottom - 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.right + 1, vrect.bottom);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.right, vrect.bottom + 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     /* Point 1 cannot be left of or above Point 2 */
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.left, vrect.top + 1);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.left + 1, vrect.top);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top + 1, vrect.left, vrect.top);
-    todo_wine ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
     /* Anything else is allowed, including a single point */
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left, vrect.top);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left + 1, vrect.top + 1);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     /* Update just to flush force updates */
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
@@ -8482,7 +8482,7 @@ static void test_update_3(void)
     ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
     ctx.rect_count = -1;
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_modify_rect, NULL);
     todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
@@ -8629,7 +8629,7 @@ static void test_update_surfaces_1(void)
 
     /* Update modifies primary surface following a force update */
     hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
@@ -8676,7 +8676,7 @@ static void test_update_surfaces_1(void)
     free(clip_list);
     set_surface_color(surface, 320, 240, 0x0000ff00);
     hr = IDirect3DRMViewport_ForceUpdate(viewport, 320, 240, 321, 241);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
@@ -8790,7 +8790,7 @@ static void test_update_surfaces_3(void)
 
     /* Update modifies primary surface following a force update */
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
@@ -8837,7 +8837,7 @@ static void test_update_surfaces_3(void)
     free(clip_list);
     set_surface_color(surface, 320, 240, 0x0000ff00);
     hr = IDirect3DRMViewport2_ForceUpdate(viewport, 320, 240, 321, 241);
-    todo_wine ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
