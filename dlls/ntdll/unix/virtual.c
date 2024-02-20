@@ -39,6 +39,9 @@
 #ifdef HAVE_SYS_SYSINFO_H
 # include <sys/sysinfo.h>
 #endif
+#ifdef HAVE_SYS_SYSCALL_H
+# include <sys/syscall.h>
+#endif
 #ifdef HAVE_SYS_SYSCTL_H
 # include <sys/sysctl.h>
 #endif
@@ -218,6 +221,11 @@ struct range_entry
 
 static struct range_entry *free_ranges;
 static struct range_entry *free_ranges_end;
+
+#if defined(__linux__) && defined(__NR_membarrier)
+static BOOL membarrier_exp_available;
+static pthread_once_t membarrier_init_once = PTHREAD_ONCE_INIT;
+#endif
 
 static void *dummy_page;
 static pthread_mutex_t dummy_page_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -6076,6 +6084,43 @@ NTSTATUS WINAPI NtFlushInstructionCache( HANDLE handle, const void *addr, SIZE_T
 }
 
 
+#if defined(__linux__) && defined(__NR_membarrier)
+
+#define MEMBARRIER_CMD_QUERY                        0x00
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED            0x08
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED   0x10
+
+static int membarrier( int cmd, unsigned int flags, int cpu_id )
+{
+    return syscall( __NR_membarrier, cmd, flags, cpu_id );
+}
+
+static void membarrier_init( void )
+{
+    static const int exp_required_cmds =
+        MEMBARRIER_CMD_PRIVATE_EXPEDITED | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED;
+    int available_cmds = membarrier( MEMBARRIER_CMD_QUERY, 0, 0 );
+    if (available_cmds == -1)
+        return;
+    if ((available_cmds & exp_required_cmds) == exp_required_cmds)
+        membarrier_exp_available = !membarrier( MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED, 0, 0 );
+}
+
+static BOOL try_exp_membarrier( void )
+{
+    pthread_once(&membarrier_init_once, membarrier_init);
+    if (!membarrier_exp_available)
+        return FALSE;
+    return !membarrier( MEMBARRIER_CMD_PRIVATE_EXPEDITED, 0, 0 );
+}
+
+#else /* defined(__linux__) && defined(__NR_membarrier) */
+
+static BOOL try_exp_membarrier( void ) { return 0; }
+
+#endif /* defined(__linux__) && defined(__NR_membarrier) */
+
+
 static BOOL try_mprotect( void )
 {
 #if !defined(__i386__) && !defined(__x86_64__)
@@ -6124,6 +6169,8 @@ failed:
 NTSTATUS WINAPI NtFlushProcessWriteBuffers(void)
 {
     static int once = 0;
+    if (try_exp_membarrier())
+        return STATUS_SUCCESS;
     if (try_mprotect())
         return STATUS_SUCCESS;
     if (!once++) FIXME( "no implementation available on this platform\n" );
