@@ -8633,7 +8633,7 @@ static void test_update_surfaces_1(void)
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
 
     /* Update modifies primary surface following a viewport clear */
     clip_list_size = 0;
@@ -8653,7 +8653,7 @@ static void test_update_surfaces_1(void)
     ret_color = get_surface_color(surface, 320, 240);
     ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_surf_color, &ctx);
     todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice_Update(device1);
@@ -8661,7 +8661,7 @@ static void test_update_surfaces_1(void)
     hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_surf_color, &ctx);
     todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     todo_wine ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
 
     /* Draw at the window handle location, regardless of clipper alterations */
@@ -8680,7 +8680,7 @@ static void test_update_surfaces_1(void)
     hr = IDirect3DRMDevice_Update(device1);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
 
     IDirect3DRMViewport_Release(viewport);
     IDirect3DRMFrame_Release(camera);
@@ -8794,7 +8794,7 @@ static void test_update_surfaces_3(void)
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
 
     /* Update modifies primary surface following a viewport clear */
     ctx.surface = d3drm_primary;
@@ -8808,7 +8808,7 @@ static void test_update_surfaces_3(void)
     ret_color = get_surface_color(surface, 320, 240);
     ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_surf_color, &ctx);
     todo_wine ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
     hr = IDirect3DRMDevice3_Update(device3);
@@ -8816,7 +8816,7 @@ static void test_update_surfaces_3(void)
     hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_surf_color, &ctx);
     todo_wine ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
     todo_wine ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
 
     /* Draw at the window handle location, regardless of clipper alterations */
@@ -8841,7 +8841,7 @@ static void test_update_surfaces_3(void)
     hr = IDirect3DRMDevice3_Update(device3);
     ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
     ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
-    todo_wine ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
 
     IDirect3DRMViewport2_Release(viewport);
     IDirect3DRMFrame3_Release(camera);

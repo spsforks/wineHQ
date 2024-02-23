@@ -51,7 +51,6 @@ void d3drm_device_destroy(struct d3drm_device *device)
     {
         TRACE("Releasing primary surface and attached clipper.\n");
         IDirectDrawSurface_Release(device->primary_surface);
-        IDirectDrawClipper_Release(device->clipper);
     }
     if (device->ddraw)
     {
@@ -110,8 +109,7 @@ HRESULT d3drm_device_create_surfaces_from_clipper(struct d3drm_device *object, I
     }
 
     object->primary_surface = primary_surface;
-    object->clipper = clipper;
-    IDirectDrawClipper_AddRef(clipper);
+    object->window = window;
     *surface = render_target;
 
     return D3DRM_OK;
@@ -218,6 +216,8 @@ HRESULT d3drm_device_init(struct d3drm_device *device, UINT version, IDirectDraw
     device->device = device1;
     device->width = desc.dwWidth;
     device->height = desc.dwHeight;
+
+    device->needs_update = FALSE;
 
     return hr;
 }
@@ -712,23 +712,50 @@ static HRESULT WINAPI d3drm_device1_InitFromClipper(IDirect3DRMDevice *iface,
 
 static HRESULT WINAPI d3drm_device3_Update(IDirect3DRMDevice3 *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice3(iface);
+    HRESULT hr = D3DRM_OK;
 
-    return D3DRM_OK;
+    TRACE("iface %p.\n", iface);
+
+    if (device->needs_update)
+    {
+        if (device->primary_surface)
+        {
+            RECT rt_rect = { 0, 0, device->width, device->height };
+            RECT ps_rect = rt_rect;
+
+            ClientToScreen(device->window, (POINT *)&ps_rect.left);
+            ClientToScreen(device->window, (POINT *)&ps_rect.right);
+
+            TRACE("primary surface rect %s, render target rect %s\n",
+                wine_dbgstr_rect(&ps_rect), wine_dbgstr_rect(&rt_rect));
+
+            hr = IDirectDrawSurface_Blt(device->primary_surface, &ps_rect,
+                device->render_target, &rt_rect, DDBLT_WAIT, NULL);
+        }
+
+        device->needs_update = FALSE;
+    }
+
+    return hr;
 }
 
 static HRESULT WINAPI d3drm_device2_Update(IDirect3DRMDevice2 *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice2(iface);
 
-    return D3DRM_OK;
+    TRACE("iface %p.\n", iface);
+
+    return d3drm_device3_Update(&device->IDirect3DRMDevice3_iface);
 }
 
 static HRESULT WINAPI d3drm_device1_Update(IDirect3DRMDevice *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3drm_device *device = impl_from_IDirect3DRMDevice(iface);
 
-    return D3DRM_OK;
+    TRACE("iface %p.\n", iface);
+
+    return d3drm_device3_Update(&device->IDirect3DRMDevice3_iface);
 }
 
 static HRESULT WINAPI d3drm_device3_AddUpdateCallback(IDirect3DRMDevice3 *iface,

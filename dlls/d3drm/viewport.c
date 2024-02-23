@@ -458,6 +458,8 @@ static HRESULT WINAPI d3drm_viewport2_Clear(IDirect3DRMViewport2 *iface, DWORD f
     if (FAILED(hr = IDirect3DViewport_Clear(viewport->d3d_viewport, 1, &clear_rect, clear_flags)))
         return hr;
 
+    viewport->device->needs_update = TRUE;
+
     return D3DRM_OK;
 }
 
@@ -692,6 +694,8 @@ static HRESULT WINAPI d3drm_viewport2_ForceUpdate(IDirect3DRMViewport2* iface,
     if (x1 > x2 || y1 > y2 || x1 < vp.dwX || y1 < vp.dwY ||
             x2 > (vp.dwX + vp.dwWidth) || y2 > (vp.dwY + vp.dwHeight))
         return D3DRMERR_BADVALUE;
+
+    viewport->device->needs_update = TRUE;
 
     return D3DRM_OK;
 }
