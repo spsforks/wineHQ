@@ -4763,6 +4763,7 @@ LRESULT destroy_window( HWND hwnd )
         window_surface_release( surface );
     }
 
+    vulkan_window_detach( win );
     user_driver->pDestroyWindow( hwnd );
 
     free_window_handle( hwnd );
@@ -4987,6 +4988,7 @@ static WND *create_window_handle( HWND parent, HWND owner, UNICODE_STRING *name,
     win->cbWndExtra = extra_bytes;
     win->dpi        = dpi;
     win->dpi_awareness = awareness;
+    list_init( &win->vulkan_surfaces );
     set_user_handle_ptr( handle, &win->obj );
     if (is_winproc_unicode( win->winproc, !ansi )) win->flags |= WIN_ISUNICODE;
     return win;

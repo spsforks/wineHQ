@@ -30,6 +30,7 @@
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "win32u_private.h"
+#include "ntuser_private.h"
 
 #define VK_NO_PROTOTYPES
 #define WINE_VK_HOST
@@ -51,6 +52,7 @@ static void *(*p_vkGetInstanceProcAddr)(VkInstance, const char *);
 
 struct surface
 {
+    struct list entry;
     VkSurfaceKHR host_surface;
     void *driver_private;
     HWND hwnd;
@@ -71,6 +73,7 @@ static VkResult win32u_vkCreateWin32SurfaceKHR( VkInstance instance, const VkWin
 {
     struct surface *surface;
     VkResult res;
+    WND *win;
 
     TRACE( "instance %p, info %p, allocator %p, handle %p\n", instance, info, allocator, handle );
     if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
@@ -80,6 +83,14 @@ static VkResult win32u_vkCreateWin32SurfaceKHR( VkInstance instance, const VkWin
     {
         free( surface );
         return res;
+    }
+
+    if (!(win = get_win_ptr( info->hwnd )) || win == WND_DESKTOP || win == WND_OTHER_PROCESS)
+        list_init( &surface->entry );
+    else
+    {
+        list_add_tail( &win->vulkan_surfaces, &surface->entry );
+        release_win_ptr( win );
     }
 
     surface->hwnd = info->hwnd;
@@ -94,6 +105,7 @@ static void win32u_vkDestroySurfaceKHR( VkInstance instance, VkSurfaceKHR handle
     TRACE( "instance %p, handle 0x%s, allocator %p\n", instance, wine_dbgstr_longlong(handle), allocator );
     if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
 
+    list_remove( &surface->entry );
     p_vkDestroySurfaceKHR( instance, surface->host_surface, NULL /* allocator */ );
     driver_funcs.p_vulkan_surface_destroy( surface->hwnd, surface->driver_private );
     free( surface );
@@ -237,6 +249,31 @@ static void vulkan_init(void)
     LOAD_FUNCPTR( vkGetDeviceProcAddr );
     LOAD_FUNCPTR( vkGetInstanceProcAddr );
 #undef LOAD_FUNCPTR
+}
+
+void vulkan_window_detach( WND *win )
+{
+    struct surface *surface;
+
+    LIST_FOR_EACH_ENTRY( surface, &win->vulkan_surfaces, struct surface, entry )
+    {
+        list_remove( &surface->entry );
+        list_init( &surface->entry );
+    }
+}
+
+void vulkan_thread_detach(void)
+{
+    HANDLE handle = 0;
+    WND *win;
+
+    user_lock();
+    while ((win = next_process_user_handle_ptr( &handle, NTUSER_OBJ_WINDOW )))
+    {
+        if (win->tid != GetCurrentThreadId()) continue;
+        vulkan_window_detach( win );
+    }
+    user_unlock();
 }
 
 /***********************************************************************
