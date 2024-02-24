@@ -659,6 +659,7 @@ W32KAPI int     WINAPI NtUserGetMouseMovePointsEx( UINT size, MOUSEMOVEPOINT *pt
 W32KAPI BOOL    WINAPI NtUserGetObjectInformation( HANDLE handle, INT index, void *info,
                                                    DWORD len, DWORD *needed );
 W32KAPI HWND    WINAPI NtUserGetOpenClipboardWindow(void);
+W32KAPI BOOL    WINAPI NtUserGetPointerDeviceRects( HANDLE device, RECT *pointer_display_rect, RECT *display_rect );
 W32KAPI BOOL    WINAPI NtUserGetPointerInfoList( UINT32 id, POINTER_INPUT_TYPE type, UINT_PTR, UINT_PTR, SIZE_T size,
                                                  UINT32 *entry_count, UINT32 *pointer_count, void *pointer_info );
 W32KAPI INT     WINAPI NtUserGetPriorityClipboardFormat( UINT *list, INT count );

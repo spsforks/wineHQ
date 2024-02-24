@@ -1483,6 +1483,11 @@ HWND SYSCALL_API NtUserGetOpenClipboardWindow(void)
     __ASM_SYSCALL_FUNC( __id_NtUserGetOpenClipboardWindow );
 }
 
+BOOL SYSCALL_API NtUserGetPointerDeviceRects( HANDLE device, RECT *pointer_display_rect, RECT *diplay_rect )
+{
+    __ASM_SYSCALL_FUNC( __id_NtUserGetPointerDeviceRects );
+}
+
 BOOL SYSCALL_API NtUserGetPointerInfoList( UINT32 id, POINTER_INPUT_TYPE type, UINT_PTR unk0, UINT_PTR unk1, SIZE_T size,
                                            UINT32 *entry_count, UINT32 *pointer_count, void *pointer_info )
 {

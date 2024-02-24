@@ -2744,6 +2744,15 @@ NTSTATUS WINAPI wow64_NtUserGetOpenClipboardWindow( UINT *args )
     return HandleToUlong( NtUserGetOpenClipboardWindow() );
 }
 
+NTSTATUS WINAPI wow64_NtUserGetPointerDeviceRects( UINT *args )
+{
+    HANDLE handle = get_handle( &args );
+    void *pointer_display_rect = get_ptr( &args );
+    void *display_rect = get_ptr( &args );
+
+    return NtUserGetPointerDeviceRects( handle, pointer_display_rect, display_rect );
+}
+
 NTSTATUS WINAPI wow64_NtUserGetPointerInfoList( UINT *args )
 {
     UINT id = get_ulong( &args );
