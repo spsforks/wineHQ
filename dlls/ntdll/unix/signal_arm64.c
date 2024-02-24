@@ -1220,6 +1220,8 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     CONTEXT context;
 
+    if (wait_suspend( NULL ) != STATUS_MORE_PROCESSING_REQUIRED) return;
+
     if (is_inside_syscall( sigcontext ))
     {
         context.ContextFlags = CONTEXT_FULL;

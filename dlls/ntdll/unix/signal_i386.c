@@ -2123,6 +2123,8 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
     struct xcontext xcontext;
 
     init_handler( sigcontext );
+    if (wait_suspend( NULL ) != STATUS_MORE_PROCESSING_REQUIRED) return;
+
     if (is_inside_syscall( sigcontext ))
     {
         DECLSPEC_ALIGN(64) XSTATE xs;
