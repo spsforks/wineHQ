@@ -600,6 +600,31 @@ HRESULT wg_muxer_finalize(wg_muxer_t muxer)
     return S_OK;
 }
 
+HRESULT wg_create_aac_codec_data(uint32_t rate, unsigned int channels, uint8_t *out, size_t *out_size)
+{
+    struct wg_create_aac_codec_data_params params =
+    {
+        .rate = rate,
+        .channels = channels,
+        .buffer = out,
+        .size = *out_size,
+        .err_on = ERR_ON(quartz),
+        .warn_on = WARN_ON(quartz),
+    };
+    NTSTATUS status;
+
+    TRACE("rate %u, channels %u, out %p, out_size %p.\n", rate, channels, out, out_size);
+
+    if ((status = WINE_UNIX_CALL(unix_wg_create_aac_codec_data, &params)))
+    {
+        WARN("Failed to create AAC codec_data, status %#lx.\n", status);
+        return HRESULT_FROM_NT(status);
+    }
+
+    *out_size = params.size;
+    return S_OK;
+}
+
 #define ALIGN(n, alignment) (((n) + (alignment) - 1) & ~((alignment) - 1))
 
 unsigned int wg_format_get_stride(const struct wg_format *format)

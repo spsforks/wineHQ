@@ -34,6 +34,8 @@
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "winternl.h"
 #include "codecapi.h"
 #include "dshow.h"
@@ -388,6 +390,266 @@ static void wg_format_from_caps_video_mpeg1(struct wg_format *format, const GstC
     format->u.video_mpeg1.height = height;
     format->u.video_mpeg1.fps_n = fps_n;
     format->u.video_mpeg1.fps_d = fps_d;
+}
+
+struct wg_create_aac_codec_data_state
+{
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    struct wg_create_aac_codec_data_params *params;
+    BOOL got_caps, error;
+};
+
+static GstBusSyncReply bus_handler_cb(GstBus *bus, GstMessage *msg, gpointer user)
+{
+    struct wg_create_aac_codec_data_state *state = user;
+    gchar *dbg_info = NULL;
+    GError *err = NULL;
+
+    GST_LOG("message type %s.", GST_MESSAGE_TYPE_NAME(msg));
+
+    switch (msg->type)
+    {
+    case GST_MESSAGE_ERROR:
+        gst_message_parse_error(msg, &err, &dbg_info);
+        if (state->params->err_on)
+        {
+            fprintf(stderr, "winegstreamer error: %s: %s\n", GST_OBJECT_NAME(msg->src), err->message);
+            fprintf(stderr, "winegstreamer error: %s: %s\n", GST_OBJECT_NAME(msg->src), dbg_info);
+        }
+        g_error_free(err);
+        g_free(dbg_info);
+        pthread_mutex_lock(&state->mutex);
+        state->error = true;
+        pthread_mutex_unlock(&state->mutex);
+        pthread_cond_signal(&state->cond);
+        break;
+
+    case GST_MESSAGE_WARNING:
+        gst_message_parse_warning(msg, &err, &dbg_info);
+        if (state->params->warn_on)
+        {
+            fprintf(stderr, "winegstreamer warning: %s: %s\n", GST_OBJECT_NAME(msg->src), err->message);
+            fprintf(stderr, "winegstreamer warning: %s: %s\n", GST_OBJECT_NAME(msg->src), dbg_info);
+        }
+        g_error_free(err);
+        g_free(dbg_info);
+        break;
+
+    default:
+        break;
+    }
+    gst_message_unref(msg);
+    return GST_BUS_DROP;
+}
+
+static GstFlowReturn sink_chain_cb(GstPad *pad, GstObject *parent, GstBuffer *buffer)
+{
+    gst_buffer_unref(buffer);
+    return GST_FLOW_OK;
+}
+
+static gboolean sink_event_cb(GstPad *pad, GstObject *parent, GstEvent *event)
+{
+    struct wg_create_aac_codec_data_state *state = gst_pad_get_element_private(pad);
+
+    GST_LOG("state %p, type \"%s\".", state, GST_EVENT_TYPE_NAME(event));
+
+    switch (event->type)
+    {
+        case GST_EVENT_CAPS:
+        {
+            const GstStructure *structure = NULL;
+            const GValue *codec_data_value;
+            GstBuffer *codec_data;
+            GstMapInfo map;
+            GstCaps *caps;
+
+            gst_event_parse_caps(event, &caps);
+            structure = gst_caps_get_structure(caps, 0);
+            if (!(codec_data_value = gst_structure_get_value(structure, "codec_data")) ||
+                    !(codec_data = gst_value_get_buffer(codec_data_value)))
+            {
+                GST_WARNING("Missing \"codec_data\" value in %" GST_PTR_FORMAT ".", caps);
+                break;
+            }
+
+            gst_buffer_map(codec_data, &map, GST_MAP_READ);
+            if (map.size <= state->params->size)
+            {
+                state->params->size = map.size;
+                memcpy(state->params->buffer, map.data, map.size);
+            }
+            else
+                GST_WARNING("Too big codec_data value (%u) in %" GST_PTR_FORMAT ".", (UINT)map.size, caps);
+            gst_buffer_unmap(codec_data, &map);
+
+            pthread_mutex_lock(&state->mutex);
+            state->got_caps = TRUE;
+            pthread_mutex_unlock(&state->mutex);
+            pthread_cond_signal(&state->cond);
+            break;
+        }
+
+        default:
+            break;
+    }
+    gst_event_unref(event);
+    return TRUE;
+}
+
+extern NTSTATUS wg_create_aac_codec_data(void *args)
+{
+    struct wg_create_aac_codec_data_params *params = args;
+    GstPad *encoder_sink_pad = NULL, *encoder_src_pad = NULL, *parser_sink_pad = NULL,
+        *parser_src_pad = NULL, *sink_pad = NULL;
+    struct wg_create_aac_codec_data_state state;
+    GstCaps *raw_caps = NULL, *aac_caps = NULL;
+    GstElement *encoder = NULL, *parser = NULL;
+    NTSTATUS status = STATUS_NO_MEMORY;
+    GstPadTemplate *sink_template;
+    GstElement *pipeline = NULL;
+    GstBuffer *buffer = NULL;
+    GstFlowReturn flowret;
+    GstSegment segment;
+    GstBus *bus = NULL;
+
+    memset(&state, 0, sizeof(state));
+    if (pthread_mutex_init(&state.mutex, NULL) || pthread_cond_init(&state.cond, NULL))
+        goto out;
+    state.params = params;
+
+    if (!(raw_caps = gst_caps_new_simple("audio/x-raw",
+            "format", G_TYPE_STRING, "S16LE",
+            "layout", G_TYPE_STRING, "interleaved",
+            "rate", G_TYPE_INT, params->rate,
+            "channels", G_TYPE_INT, params->channels,
+            "channel-mask", GST_TYPE_BITMASK, gst_audio_channel_get_fallback_mask(params->channels),
+            NULL)))
+        goto out;
+
+    if (!(aac_caps = gst_caps_new_simple("audio/mpeg",
+            "mpegversion", G_TYPE_INT, 4,
+            "rate", G_TYPE_INT, params->rate,
+            "channels", G_TYPE_INT, params->channels,
+            "stream-format", G_TYPE_STRING, "raw",
+            "profile", G_TYPE_STRING, "lc",
+            "framed", G_TYPE_BOOLEAN, TRUE,
+            NULL)))
+        goto out;
+
+    if (!(pipeline = gst_pipeline_new(NULL)))
+        goto out;
+
+    if (!(sink_template = gst_pad_template_new("aac_codec_data_sink", GST_PAD_SINK, GST_PAD_ALWAYS, aac_caps)))
+        goto out;
+    sink_pad = gst_pad_new_from_template(sink_template, "aac_codec_data_sink");
+    gst_object_unref(sink_template);
+    if (!sink_pad)
+        goto out;
+    GST_PAD_SET_ACCEPT_TEMPLATE(sink_pad);
+    gst_pad_use_fixed_caps(sink_pad);
+    gst_pad_set_element_private(sink_pad, &state);
+    gst_pad_set_chain_function(sink_pad, sink_chain_cb);
+    gst_pad_set_event_function(sink_pad, sink_event_cb);
+
+    if (!(buffer = gst_buffer_new_allocate(NULL, 0, NULL)))
+        goto out;
+    buffer->dts = GST_CLOCK_TIME_NONE;
+    buffer->pts = 0;
+    buffer->duration = 0;
+    buffer->offset = 0;
+    buffer->offset_end = 0;
+
+    status = STATUS_UNSUCCESSFUL;
+
+    if (!(bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline))))
+        goto out;
+    gst_bus_set_sync_handler(bus, bus_handler_cb, &state, NULL);
+
+    if (!(encoder = find_element(GST_ELEMENT_FACTORY_TYPE_ENCODER, raw_caps, aac_caps)))
+        goto out;
+    if (!gst_bin_add(GST_BIN(pipeline), encoder))
+    {
+        gst_object_unref(encoder);
+        goto out;
+    }
+    if (!gst_element_sync_state_with_parent(encoder)
+            || !(encoder_sink_pad = gst_element_get_static_pad(encoder, "sink"))
+            || !(encoder_src_pad = gst_element_get_static_pad(encoder, "src")))
+        goto out;
+
+    if (!(parser = find_element(GST_ELEMENT_FACTORY_TYPE_PARSER, aac_caps, NULL)))
+        goto out;
+    if (!gst_bin_add(GST_BIN(pipeline), parser))
+    {
+        gst_object_unref(parser);
+        goto out;
+    }
+    if (!gst_element_sync_state_with_parent(parser)
+            || !(parser_sink_pad = gst_element_get_static_pad(parser, "sink"))
+            || !(parser_src_pad = gst_element_get_static_pad(parser, "src")))
+        goto out;
+
+    if (!gst_element_link(encoder, parser)
+            || !link_src_to_sink(parser_src_pad, sink_pad)
+            || !gst_pad_set_active(parser_src_pad, 1)
+            || !gst_pad_set_active(parser_sink_pad, 1)
+            || !gst_pad_set_active(encoder_src_pad, 1)
+            || !gst_pad_set_active(encoder_sink_pad, 1)
+            || !gst_pad_set_active(sink_pad, 1))
+        goto out;
+
+    gst_segment_init(&segment, GST_FORMAT_TIME);
+    if (gst_element_set_state(pipeline, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE
+            || gst_element_get_state(pipeline, NULL, NULL, -1) == GST_STATE_CHANGE_FAILURE
+            || !gst_pad_send_event(encoder_sink_pad, gst_event_new_stream_start("aac_codec_data"))
+            || !gst_pad_send_event(encoder_sink_pad, gst_event_new_caps(raw_caps))
+            || !gst_pad_send_event(encoder_sink_pad, gst_event_new_segment(&segment))
+            || gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE
+            || gst_element_get_state(pipeline, NULL, NULL, -1) == GST_STATE_CHANGE_FAILURE)
+        goto out;
+
+    flowret = gst_pad_chain(encoder_sink_pad, buffer);
+    buffer = NULL;
+    if (flowret == GST_FLOW_ERROR || !gst_pad_send_event(encoder_sink_pad, gst_event_new_eos()))
+        goto out;
+
+    pthread_mutex_lock(&state.mutex);
+    while (!state.got_caps && !state.error)
+        pthread_cond_wait(&state.cond, &state.mutex);
+    pthread_mutex_unlock(&state.mutex);
+
+out:
+    if (pipeline && gst_element_set_state(pipeline, GST_STATE_NULL) != GST_STATE_CHANGE_FAILURE)
+        gst_element_get_state(pipeline, NULL, NULL, -1);
+
+    if (parser_src_pad) gst_object_unref(parser_src_pad);
+    if (parser_sink_pad) gst_object_unref(parser_sink_pad);
+    if (encoder_src_pad) gst_object_unref(encoder_src_pad);
+    if (encoder_sink_pad) gst_object_unref(encoder_sink_pad);
+    if (buffer) gst_buffer_unref(buffer);
+    if (pipeline) gst_object_unref(pipeline);
+    if (aac_caps) gst_caps_unref(aac_caps);
+    if (raw_caps) gst_caps_unref(raw_caps);
+    if (bus)
+    {
+        gst_bus_set_sync_handler(bus, NULL, NULL, NULL);
+        gst_object_unref(bus);
+    }
+    if (sink_pad)
+    {
+        gst_pad_set_event_function(sink_pad, NULL);
+        gst_pad_set_chain_function(sink_pad, NULL);
+        gst_pad_set_element_private(sink_pad, NULL);
+        gst_object_unref(sink_pad);
+    }
+    pthread_mutex_destroy(&state.mutex);
+    pthread_cond_destroy(&state.cond);
+    if (state.got_caps)
+        return STATUS_SUCCESS;
+    GST_ERROR("Failed creating AAC codec data, status %#x.", (unsigned int)status);
+    return status;
 }
 
 void wg_format_from_caps(struct wg_format *format, const GstCaps *caps)

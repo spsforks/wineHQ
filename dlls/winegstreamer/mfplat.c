@@ -25,6 +25,7 @@
 #include "initguid.h"
 #include "d3d9types.h"
 #include "mfapi.h"
+#include "mferror.h"
 #include "mmreg.h"
 
 #include "wine/debug.h"
@@ -632,22 +633,73 @@ static void mf_media_type_to_wg_format_audio(IMFMediaType *type, const GUID *sub
     FIXME("Unrecognized audio subtype %s, depth %u.\n", debugstr_guid(subtype), depth);
 }
 
+static HRESULT make_dummy_aac_user_data(IMFMediaType *type, BOOL raw, BYTE *out, size_t *len)
+{
+    UINT32 payload_type, profile_level, rate, channels;
+    HEAACWAVEFORMAT *user_data;
+    size_t cdlen = *len, hdrlen;
+    NTSTATUS status;
+
+    if (!raw)
+    {
+        hdrlen = FIELD_OFFSET(HEAACWAVEFORMAT, pbAudioSpecificConfig) - FIELD_OFFSET(HEAACWAVEFORMAT, wfInfo.wPayloadType);
+        if (*len < hdrlen)
+            return E_NOT_SUFFICIENT_BUFFER;
+
+        if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AAC_PAYLOAD_TYPE, &payload_type)))
+            payload_type = 0;
+        else if (payload_type > 3)
+            return MF_E_INVALIDMEDIATYPE;
+        if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, &profile_level)))
+            profile_level = 0x29;
+        else if (profile_level > 0xFFFF)
+            return MF_E_INVALIDMEDIATYPE;
+
+        user_data = (HEAACWAVEFORMAT *)(out - FIELD_OFFSET(HEAACWAVEFORMAT, wfInfo.wPayloadType));
+        user_data->wfInfo.wPayloadType = payload_type;
+        user_data->wfInfo.wAudioProfileLevelIndication = profile_level;
+        out = user_data->pbAudioSpecificConfig;
+        cdlen -= hdrlen;
+    }
+
+    if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate)) ||
+        rate > 0xFFFFFF)
+        return MF_E_INVALIDMEDIATYPE;
+    if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AUDIO_NUM_CHANNELS, &channels)) ||
+        channels < 1 || channels > 8 || channels == 7)
+        return MF_E_INVALIDMEDIATYPE;
+
+    status = wg_create_aac_codec_data(rate, channels, out, &cdlen);
+    if (status)
+        return HRESULT_FROM_NT(status);
+
+    if (raw)
+        *len = cdlen;
+    else
+        *len = FIELD_OFFSET(HEAACWAVEFORMAT, pbAudioSpecificConfig[cdlen]) - FIELD_OFFSET(HEAACWAVEFORMAT, wfInfo.wPayloadType);
+    return S_OK;
+}
+
 static void mf_media_type_to_wg_format_audio_mpeg4(IMFMediaType *type, const GUID *subtype, struct wg_format *format)
 {
     BYTE buffer[sizeof(HEAACWAVEFORMAT) + 64];
     HEAACWAVEFORMAT *wfx = (HEAACWAVEFORMAT *)buffer;
     UINT32 codec_data_size;
-    BOOL raw_aac;
+    BOOL raw_aac = IsEqualGUID(subtype, &MFAudioFormat_RAW_AAC);
+    size_t len = sizeof(buffer) - sizeof(wfx->wfInfo.wfx);
 
     wfx->wfInfo.wfx.cbSize = sizeof(buffer) - sizeof(wfx->wfInfo.wfx);
     if (FAILED(IMFMediaType_GetBlob(type, &MF_MT_USER_DATA, (BYTE *)(&wfx->wfInfo.wfx + 1),
             wfx->wfInfo.wfx.cbSize, &codec_data_size)))
     {
-        FIXME("Codec data is not set.\n");
-        return;
+        if (FAILED(make_dummy_aac_user_data(type, raw_aac, (BYTE *)(&wfx->wfInfo.wfx + 1), &len)))
+        {
+            FIXME("Codec data is not set.\n");
+            return;
+        }
+        codec_data_size = len;
     }
 
-    raw_aac = IsEqualGUID(subtype, &MFAudioFormat_RAW_AAC);
     if (!raw_aac)
         codec_data_size -= min(codec_data_size, sizeof(HEAACWAVEINFO) - sizeof(WAVEFORMATEX));
     if (codec_data_size > sizeof(format->u.audio_mpeg4.codec_data))

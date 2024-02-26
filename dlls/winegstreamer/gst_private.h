@@ -149,6 +149,8 @@ unsigned int wg_format_get_stride(const struct wg_format *format);
 
 bool wg_video_format_is_rgb(enum wg_video_format format);
 
+HRESULT wg_create_aac_codec_data(uint32_t rate, unsigned int channels, uint8_t *out, size_t *out_size);
+
 HRESULT aac_decoder_create(REFIID riid, void **ret);
 HRESULT h264_decoder_create(REFIID riid, void **ret);
 HRESULT video_processor_create(REFIID riid, void **ret);

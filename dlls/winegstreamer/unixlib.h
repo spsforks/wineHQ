@@ -412,6 +412,16 @@ struct wg_muxer_read_data_params
     UINT64 offset;
 };
 
+struct wg_create_aac_codec_data_params
+{
+    UINT32 rate;
+    UINT32 channels;
+    void *buffer;
+    UINT64 size;
+    UINT8 err_on;
+    UINT8 warn_on;
+};
+
 enum unix_funcs
 {
     unix_wg_init_gstreamer,
@@ -460,6 +470,8 @@ enum unix_funcs
     unix_wg_muxer_push_sample,
     unix_wg_muxer_read_data,
     unix_wg_muxer_finalize,
+
+    unix_wg_create_aac_codec_data,
 
     unix_wg_funcs_count,
 };
