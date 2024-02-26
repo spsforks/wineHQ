@@ -446,6 +446,7 @@ static HRESULT WINAPI stream_sink_type_handler_SetCurrentMediaType(IMFMediaTypeH
 static HRESULT WINAPI stream_sink_type_handler_GetCurrentMediaType(IMFMediaTypeHandler *iface, IMFMediaType **type)
 {
     struct stream_sink *stream_sink = impl_from_IMFMediaTypeHandler(iface);
+    HRESULT hr;
 
     TRACE("iface %p, type %p.\n", iface, type);
 
@@ -454,9 +455,13 @@ static HRESULT WINAPI stream_sink_type_handler_GetCurrentMediaType(IMFMediaTypeH
     if (!stream_sink->type)
         return MF_E_NOT_INITIALIZED;
 
-    IMFMediaType_AddRef((*type = stream_sink->type));
+    if (FAILED(hr = MFCreateMediaType(type)))
+        return hr;
 
-    return S_OK;
+    if (FAILED(hr = IMFMediaType_CopyAllItems(stream_sink->type, (IMFAttributes *)*type)))
+        IMFMediaType_Release(*type);
+
+    return hr;
 }
 
 static HRESULT WINAPI stream_sink_type_handler_GetMajorType(IMFMediaTypeHandler *iface, GUID *type)
