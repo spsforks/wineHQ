@@ -7806,11 +7806,8 @@ static void test_mpeg4_media_sink(void)
     hr = MFCreatePresentationClock(&clock);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaSink_SetPresentationClock(sink, NULL);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     hr = IMFMediaSink_SetPresentationClock(sink, clock);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     IMFPresentationClock_Release(clock);
 
