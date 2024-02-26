@@ -1421,6 +1421,14 @@ static HRESULT WINAPI mpeg4_sink_class_factory_CreateMediaSink(IMFSinkClassFacto
     return sink_class_factory_create_media_sink(iface, bytestream, format, video_type, audio_type, out);
 }
 
+static HRESULT WINAPI adts_sink_class_factory_CreateMediaSink(IMFSinkClassFactory *iface, IMFByteStream *bytestream,
+        IMFMediaType *video_type, IMFMediaType *audio_type, IMFMediaSink **out)
+{
+    const char *format = "application/x-gst-av-adts";
+
+    return sink_class_factory_create_media_sink(iface, bytestream, format, video_type, audio_type, out);
+}
+
 static const IMFSinkClassFactoryVtbl mp3_sink_class_factory_vtbl =
 {
     sink_class_factory_QueryInterface,
@@ -1437,8 +1445,17 @@ static const IMFSinkClassFactoryVtbl mpeg4_sink_class_factory_vtbl =
     mpeg4_sink_class_factory_CreateMediaSink,
 };
 
+static const IMFSinkClassFactoryVtbl aac_sink_class_factory_vtbl =
+{
+    sink_class_factory_QueryInterface,
+    sink_class_factory_AddRef,
+    sink_class_factory_Release,
+    adts_sink_class_factory_CreateMediaSink,
+};
+
 static IMFSinkClassFactory mp3_sink_class_factory = { &mp3_sink_class_factory_vtbl };
 static IMFSinkClassFactory mpeg4_sink_class_factory = { &mpeg4_sink_class_factory_vtbl };
+static IMFSinkClassFactory aac_sink_class_factory = { &aac_sink_class_factory_vtbl };
 
 HRESULT mp3_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 {
@@ -1449,5 +1466,11 @@ HRESULT mp3_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 HRESULT mpeg4_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 {
     *out = (IUnknown *)&mpeg4_sink_class_factory;
+    return S_OK;
+}
+
+HRESULT adts_sink_class_factory_create(IUnknown *outer, IUnknown **out)
+{
+    *out = (IUnknown *)&aac_sink_class_factory;
     return S_OK;
 }

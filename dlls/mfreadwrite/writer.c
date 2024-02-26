@@ -1018,6 +1018,7 @@ static HRESULT sink_writer_get_sink_factory_class(const WCHAR *url, IMFAttribute
         { L".mp3", &MFTranscodeContainerType_MP3 },
         { L".wav", &MFTranscodeContainerType_WAVE },
         { L".avi", &MFTranscodeContainerType_AVI },
+        { L".aac", &MFTranscodeContainerType_ADTS },
     };
     static const struct
     {
@@ -1029,6 +1030,7 @@ static HRESULT sink_writer_get_sink_factory_class(const WCHAR *url, IMFAttribute
         { &MFTranscodeContainerType_MP3, &CLSID_MFMP3SinkClassFactory },
         { &MFTranscodeContainerType_WAVE, &CLSID_MFWAVESinkClassFactory },
         { &MFTranscodeContainerType_AVI, &CLSID_MFAVISinkClassFactory },
+        { &MFTranscodeContainerType_ADTS, &CLSID_MFADTSSinkClassFactory },
     };
     const WCHAR *extension;
     GUID container;
