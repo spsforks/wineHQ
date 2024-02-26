@@ -599,7 +599,12 @@ static HRESULT media_sink_start(struct media_sink *media_sink)
 
     media_sink->state = STATE_STARTED;
 
-    return media_sink_queue_stream_event(media_sink, MEStreamSinkStarted);
+    if (FAILED(hr = media_sink_queue_stream_event(media_sink, MEStreamSinkStarted)))
+        TRACE("Queueing MEStreamSinkStarted failed\n");
+    else if (FAILED(hr = media_sink_queue_stream_event(media_sink, MEStreamSinkRequestSample)))
+        TRACE("Queueing MEStreamSinkRequestSample failed\n");
+
+    return hr;
 }
 
 static HRESULT media_sink_stop(struct media_sink *media_sink)
@@ -617,6 +622,7 @@ static HRESULT media_sink_pause(struct media_sink *media_sink)
 
 static HRESULT media_sink_process(struct media_sink *media_sink, IMFSample *sample, UINT32 stream_id)
 {
+    struct stream_sink *stream_sink = NULL;
     wg_muxer_t muxer = media_sink->muxer;
     struct wg_sample *wg_sample;
     LONGLONG time, duration;
@@ -648,6 +654,18 @@ static HRESULT media_sink_process(struct media_sink *media_sink, IMFSample *samp
 
     hr = wg_muxer_push_sample(muxer, wg_sample, stream_id);
     wg_sample_release(wg_sample);
+
+    if (SUCCEEDED(hr))
+    {
+        LIST_FOR_EACH_ENTRY(stream_sink, &media_sink->stream_sinks, struct stream_sink, entry)
+        {
+            if (stream_sink->id == stream_id)
+            {
+                hr = IMFMediaEventQueue_QueueEventParamVar(stream_sink->event_queue, MEStreamSinkRequestSample, &GUID_NULL, S_OK, NULL);
+                break;
+            }
+        }
+    }
 
     return hr;
 }
