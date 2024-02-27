@@ -6019,6 +6019,7 @@ NTSTATUS WINAPI NtDeviceIoControlFile( HANDLE handle, HANDLE event, PIO_APC_ROUT
                                        void *out_buffer, ULONG out_size )
 {
     ULONG device = (code >> 16);
+    ULONG method = (code & 3);
     NTSTATUS status = STATUS_NOT_SUPPORTED;
 
     TRACE( "(%p,%p,%p,%p,%p,0x%08x,%p,0x%08x,%p,0x%08x)\n",
@@ -6029,6 +6030,19 @@ NTSTATUS WINAPI NtDeviceIoControlFile( HANDLE handle, HANDLE event, PIO_APC_ROUT
      * and run slowly if we make a server call every time */
     if (HandleToLong( handle ) == ~0)
         return STATUS_INVALID_HANDLE;
+
+    switch (method)
+    {
+    case METHOD_BUFFERED:
+    case METHOD_IN_DIRECT:
+    case METHOD_OUT_DIRECT:
+        if (in_buffer && in_size && !virtual_check_buffer_for_read(in_buffer, in_size)) return STATUS_ACCESS_VIOLATION;
+        if ((out_buffer || method != METHOD_BUFFERED) && out_size && !virtual_check_buffer_for_write(out_buffer, out_size))
+            return STATUS_ACCESS_VIOLATION;
+        if (!in_buffer && in_size) in_size = 0;
+        if (!out_buffer && out_size) out_size = 0;
+        break;
+    }
 
     switch (device)
     {

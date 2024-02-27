@@ -992,6 +992,11 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
                 context.handle  = wine_server_ptr_handle( reply->next );
                 context.params  = reply->params;
                 context.in_size = reply->in_size;
+                if (!context.in_size)
+                {
+                    HeapFree( GetProcessHeap(), 0, context.in_buff );
+                    context.in_buff = NULL;
+                }
                 client_tid = reply->client_tid;
                 NtCurrentTeb()->Instrumentation[1] = wine_server_get_ptr( reply->client_thread );
             }

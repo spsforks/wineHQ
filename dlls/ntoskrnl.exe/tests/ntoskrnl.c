@@ -1147,6 +1147,57 @@ static void test_blocking_irp(void)
     CloseHandle(file);
 }
 
+static void test_ioctl_buffers(void)
+{
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+    unsigned int j;
+
+    static const struct
+    {
+        void *in;
+        ULONG in_size;
+        void *out;
+        ULONG out_size;
+        NTSTATUS buffered_status, direct_status, neither_status;
+        int todowine[4];
+    }
+    param_tests[] =
+    {
+        {NULL,       0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_END_OF_FILE,         {0, 0, 0, 0}},
+        {NULL,       4, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_2, {0, 0, 0, 1}},
+        {(void *)16, 0, NULL,       0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_1, {0, 0, 0, 1}},
+        {(void *)16, 4, NULL,       0, STATUS_ACCESS_VIOLATION, STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_1, {0, 0, 0, 1}},
+        {NULL,       0, NULL,       4, STATUS_END_OF_FILE,      STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_4, {0, 0, 0, 1}},
+        {NULL,       0, (void *)16, 0, STATUS_END_OF_FILE,      STATUS_END_OF_FILE,      STATUS_INVALID_PARAMETER_3, {0, 0, 0, 1}},
+        {NULL,       0, (void *)16, 4, STATUS_ACCESS_VIOLATION, STATUS_ACCESS_VIOLATION, STATUS_INVALID_PARAMETER_3, {0, 0, 0, 1}},
+    };
+
+    for (j = 0; j < ARRAY_SIZE(param_tests); ++j)
+    {
+        winetest_push_context("test %u", j);
+
+        status = NtDeviceIoControlFile(device, NULL, NULL, NULL, &io, IOCTL_WINETEST_EMPTY_BUFFERED,
+                param_tests[j].in, param_tests[j].in_size, param_tests[j].out, param_tests[j].out_size);
+        todo_wine_if(param_tests[j].todowine[0])
+        ok(status == param_tests[j].buffered_status, "got %#lx\n", status);
+        status = NtDeviceIoControlFile(device, NULL, NULL, NULL, &io, IOCTL_WINETEST_EMPTY_IN_DIRECT,
+                param_tests[j].in, param_tests[j].in_size, param_tests[j].out, param_tests[j].out_size);
+        todo_wine_if(param_tests[j].todowine[1])
+        ok(status == param_tests[j].direct_status, "got %#lx\n", status);
+        status = NtDeviceIoControlFile(device, NULL, NULL, NULL, &io, IOCTL_WINETEST_EMPTY_OUT_DIRECT,
+                param_tests[j].in, param_tests[j].in_size, param_tests[j].out, param_tests[j].out_size);
+        todo_wine_if(param_tests[j].todowine[2])
+        ok(status == param_tests[j].direct_status, "got %#lx\n", status);
+        status = NtDeviceIoControlFile(device, NULL, NULL, NULL, &io, IOCTL_WINETEST_EMPTY_NEITHER,
+                param_tests[j].in, param_tests[j].in_size, param_tests[j].out, param_tests[j].out_size);
+        todo_wine_if(param_tests[j].todowine[3])
+        ok(status == param_tests[j].neither_status, "got %#lx\n", status);
+
+        winetest_pop_context();
+    }
+}
+
 static void test_driver3(struct testsign_context *ctx)
 {
     WCHAR filename[MAX_PATH];
@@ -1953,6 +2004,7 @@ START_TEST(ntoskrnl)
     test_return_status();
     test_object_info();
     test_blocking_irp();
+    test_ioctl_buffers();
 
     /* We need a separate ioctl to call IoDetachDevice(); calling it in the
      * driver unload routine causes a live-lock. */
