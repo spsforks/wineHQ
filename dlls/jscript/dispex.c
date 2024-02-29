@@ -261,7 +261,8 @@ static BOOL get_indexed_prop_idx(jsdisp_t *This, const WCHAR *name, unsigned *re
     return TRUE;
 }
 
-static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret)
+/* Looks up the prop given the name, or its index in case of an indexed prop that we can optimize (in which case it returns S_FALSE and index into ret_idx) */
+static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret, unsigned *ret_idx)
 {
     const builtin_prop_t *builtin;
     unsigned bucket, pos, prev = ~0;
@@ -321,6 +322,12 @@ static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, 
 
     if(get_indexed_prop_idx(This, name, &idx) && idx < This->builtin_info->idx_length(This)) {
         unsigned flags = PROPF_ENUMERABLE;
+
+        if(ret_idx) {
+            *ret_idx = idx;
+            return S_FALSE;
+        }
+
         if(This->builtin_info->idx_put)
             flags |= PROPF_WRITABLE;
         prop = alloc_prop(This, name, PROP_IDX, flags);
@@ -336,13 +343,13 @@ static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, 
     return S_OK;
 }
 
-static HRESULT find_prop_name_prot(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret)
+static HRESULT find_prop_name_prot(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret, unsigned *ret_idx)
 {
     dispex_prop_t *prop, *del=NULL;
     HRESULT hres;
 
-    hres = find_prop_name(This, hash, name, case_insens, &prop);
-    if(FAILED(hres))
+    hres = find_prop_name(This, hash, name, case_insens, &prop, ret_idx);
+    if(hres != S_OK)
         return hres;
     if(prop && prop->type==PROP_DELETED) {
         del = prop;
@@ -353,7 +360,7 @@ static HRESULT find_prop_name_prot(jsdisp_t *This, unsigned hash, const WCHAR *n
     }
 
     if(This->prototype) {
-        hres = find_prop_name_prot(This->prototype, hash, name, case_insens, &prop);
+        hres = find_prop_name_prot(This->prototype, hash, name, case_insens, &prop, NULL);
         if(FAILED(hres))
             return hres;
         if(prop && prop->type != PROP_DELETED) {
@@ -376,13 +383,15 @@ static HRESULT find_prop_name_prot(jsdisp_t *This, unsigned hash, const WCHAR *n
     return S_OK;
 }
 
-static HRESULT ensure_prop_name(jsdisp_t *This, const WCHAR *name, DWORD create_flags, BOOL case_insens, dispex_prop_t **ret)
+static HRESULT ensure_prop_name(jsdisp_t *This, const WCHAR *name, DWORD create_flags, BOOL case_insens, dispex_prop_t **ret, unsigned *ret_idx)
 {
     dispex_prop_t *prop;
     HRESULT hres;
 
-    hres = find_prop_name_prot(This, string_hash(name), name, case_insens, &prop);
-    if(SUCCEEDED(hres) && (!prop || prop->type == PROP_DELETED)) {
+    hres = find_prop_name_prot(This, string_hash(name), name, case_insens, &prop, ret_idx);
+    if(hres != S_OK)
+        return hres;
+    if(!prop || prop->type == PROP_DELETED) {
         TRACE("creating prop %s flags %lx\n", debugstr_w(name), create_flags);
 
         if(prop) {
@@ -631,7 +640,7 @@ static HRESULT fill_props(jsdisp_t *obj)
 
         for(i = 0; i < len; i++) {
             swprintf(name, ARRAY_SIZE(name), L"%u", i);
-            hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop);
+            hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop, NULL);
             if(FAILED(hres))
                 return hres;
         }
@@ -657,9 +666,13 @@ static HRESULT fill_protrefs(jsdisp_t *This)
         return hres;
 
     for(iter = This->prototype->props; iter < This->prototype->props+This->prototype->prop_cnt; iter++) {
-        hres = find_prop_name(This, iter->hash, iter->name, FALSE, &prop);
-        if(FAILED(hres))
-            return hres;
+        unsigned idx;
+        hres = find_prop_name(This, iter->hash, iter->name, FALSE, &prop, &idx);
+        if(hres != S_OK) {
+            if(FAILED(hres))
+                return hres;
+            continue;
+        }
         if(!prop || prop->type==PROP_DELETED) {
             if(prop) {
                 prop->type = PROP_PROTREF;
@@ -2068,6 +2081,7 @@ static HRESULT WINAPI DispatchEx_DeleteMemberByName(IDispatchEx *iface, BSTR bst
 {
     jsdisp_t *This = impl_from_IDispatchEx(iface);
     dispex_prop_t *prop;
+    unsigned idx;
     BOOL b;
     HRESULT hres;
 
@@ -2076,9 +2090,9 @@ static HRESULT WINAPI DispatchEx_DeleteMemberByName(IDispatchEx *iface, BSTR bst
     if(grfdex & ~(fdexNameCaseSensitive|fdexNameCaseInsensitive|fdexNameEnsure|fdexNameImplicit|FDEX_VERSION_MASK))
         FIXME("Unsupported grfdex %lx\n", grfdex);
 
-    hres = find_prop_name(This, string_hash(bstrName), bstrName, grfdex & fdexNameCaseInsensitive, &prop);
-    if(FAILED(hres))
-        return hres;
+    hres = find_prop_name(This, string_hash(bstrName), bstrName, grfdex & fdexNameCaseInsensitive, &prop, &idx);
+    if(hres != S_OK)
+        return FAILED(hres) ? hres : S_OK;
     if(!prop) {
         TRACE("not found\n");
         return S_OK;
@@ -2311,7 +2325,7 @@ HRESULT init_dispex_from_constr(jsdisp_t *dispex, script_ctx_t *ctx, const built
     dispex_prop_t *prop;
     HRESULT hres;
 
-    hres = find_prop_name_prot(constr, string_hash(L"prototype"), L"prototype", FALSE, &prop);
+    hres = find_prop_name_prot(constr, string_hash(L"prototype"), L"prototype", FALSE, &prop, NULL);
     if(SUCCEEDED(hres) && prop && prop->type!=PROP_DELETED) {
         jsval_t val;
 
@@ -2350,9 +2364,9 @@ HRESULT jsdisp_get_id(jsdisp_t *jsdisp, const WCHAR *name, DWORD flags, DISPID *
 
     if(jsdisp->extensible && (flags & fdexNameEnsure))
         hres = ensure_prop_name(jsdisp, name, PROPF_ENUMERABLE | PROPF_CONFIGURABLE | PROPF_WRITABLE,
-                                flags & fdexNameCaseInsensitive, &prop);
+                                flags & fdexNameCaseInsensitive, &prop, NULL);
     else
-        hres = find_prop_name_prot(jsdisp, string_hash(name), name, flags & fdexNameCaseInsensitive, &prop);
+        hres = find_prop_name_prot(jsdisp, string_hash(name), name, flags & fdexNameCaseInsensitive, &prop, NULL);
     if(FAILED(hres))
         return hres;
 
@@ -2413,7 +2427,7 @@ HRESULT jsdisp_call_name(jsdisp_t *disp, const WCHAR *name, WORD flags, unsigned
     dispex_prop_t *prop;
     HRESULT hres;
 
-    hres = find_prop_name_prot(disp, string_hash(name), name, FALSE, &prop);
+    hres = find_prop_name_prot(disp, string_hash(name), name, FALSE, &prop, NULL);
     if(FAILED(hres))
         return hres;
 
@@ -2649,14 +2663,17 @@ HRESULT disp_call_value_with_caller(script_ctx_t *ctx, IDispatch *disp, jsval_t 
 HRESULT jsdisp_propput(jsdisp_t *obj, const WCHAR *name, DWORD flags, BOOL throw, jsval_t val)
 {
     dispex_prop_t *prop;
+    unsigned idx;
     HRESULT hres;
 
     if(obj->extensible)
-        hres = ensure_prop_name(obj, name, flags, FALSE, &prop);
+        hres = ensure_prop_name(obj, name, flags, FALSE, &prop, &idx);
     else
-        hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop);
+        hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop, &idx);
     if(FAILED(hres))
         return hres;
+    if(hres == S_FALSE)
+        return obj->builtin_info->idx_put ? obj->builtin_info->idx_put(obj, idx, val) : S_OK;
     if(!prop || (prop->type == PROP_DELETED && !obj->extensible))
         return throw ? JS_E_INVALID_ACTION : S_OK;
 
@@ -2753,11 +2770,14 @@ HRESULT disp_propput_name(script_ctx_t *ctx, IDispatch *disp, const WCHAR *name,
 HRESULT jsdisp_propget_name(jsdisp_t *obj, const WCHAR *name, jsval_t *val)
 {
     dispex_prop_t *prop;
+    unsigned idx;
     HRESULT hres;
 
-    hres = find_prop_name_prot(obj, string_hash(name), name, FALSE, &prop);
+    hres = find_prop_name_prot(obj, string_hash(name), name, FALSE, &prop, &idx);
     if(FAILED(hres))
         return hres;
+    if(hres == S_FALSE)
+        return obj->builtin_info->idx_get(obj, idx, val);
 
     if(!prop || prop->type==PROP_DELETED) {
         *val = jsval_undefined();
@@ -2771,13 +2791,16 @@ HRESULT jsdisp_get_idx(jsdisp_t *obj, DWORD idx, jsval_t *r)
 {
     WCHAR name[12];
     dispex_prop_t *prop;
+    unsigned tmp;
     HRESULT hres;
 
     swprintf(name, ARRAY_SIZE(name), L"%d", idx);
 
-    hres = find_prop_name_prot(obj, string_hash(name), name, FALSE, &prop);
+    hres = find_prop_name_prot(obj, string_hash(name), name, FALSE, &prop, &tmp);
     if(FAILED(hres))
         return hres;
+    if(hres == S_FALSE)
+        return obj->builtin_info->idx_get(obj, idx, r);
 
     if(!prop || prop->type==PROP_DELETED) {
         *r = jsval_undefined();
@@ -2827,14 +2850,17 @@ HRESULT jsdisp_delete_idx(jsdisp_t *obj, DWORD idx)
 {
     WCHAR buf[12];
     dispex_prop_t *prop;
+    unsigned tmp;
     BOOL b;
     HRESULT hres;
 
     swprintf(buf, ARRAY_SIZE(buf), L"%d", idx);
 
-    hres = find_prop_name(obj, string_hash(buf), buf, FALSE, &prop);
-    if(FAILED(hres) || !prop)
-        return hres;
+    hres = find_prop_name(obj, string_hash(buf), buf, FALSE, &prop, &tmp);
+    if(hres != S_OK)
+        return FAILED(hres) ? hres : S_OK;
+    if(!prop)
+        return S_OK;
 
     hres = delete_prop(prop, &b);
     if(FAILED(hres))
@@ -2921,6 +2947,7 @@ HRESULT disp_delete_name(script_ctx_t *ctx, IDispatch *disp, jsstr_t *name, BOOL
     if(jsdisp) {
         dispex_prop_t *prop;
         const WCHAR *ptr;
+        unsigned idx;
 
         ptr = jsstr_flatten(name);
         if(!ptr) {
@@ -2928,12 +2955,14 @@ HRESULT disp_delete_name(script_ctx_t *ctx, IDispatch *disp, jsstr_t *name, BOOL
             return E_OUTOFMEMORY;
         }
 
-        hres = find_prop_name(jsdisp, string_hash(ptr), ptr, FALSE, &prop);
-        if(prop) {
+        hres = find_prop_name(jsdisp, string_hash(ptr), ptr, FALSE, &prop, &idx);
+        if(hres != S_OK) {
+            *ret = FALSE;
+            hres = S_OK;
+        }else if(prop) {
             hres = delete_prop(prop, ret);
         }else {
             *ret = TRUE;
-            hres = S_OK;
         }
 
         jsdisp_release(jsdisp);
@@ -2973,11 +3002,25 @@ HRESULT jsdisp_get_own_property(jsdisp_t *obj, const WCHAR *name, BOOL flags_onl
                                 property_desc_t *desc)
 {
     dispex_prop_t *prop;
+    unsigned idx;
     HRESULT hres;
 
-    hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop);
+    hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop, &idx);
     if(FAILED(hres))
         return hres;
+
+    if(hres == S_FALSE) {
+        memset(desc, 0, sizeof(*desc));
+        if(!flags_only) {
+            hres = obj->builtin_info->idx_get(obj, idx, &desc->value);
+            if(FAILED(hres))
+                return hres;
+        }
+        desc->flags = PROPF_ENUMERABLE | (obj->builtin_info->idx_put ? PROPF_WRITABLE : 0);
+        desc->mask  = PROPF_ENUMERABLE | PROPF_WRITABLE | PROPF_CONFIGURABLE;
+        desc->explicit_value = TRUE;
+        return S_OK;
+    }
 
     if(!prop)
         return DISP_E_UNKNOWNNAME;
@@ -3019,7 +3062,7 @@ HRESULT jsdisp_define_property(jsdisp_t *obj, const WCHAR *name, property_desc_t
     dispex_prop_t *prop;
     HRESULT hres;
 
-    hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop);
+    hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop, NULL);
     if(FAILED(hres))
         return hres;
 
