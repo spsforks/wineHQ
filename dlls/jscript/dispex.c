@@ -254,8 +254,11 @@ static BOOL get_indexed_prop_idx(jsdisp_t *This, const WCHAR *name, unsigned *re
 
     for(ptr = name; is_digit(*ptr) && idx <= (UINT_MAX-9 / 10); ptr++)
         idx = idx*10 + (*ptr-'0');
-    if(*ptr)
-        return FALSE;
+    if(*ptr) {
+        while(is_digit(*ptr)) ptr++;
+        if(*ptr) return FALSE;
+        idx = UINT_MAX;
+    }
 
     *ret_idx = idx;
     return TRUE;
@@ -264,11 +267,26 @@ static BOOL get_indexed_prop_idx(jsdisp_t *This, const WCHAR *name, unsigned *re
 /* Looks up the prop given the name, or its index in case of an indexed prop that we can optimize (in which case it returns S_FALSE and index into ret_idx) */
 static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret, unsigned *ret_idx)
 {
+    BOOL is_typedarr = (This->builtin_info->class >= FIRST_TYPEDARRAY_JSCLASS && This->builtin_info->class <= LAST_TYPEDARRAY_JSCLASS);
     const builtin_prop_t *builtin;
     unsigned bucket, pos, prev = ~0;
     dispex_prop_t *prop;
     unsigned idx;
     HRESULT hres;
+
+    /* Typed Arrays are very much special, they override every positive index no matter what (not even consulting prototype), even if out of bounds! */
+    if(is_typedarr && get_indexed_prop_idx(This, name, &idx)) {
+        if(idx >= This->builtin_info->idx_length(This)) {
+             if(ret_idx)
+                *ret_idx = UINT_MAX;
+             return DISP_E_UNKNOWNNAME;
+        }
+        if(ret_idx) {
+            *ret_idx = idx;
+            return S_FALSE;
+        }
+        is_typedarr = FALSE;  /* allow PROP_IDX allocation (e.g. for enumeration) */
+    }
 
     bucket = get_props_idx(This, hash);
     pos = This->props[bucket].bucket_head;
@@ -320,7 +338,7 @@ static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, 
         return S_OK;
     }
 
-    if(get_indexed_prop_idx(This, name, &idx) && idx < This->builtin_info->idx_length(This)) {
+    if(!is_typedarr && get_indexed_prop_idx(This, name, &idx) && idx < This->builtin_info->idx_length(This)) {
         unsigned flags = PROPF_ENUMERABLE;
 
         if(ret_idx) {
@@ -339,6 +357,8 @@ static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, 
         return S_OK;
     }
 
+    if(ret_idx)
+       *ret_idx = 0;
     return DISP_E_UNKNOWNNAME;
 }
 
@@ -395,6 +415,8 @@ static HRESULT ensure_prop_name(jsdisp_t *This, const WCHAR *name, DWORD create_
     if(hres != S_OK) {
         if(hres != DISP_E_UNKNOWNNAME)
             return hres;
+        if(ret_idx && *ret_idx == UINT_MAX)
+            return DISP_E_UNKNOWNNAME;
 
         TRACE("creating new prop %s flags %lx\n", debugstr_w(name), create_flags);
         if(!(prop = alloc_prop(This, name, PROP_JSVAL, create_flags)))
@@ -674,6 +696,8 @@ static HRESULT fill_protrefs(jsdisp_t *This)
                     return hres;
                 continue;
             }
+            if(idx == UINT_MAX)
+                continue;
             if(!alloc_protref(This, iter->name, iter - This->prototype->props))
                 return E_OUTOFMEMORY;
         }else if(prop->type==PROP_DELETED) {
@@ -2963,7 +2987,7 @@ HRESULT disp_delete_name(script_ctx_t *ctx, IDispatch *disp, jsstr_t *name, BOOL
         if(hres == S_OK)
             hres = delete_prop(prop, ret);
         else {
-            *ret = (hres == DISP_E_UNKNOWNNAME);
+            *ret = (hres == DISP_E_UNKNOWNNAME && idx != UINT_MAX);
             hres = S_OK;
         }
 
@@ -3059,7 +3083,20 @@ HRESULT jsdisp_get_own_property(jsdisp_t *obj, const WCHAR *name, BOOL flags_onl
 HRESULT jsdisp_define_property(jsdisp_t *obj, const WCHAR *name, property_desc_t *desc)
 {
     dispex_prop_t *prop;
+    unsigned idx;
     HRESULT hres;
+
+    /* Typed Arrays have special rules here; any attempt to change their properties fails, and defining them acts like a setter! */
+    if(obj->builtin_info->class >= FIRST_TYPEDARRAY_JSCLASS && obj->builtin_info->class <= LAST_TYPEDARRAY_JSCLASS &&
+       get_indexed_prop_idx(obj, name, &idx)) {
+        if((desc->flags & desc->mask) != (desc->mask & (PROPF_WRITABLE | PROPF_ENUMERABLE)))
+            return throw_error(obj->ctx, JS_E_NONCONFIGURABLE_REDEFINED, name);
+        if(desc->explicit_value)
+            return idx < obj->builtin_info->idx_length(obj) ? obj->builtin_info->idx_put(obj, idx, desc->value) : S_OK;
+        if(desc->explicit_getter || desc->explicit_setter)
+            return throw_error(obj->ctx, JS_E_NONCONFIGURABLE_REDEFINED, name);
+        return idx < obj->builtin_info->idx_length(obj) ? obj->builtin_info->idx_put(obj, idx, jsval_undefined()) : S_OK;
+    }
 
     hres = find_prop_name(obj, string_hash(name), name, FALSE, &prop, NULL);
     if(FAILED(hres)) {
