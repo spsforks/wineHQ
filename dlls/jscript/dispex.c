@@ -244,11 +244,29 @@ static dispex_prop_t *alloc_protref(jsdisp_t *This, const WCHAR *name, DWORD ref
     return ret;
 }
 
+static BOOL get_indexed_prop_idx(jsdisp_t *This, const WCHAR *name, unsigned *ret_idx)
+{
+    const WCHAR *ptr;
+    unsigned idx = 0;
+
+    if(!This->builtin_info->idx_length)
+        return FALSE;
+
+    for(ptr = name; is_digit(*ptr) && idx <= (UINT_MAX-9 / 10); ptr++)
+        idx = idx*10 + (*ptr-'0');
+    if(*ptr)
+        return FALSE;
+
+    *ret_idx = idx;
+    return TRUE;
+}
+
 static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, BOOL case_insens, dispex_prop_t **ret)
 {
     const builtin_prop_t *builtin;
     unsigned bucket, pos, prev = ~0;
     dispex_prop_t *prop;
+    unsigned idx;
     HRESULT hres;
 
     bucket = get_props_idx(This, hash);
@@ -301,24 +319,17 @@ static HRESULT find_prop_name(jsdisp_t *This, unsigned hash, const WCHAR *name, 
         return S_OK;
     }
 
-    if(This->builtin_info->idx_length) {
-        const WCHAR *ptr;
-        unsigned idx = 0;
+    if(get_indexed_prop_idx(This, name, &idx) && idx < This->builtin_info->idx_length(This)) {
+        unsigned flags = PROPF_ENUMERABLE;
+        if(This->builtin_info->idx_put)
+            flags |= PROPF_WRITABLE;
+        prop = alloc_prop(This, name, PROP_IDX, flags);
+        if(!prop)
+            return E_OUTOFMEMORY;
 
-        for(ptr = name; is_digit(*ptr) && idx < 0x10000; ptr++)
-            idx = idx*10 + (*ptr-'0');
-        if(!*ptr && idx < This->builtin_info->idx_length(This)) {
-            unsigned flags = PROPF_ENUMERABLE;
-            if(This->builtin_info->idx_put)
-                flags |= PROPF_WRITABLE;
-            prop = alloc_prop(This, name, PROP_IDX, flags);
-            if(!prop)
-                return E_OUTOFMEMORY;
-
-            prop->u.idx = idx;
-            *ret = prop;
-            return S_OK;
-        }
+        prop->u.idx = idx;
+        *ret = prop;
+        return S_OK;
     }
 
     *ret = NULL;
