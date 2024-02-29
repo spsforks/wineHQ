@@ -1322,7 +1322,7 @@ void WCMD_execute (const WCHAR *command, const WCHAR *redirects,
 
     /* Check if the command entered is internal, and identify which one */
     count = 0;
-    while (IsCharAlphaNumericW(whichcmd[count])) {
+    while (IsCharAlphaNumericW(whichcmd[count]) || (count>0 && whichcmd[count] == '.')) {
       count++;
     }
     for (i=0; i<=WCMD_EXIT; i++) {
