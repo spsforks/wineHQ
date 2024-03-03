@@ -2402,7 +2402,9 @@ static void *mac_thread_gsbase(void)
 void signal_init_process(void)
 {
     struct sigaction sig_act;
+#if defined(__linux__) || defined(__APPLE__)
     WOW_TEB *wow_teb = get_wow_teb( NtCurrentTeb() );
+#endif
     void *ptr, *kernel_stack = (char *)ntdll_get_thread_data()->kernel_stack + kernel_stack_size;
 
     amd64_thread_data()->syscall_frame = (struct syscall_frame *)((ULONG_PTR)((char *)kernel_stack
