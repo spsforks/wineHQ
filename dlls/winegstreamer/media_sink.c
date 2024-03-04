@@ -794,6 +794,9 @@ static HRESULT WINAPI media_sink_AddStreamSink(IMFFinalizableMediaSink *iface, D
     TRACE("iface %p, stream_sink_id %#lx, media_type %p, stream_sink %p.\n",
             iface, stream_sink_id, media_type, stream_sink);
 
+    if (stream_sink)
+        *stream_sink = NULL;
+
     EnterCriticalSection(&media_sink->cs);
 
     if (media_sink_get_stream_sink_by_id(media_sink, stream_sink_id))
