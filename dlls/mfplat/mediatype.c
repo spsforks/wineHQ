@@ -2996,11 +2996,7 @@ HRESULT WINAPI MFCreateWaveFormatExFromMFMediaType(IMFMediaType *mediatype, WAVE
         return E_INVALIDARG;
 
     if (FAILED(hr = IMFMediaType_GetBlobSize(mediatype, &MF_MT_USER_DATA, &user_size)))
-    {
-        if (!IsEqualGUID(&subtype, &MFAudioFormat_PCM) && !IsEqualGUID(&subtype, &MFAudioFormat_Float))
-            return hr;
         user_size = 0;
-    }
 
     if (flags == MFWaveFormatExConvertFlag_ForceExtensible)
         extra_size = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(*format);
