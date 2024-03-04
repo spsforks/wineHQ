@@ -7602,8 +7602,9 @@ static void test_MFRequireProtectedEnvironment(void)
 
 static void test_mpeg4_media_sink(void)
 {
-    IMFMediaSink *sink = NULL, *sink2 = NULL, *sink_audio = NULL, *sink_video = NULL, *sink_empty = NULL;
-    IMFByteStream *bytestream, *bytestream_audio, *bytestream_video, *bytestream_empty;
+    IMFMediaSink *sink = NULL, *sink2 = NULL, *sink_audio = NULL, *sink_video = NULL, *sink_empty = NULL,
+            *sink_no_user_data = NULL;
+    IMFByteStream *bytestream, *bytestream_audio, *bytestream_video, *bytestream_empty, *bytestream_no_user_data;
     DWORD id, count, flags, width = 96, height = 96;
     IMFMediaType *audio_type, *video_type, *media_type;
     IMFMediaTypeHandler *type_handler = NULL;
@@ -7634,8 +7635,6 @@ static void test_mpeg4_media_sink(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = IMFMediaType_SetUINT32(audio_type, &MF_MT_AAC_PAYLOAD_TYPE, 0);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFMediaType_SetBlob(audio_type, &MF_MT_USER_DATA, test_aac_codec_data, sizeof(test_aac_codec_data));
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = IMFMediaType_SetGUID(video_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -7649,6 +7648,8 @@ static void test_mpeg4_media_sink(void)
             test_h264_sequence_header, sizeof(test_h264_sequence_header));
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+    hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_no_user_data);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_audio);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = MFCreateTempFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_DELETE_IF_EXIST, 0, &bytestream_video);
@@ -7669,6 +7670,15 @@ static void test_mpeg4_media_sink(void)
 
     hr = MFCreateMPEG4MediaSink(bytestream_empty, NULL, NULL, &sink_empty);
     ok(hr == S_OK || broken(hr == E_INVALIDARG), "Unexpected hr %#lx.\n", hr);
+
+    hr = MFCreateMPEG4MediaSink(bytestream_no_user_data, NULL, audio_type, &sink_no_user_data);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    IMFMediaSink_Release(sink_no_user_data);
+    IMFByteStream_Release(bytestream_no_user_data);
+
+    hr = IMFMediaType_SetBlob(audio_type, &MF_MT_USER_DATA, test_aac_codec_data, sizeof(test_aac_codec_data));
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = MFCreateMPEG4MediaSink(bytestream_audio, NULL, audio_type, &sink_audio);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
