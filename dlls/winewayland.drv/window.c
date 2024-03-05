@@ -158,6 +158,41 @@ static void wayland_win_data_release(struct wayland_win_data *data)
     pthread_mutex_unlock(&win_data_mutex);
 }
 
+static double get_window_mode_change_scale(HWND hwnd)
+{
+    MONITORINFOEXW mi = {.cbSize = sizeof(mi)};
+    HMONITOR hmon;
+    struct gdi_virtual *virtual;
+    struct wayland_output *output;
+    double scale = 1.0;
+    WCHAR name[128];
+
+    if (!(hmon = NtUserMonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY)) ||
+        !NtUserGetMonitorInfo(hmon, (MONITORINFO *)&mi))
+        return 1.0;
+
+    pthread_mutex_lock(&process_wayland.output_mutex);
+
+    for (virtual = process_wayland.virtual; virtual && virtual->mode.dmSize; ++virtual)
+    {
+        if (wcscmp(virtual->mode.dmDeviceName, mi.szDevice)) continue;
+        wl_list_for_each(output, &process_wayland.output_list, link)
+        {
+            asciiz_to_unicodez(name, output->current.name, ARRAY_SIZE(name));
+            if (wcscmp(name, virtual->virtual_id)) continue;
+            if (!output->current.mode.width || !output->current.mode.height) continue;
+            scale = min(output->current.mode.width / (double)virtual->mode.dmPelsWidth,
+                        output->current.mode.height / (double)virtual->mode.dmPelsHeight);
+            break;
+        }
+        break;
+    }
+
+    pthread_mutex_unlock(&process_wayland.output_mutex);
+
+    return scale;
+}
+
 static void wayland_win_data_get_config(struct wayland_win_data *data,
                                         struct wayland_window_config *conf)
 {
@@ -185,6 +220,8 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
 
     conf->state = window_state;
     conf->scale = NtUserGetDpiForWindow(data->hwnd) / 96.0;
+    /* Adjust the window scale for the current display mode. */
+    conf->scale /= get_window_mode_change_scale(data->hwnd);
     conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;
     conf->managed = data->managed;
 }
@@ -614,6 +651,24 @@ static void wayland_configure_window(HWND hwnd)
     NtUserSetWindowPos(hwnd, 0, 0, 0, window_width, window_height, flags);
 }
 
+static void wayland_refresh_window(HWND hwnd)
+{
+    struct wayland_win_data *data;
+
+    if (!(data = wayland_win_data_get(hwnd))) return;
+
+    if (data->wayland_surface)
+    {
+        pthread_mutex_lock(&data->wayland_surface->mutex);
+        wayland_win_data_get_config(data, &data->wayland_surface->window);
+        if (wayland_surface_reconfigure(data->wayland_surface))
+            wl_surface_commit(data->wayland_surface->wl_surface);
+        pthread_mutex_unlock(&data->wayland_surface->mutex);
+    }
+
+    wayland_win_data_release(data);
+}
+
 /**********************************************************************
  *           WAYLAND_WindowMessage
  */
@@ -630,6 +685,9 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_WAYLAND_SET_FOREGROUND:
         NtUserSetForegroundWindow(hwnd);
+        return 0;
+    case WM_WAYLAND_REFRESH:
+        wayland_refresh_window(hwnd);
         return 0;
     default:
         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
@@ -749,4 +807,35 @@ struct wayland_surface *wayland_surface_lock_hwnd(HWND hwnd)
     wayland_win_data_release(data);
 
     return surface;
+}
+
+/**********************************************************************
+ *           enum_process_windows
+ */
+void enum_process_windows(void (*cb)(HWND hwnd))
+{
+    struct wayland_win_data *data;
+    HWND *hwnds = NULL;
+    UINT num_hwnds = 0, i = 0;
+
+    pthread_mutex_lock(&win_data_mutex);
+
+    RB_FOR_EACH_ENTRY(data, &win_data_rb, struct wayland_win_data, entry)
+        ++num_hwnds;
+
+    if (num_hwnds && (hwnds = malloc(num_hwnds * sizeof(*hwnds))))
+    {
+        RB_FOR_EACH_ENTRY(data, &win_data_rb, struct wayland_win_data, entry)
+            hwnds[i++] = data->hwnd;
+    }
+    else
+    {
+        num_hwnds = 0;
+    }
+
+    pthread_mutex_unlock(&win_data_mutex);
+
+    for (i = 0; i < num_hwnds; i++) cb(hwnds[i]);
+
+    free(hwnds);
 }

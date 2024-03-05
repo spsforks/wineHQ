@@ -62,6 +62,7 @@ enum wayland_window_message
     WM_WAYLAND_INIT_DISPLAY_DEVICES = WM_WINE_FIRST_DRIVER_MSG,
     WM_WAYLAND_CONFIGURE,
     WM_WAYLAND_SET_FOREGROUND,
+    WM_WAYLAND_REFRESH,
 };
 
 enum wayland_surface_config_state
@@ -128,13 +129,13 @@ struct wayland
     struct wayland_keyboard keyboard;
     struct wayland_pointer pointer;
     struct wl_list output_list;
+    struct gdi_virtual *virtual;
     /* Protects the output_list and the wayland_output.current states. */
     pthread_mutex_t output_mutex;
 };
 
 struct wayland_output_mode
 {
-    struct rb_entry entry;
     int32_t width;
     int32_t height;
     int32_t refresh;
@@ -142,8 +143,7 @@ struct wayland_output_mode
 
 struct wayland_output_state
 {
-    struct rb_tree modes;
-    struct wayland_output_mode *current_mode;
+    struct wayland_output_mode mode;
     char *name;
     int logical_x, logical_y;
     int logical_w, logical_h;
@@ -312,6 +312,19 @@ static inline LRESULT send_message(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 RGNDATA *get_region_data(HRGN region);
 
+/* Returns TRUE if dst contains a complete unicode copy of src, FALSE if truncation
+ * occurred. If n > 0 dst is always NULL terminated. */
+static inline BOOL asciiz_to_unicodez(WCHAR *dst, const char *src, size_t n)
+{
+    WCHAR *p = dst;
+    if (!n) return FALSE;
+    while (n && *src) { *p++ = *src++; n--; }
+    if (!n) p[-1] = 0; else *p = 0;
+    return !!n;
+}
+
+void enum_process_windows(void (*cb)(HWND hwnd));
+
 /**********************************************************************
  *          USER driver functions
  */
@@ -319,6 +332,7 @@ RGNDATA *get_region_data(HRGN region);
 BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset);
 LRESULT WAYLAND_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 void WAYLAND_DestroyWindow(HWND hwnd);
+void WAYLAND_NotifyVirtualDevices(const struct gdi_virtual *virtual);
 void WAYLAND_SetCursor(HWND hwnd, HCURSOR hcursor);
 LRESULT WAYLAND_SysCommand(HWND hwnd, WPARAM wparam, LPARAM lparam);
 BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manager,

@@ -175,6 +175,7 @@ static const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
 static const WCHAR symbolic_link_valueW[] =
     {'S','y','m','b','o','l','i','c','L','i','n','k','V','a','l','u','e',0};
 static const WCHAR state_flagsW[] = {'S','t','a','t','e','F','l','a','g','s',0};
+static const WCHAR virtual_idW[] = {'V','i','r','t','u','a','l','I','D',0};
 static const WCHAR gpu_idW[] = {'G','P','U','I','D',0};
 static const WCHAR hardware_idW[] = {'H','a','r','d','w','a','r','e','I','D',0};
 static const WCHAR device_descW[] = {'D','e','v','i','c','e','D','e','s','c',0};
@@ -242,6 +243,7 @@ struct adapter
     const WCHAR *config_key;
     unsigned int mode_count;
     DEVMODEW *modes;
+    WCHAR virtual_id[128];
 };
 
 #define MONITOR_INFO_HAS_MONITOR_ID 0x00000001
@@ -760,6 +762,10 @@ static BOOL read_display_adapter_settings( unsigned int index, struct adapter *i
     if (query_reg_value( hkey, state_flagsW, value, sizeof(buffer) ) && value->Type == REG_DWORD)
         info->dev.state_flags = *(const DWORD *)value->Data;
 
+    /* VirtualID */
+    if (query_reg_value( hkey, virtual_idW, value, sizeof(buffer) ) && value->Type == REG_SZ)
+        memcpy( info->virtual_id, value_str, value->DataLength );
+
     /* Interface name */
     info->dev.interface_name[0] = 0;
 
@@ -1122,6 +1128,14 @@ static unsigned int format_date( WCHAR *bufferW, LONGLONG time )
     return asciiz_to_unicode( bufferW, buffer );
 }
 
+struct host_adapter
+{
+    struct gdi_adapter gdi;
+    UINT width;
+    UINT height;
+    UINT bpp;
+};
+
 struct device_manager_ctx
 {
     unsigned int gpu_count;
@@ -1136,10 +1150,7 @@ struct device_manager_ctx
     LUID gpu_luid;
     HKEY adapter_key;
     /* for the virtual desktop settings */
-    BOOL is_primary;
-    UINT primary_bpp;
-    UINT primary_width;
-    UINT primary_height;
+    struct host_adapter *host_adapters;
 };
 
 static void link_device( const WCHAR *instance, const WCHAR *class )
@@ -1469,6 +1480,8 @@ static void add_adapter( const struct gdi_adapter *adapter, void *param )
                    (lstrlenW( ctx->gpuid ) + 1) * sizeof(WCHAR) );
     set_reg_value( ctx->adapter_key, state_flagsW, REG_DWORD, &adapter->state_flags,
                    sizeof(adapter->state_flags) );
+    set_reg_value( ctx->adapter_key, virtual_idW, REG_SZ , adapter->virtual_id,
+                   (lstrlenW( ctx->gpuid ) + 1) * sizeof(WCHAR) );
 }
 
 static void add_monitor( const struct gdi_monitor *monitor, void *param )
@@ -1633,6 +1646,7 @@ static void reset_display_manager_ctx( struct device_manager_ctx *ctx )
         last_query_display_time = 0;
     }
     if (ctx->gpu_count) cleanup_devices();
+    free( ctx->host_adapters );
 
     memset( ctx, 0, sizeof(*ctx) );
     if ((ctx->mutex = mutex)) prepare_devices();
@@ -1933,7 +1947,19 @@ static void desktop_add_gpu( const struct gdi_gpu *gpu, void *param )
 static void desktop_add_adapter( const struct gdi_adapter *adapter, void *param )
 {
     struct device_manager_ctx *ctx = param;
-    ctx->is_primary = !!(adapter->state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE);
+    struct host_adapter *new_adapters, *host_adapter;
+
+    if (!(adapter->state_flags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)) return;
+
+    new_adapters = realloc( ctx->host_adapters,
+                            sizeof(*ctx->host_adapters) * (ctx->adapter_count + 1) );
+    if (!new_adapters) return;
+    ctx->host_adapters = new_adapters;
+    ++ctx->adapter_count;
+    host_adapter = &ctx->host_adapters[ctx->adapter_count - 1];
+
+    memset( host_adapter, 0, sizeof(*host_adapter) );
+    host_adapter->gdi = *adapter;
 }
 
 static void desktop_add_monitor( const struct gdi_monitor *monitor, void *param )
@@ -1943,12 +1969,16 @@ static void desktop_add_monitor( const struct gdi_monitor *monitor, void *param 
 static void desktop_add_mode( const DEVMODEW *mode, BOOL current, void *param )
 {
     struct device_manager_ctx *ctx = param;
+    struct host_adapter *host_adapter;
 
-    if (ctx->is_primary && current)
+    if (!ctx->adapter_count) return;
+    host_adapter = &ctx->host_adapters[ctx->adapter_count - 1];
+
+    if (current)
     {
-        ctx->primary_bpp = mode->dmBitsPerPel;
-        ctx->primary_width = mode->dmPelsWidth;
-        ctx->primary_height = mode->dmPelsHeight;
+        host_adapter->bpp = mode->dmBitsPerPel;
+        host_adapter->width = mode->dmPelsWidth;
+        host_adapter->height = mode->dmPelsHeight;
     }
 }
 
@@ -1960,12 +1990,67 @@ static const struct gdi_device_manager desktop_device_manager =
     desktop_add_mode,
 };
 
-static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
+static struct host_adapter *get_primary_host_adapter( struct device_manager_ctx *ctx )
 {
-    static const struct gdi_gpu gpu;
-    static const struct gdi_adapter adapter =
+    UINT i;
+    for (i = 0; i < ctx->adapter_count; i++)
     {
-        .state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE | DISPLAY_DEVICE_VGA_COMPATIBLE,
+        if (ctx->host_adapters[i].gdi.state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE)
+            return &ctx->host_adapters[i];
+    }
+    return NULL;
+}
+
+static HKEY get_adapter_key_for_virtual_id( WCHAR *virtual_id )
+{
+    char buffer[4096];
+    KEY_NAME_INFORMATION *key = (KEY_NAME_INFORMATION *)buffer;
+    KEY_VALUE_PARTIAL_INFORMATION *value = (KEY_VALUE_PARTIAL_INFORMATION *)buffer;
+    WCHAR bufferW[MAX_PATH];
+    DWORD len, i, j;
+    HKEY hkey, gpu_key = NULL, adapter_key = NULL;
+
+    len = asciiz_to_unicode( bufferW, "System\\CurrentControlSet\\Control\\Video" ) / sizeof(WCHAR) - 1;
+    hkey = reg_open_key( config_key, bufferW, len * sizeof(WCHAR) );
+    i = 0;
+
+    while (!NtEnumerateKey( hkey, i++, KeyNameInformation, key, sizeof(buffer), &len ))
+    {
+        gpu_key = reg_open_key( NULL, key->Name, key->NameLength );
+        j = 0;
+
+        while (!NtEnumerateKey( gpu_key, j++, KeyNameInformation, key, sizeof(buffer), &len ))
+        {
+            adapter_key = reg_open_key( NULL, key->Name, key->NameLength );
+
+            if (query_reg_value( adapter_key, virtual_idW, value, sizeof(buffer) ) &&
+                value->Type == REG_SZ && !wcscmp( (WCHAR *)value->Data, virtual_id ))
+            {
+                goto done;
+            }
+
+            NtClose( adapter_key );
+            adapter_key = NULL;
+        }
+
+        NtClose( gpu_key );
+        gpu_key = NULL;
+    }
+
+done:
+    NtClose( gpu_key );
+    NtClose( hkey );
+    return adapter_key;
+}
+
+static void desktop_add_host_adapter( struct host_adapter *host_adapter,
+                                      UINT screen_width, UINT screen_height,
+                                      struct device_manager_ctx *ctx )
+{
+    DEVMODEW current, mode =
+    {
+        .dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY,
+        .dmDisplayFrequency = 60,
     };
     struct gdi_monitor monitor = {0};
     static struct screen_size
@@ -2005,41 +2090,27 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
         {1920, 1200},
         {2560, 1600}
     };
-
-    struct device_manager_ctx desktop_ctx = {0};
-    UINT screen_width, screen_height, max_width, max_height;
-    unsigned int depths[] = {8, 16, 0};
-    DEVMODEW current, mode =
-    {
-        .dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY,
-        .dmDisplayFrequency = 60,
-    };
+    unsigned int depths[] = {8, 16, host_adapter->bpp};
+    UINT max_width = host_adapter->width, max_height = host_adapter->height;
     UINT i, j;
+    HKEY adapter_key = NULL;
 
-    if (!force) return TRUE;
-    /* in virtual desktop mode, read the device list from the user driver but expose virtual devices */
-    if (!update_display_devices( &desktop_device_manager, TRUE, &desktop_ctx )) return FALSE;
+    if (host_adapter->gdi.virtual_id[0])
+        adapter_key = get_adapter_key_for_virtual_id( host_adapter->gdi.virtual_id );
 
-    max_width = desktop_ctx.primary_width;
-    max_height = desktop_ctx.primary_height;
-    depths[ARRAY_SIZE(depths) - 1] = desktop_ctx.primary_bpp;
+    add_adapter( &host_adapter->gdi, ctx );
 
-    if (!get_default_desktop_size( &screen_width, &screen_height ))
-    {
-        screen_width = max_width;
-        screen_height = max_height;
-    }
+    if (!adapter_key) adapter_key = ctx->adapter_key;
 
-    add_gpu( &gpu, ctx );
-    add_adapter( &adapter, ctx );
-    if (!read_adapter_mode( ctx->adapter_key, ENUM_CURRENT_SETTINGS, &current ))
+    if (!read_adapter_mode( adapter_key, ENUM_CURRENT_SETTINGS, &current ))
     {
         current = mode;
         current.dmFields |= DM_POSITION;
-        current.dmBitsPerPel = desktop_ctx.primary_bpp;
+        current.dmBitsPerPel = host_adapter->bpp;
         current.dmPelsWidth = screen_width;
         current.dmPelsHeight = screen_height;
     }
+    if (adapter_key != ctx->adapter_key) NtClose( adapter_key );
 
     monitor.rc_monitor.right = current.dmPelsWidth;
     monitor.rc_monitor.bottom = current.dmPelsHeight;
@@ -2077,8 +2148,79 @@ static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ct
             else add_mode( &mode, FALSE, ctx );
         }
     }
+}
+
+static BOOL desktop_update_display_devices( BOOL force, struct device_manager_ctx *ctx )
+{
+    static const struct gdi_gpu gpu;
+
+    struct device_manager_ctx desktop_ctx = {0};
+    UINT i;
+
+    if (!force) return TRUE;
+    /* in virtual desktop mode, read the device list from the user driver but expose virtual devices */
+    if (!update_display_devices( &desktop_device_manager, TRUE, &desktop_ctx )) return FALSE;
+
+    add_gpu( &gpu, ctx );
+
+    for (i = 0; i < desktop_ctx.adapter_count; ++i)
+    {
+        struct host_adapter *host_adapter = &desktop_ctx.host_adapters[i];
+        if (!host_adapter->gdi.virtual_id[0]) continue;
+        desktop_add_host_adapter( host_adapter, host_adapter->width, host_adapter->height, ctx );
+    }
+
+    /* If the driver has not specified any adapters to pass through to the visual
+     * configuration, use a single virtual desktop adapter. */
+    if (ctx->adapter_count == 0)
+    {
+        struct host_adapter *primary = get_primary_host_adapter( &desktop_ctx );
+        struct host_adapter default_primary =
+        {
+            .gdi.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP |
+                               DISPLAY_DEVICE_PRIMARY_DEVICE |
+                               DISPLAY_DEVICE_VGA_COMPATIBLE,
+        };
+        UINT screen_width, screen_height;
+
+        if (!primary) primary = &default_primary;
+
+        if (!get_default_desktop_size( &screen_width, &screen_height ))
+        {
+            screen_width = primary->width;
+            screen_height = primary->height;
+        }
+
+        desktop_add_host_adapter( primary, screen_width, screen_height, ctx );
+    }
 
     return TRUE;
+}
+
+static struct gdi_virtual *get_virtual_settings( void )
+{
+    struct gdi_virtual *virtual, *settings;
+    struct adapter *adapter;
+
+    /* allocate an extra entry for easier iteration */
+    if (!(settings = calloc( list_count( &adapters ) + 1, sizeof(*settings) ))) return NULL;
+    virtual = settings;
+
+    LIST_FOR_EACH_ENTRY( adapter, &adapters, struct adapter, entry )
+    {
+        virtual->mode.dmSize = sizeof(DEVMODEW);
+        if (!adapter_get_current_settings( adapter, &virtual->mode ))
+        {
+            free( settings );
+            return NULL;
+        }
+
+        lstrcpyW( virtual->mode.dmDeviceName, adapter->dev.device_name );
+        memcpy( virtual->virtual_id, adapter->virtual_id, sizeof(virtual->virtual_id) );
+        ++virtual;
+    }
+
+    return settings;
 }
 
 BOOL update_display_cache( BOOL force )
@@ -2089,6 +2231,7 @@ BOOL update_display_cache( BOOL force )
     struct device_manager_ctx ctx = {0};
     BOOL was_virtual_desktop, ret;
     WCHAR name[MAX_PATH];
+    BOOL force_desktop_update = FALSE;
 
     /* services do not have any adapters, only a virtual monitor */
     if (NtUserGetObjectInformation( winstation, UOI_NAME, name, sizeof(name), NULL )
@@ -2108,6 +2251,7 @@ BOOL update_display_cache( BOOL force )
     if (ret && is_virtual_desktop())
     {
         reset_display_manager_ctx( &ctx );
+        force_desktop_update = force || !was_virtual_desktop;
         ret = desktop_update_display_devices( force || !was_virtual_desktop, &ctx );
     }
 
@@ -2129,6 +2273,16 @@ BOOL update_display_cache( BOOL force )
         }
 
         return update_display_cache( TRUE );
+    }
+
+    if (force_desktop_update)
+    {
+        struct gdi_virtual *settings;
+        pthread_mutex_lock( &display_lock );
+        settings = get_virtual_settings();
+        if (settings) user_driver->pNotifyVirtualDevices( settings );
+        pthread_mutex_unlock( &display_lock );
+        free(settings);
     }
 
     return TRUE;

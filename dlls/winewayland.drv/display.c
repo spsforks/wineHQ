@@ -71,10 +71,10 @@ static int output_info_cmp_primary_x_y(const void *va, const void *vb)
 
 static inline BOOL output_info_overlap(struct output_info *a, struct output_info *b)
 {
-    return b->x < a->x + a->output->current_mode->width &&
-           b->x + b->output->current_mode->width > a->x &&
-           b->y < a->y + a->output->current_mode->height &&
-           b->y + b->output->current_mode->height > a->y;
+    return b->x < a->x + a->output->mode.width &&
+           b->x + b->output->mode.width > a->x &&
+           b->y < a->y + a->output->mode.height &&
+           b->y + b->output->mode.height > a->y;
 }
 
 /* Map a point to one of the four quadrants of our 2d coordinate space:
@@ -156,16 +156,16 @@ static BOOL output_info_array_resolve_overlaps(struct wl_array *output_info_arra
             rel_x = (move->output->logical_x - anchor->output->logical_x +
                      (x_use_end ? move->output->logical_w : 0)) /
                     (double)anchor->output->logical_w;
-            move->x = anchor->x + anchor->output->current_mode->width * rel_x -
-                      (x_use_end ? move->output->current_mode->width : 0);
+            move->x = anchor->x + anchor->output->mode.width * rel_x -
+                      (x_use_end ? move->output->mode.width : 0);
 
             /* Similarly for the Y axis. */
             y_use_end = move->output->logical_y < anchor->output->logical_y;
             rel_y = (move->output->logical_y - anchor->output->logical_y +
                      (y_use_end ? move->output->logical_h : 0)) /
                     (double)anchor->output->logical_h;
-            move->y = anchor->y + anchor->output->current_mode->height * rel_y -
-                      (y_use_end ? move->output->current_mode->height : 0);
+            move->y = anchor->y + anchor->output->mode.height * rel_y -
+                      (y_use_end ? move->output->mode.height : 0);
         }
     }
 
@@ -211,13 +211,19 @@ static void wayland_add_device_gpu(const struct gdi_device_manager *device_manag
 }
 
 static void wayland_add_device_adapter(const struct gdi_device_manager *device_manager,
-                                       void *param, INT output_id)
+                                       void *param, INT output_id,
+                                       struct output_info *output_info)
 {
     struct gdi_adapter adapter;
     adapter.id = output_id;
     adapter.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
     if (output_id == 0)
         adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
+    if (!asciiz_to_unicodez(adapter.virtual_id, output_info->output->name,
+                            sizeof(adapter.virtual_id) / sizeof(WCHAR)))
+    {
+        WARN("output name too long, truncating\n");
+    }
 
     TRACE("id=0x%s state_flags=0x%x\n",
           wine_dbgstr_longlong(adapter.id), (UINT)adapter.state_flags);
@@ -231,8 +237,8 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     struct gdi_monitor monitor = {0};
 
     SetRect(&monitor.rc_monitor, output_info->x, output_info->y,
-            output_info->x + output_info->output->current_mode->width,
-            output_info->y + output_info->output->current_mode->height);
+            output_info->x + output_info->output->mode.width,
+            output_info->y + output_info->output->mode.height);
 
     /* We don't have a direct way to get the work area in Wayland. */
     monitor.rc_work = monitor.rc_monitor;
@@ -258,22 +264,14 @@ static void populate_devmode(struct wayland_output_mode *output_mode, DEVMODEW *
 static void wayland_add_device_modes(const struct gdi_device_manager *device_manager,
                                      void *param, struct output_info *output_info)
 {
-    struct wayland_output_mode *output_mode;
+    DEVMODEW mode = {.dmSize = sizeof(mode)};
 
-    RB_FOR_EACH_ENTRY(output_mode, &output_info->output->modes,
-                      struct wayland_output_mode, entry)
-    {
-        DEVMODEW mode = {.dmSize = sizeof(mode)};
-        BOOL mode_is_current = output_mode == output_info->output->current_mode;
-        populate_devmode(output_mode, &mode);
-        if (mode_is_current)
-        {
-            mode.dmFields |= DM_POSITION;
-            mode.dmPosition.x = output_info->x;
-            mode.dmPosition.y = output_info->y;
-        }
-        device_manager->add_mode(&mode, mode_is_current, param);
-    }
+    populate_devmode(&output_info->output->mode, &mode);
+    mode.dmFields |= DM_POSITION;
+    mode.dmPosition.x = output_info->x;
+    mode.dmPosition.y = output_info->y;
+
+    device_manager->add_mode(&mode, TRUE, param);
 }
 
 /***********************************************************************
@@ -299,7 +297,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     wl_list_for_each(output, &process_wayland.output_list, link)
     {
-        if (!output->current.current_mode) continue;
+        if (!output->current.mode.width || !output->current.mode.height) continue;
         output_info = wl_array_add(&output_info_array, sizeof(*output_info));
         if (output_info) output_info->output = &output->current;
         else ERR("Failed to allocate space for output_info\n");
@@ -312,7 +310,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     wl_array_for_each(output_info, &output_info_array)
     {
-        wayland_add_device_adapter(device_manager, param, output_id);
+        wayland_add_device_adapter(device_manager, param, output_id, output_info);
         wayland_add_device_monitor(device_manager, param, output_info);
         wayland_add_device_modes(device_manager, param, output_info);
         output_id++;
@@ -323,4 +321,33 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
     pthread_mutex_unlock(&process_wayland.output_mutex);
 
     return TRUE;
+}
+
+static void refresh_hwnd(HWND hwnd)
+{
+    NtUserPostMessage(hwnd, WM_WAYLAND_REFRESH, 0, 0);
+}
+
+/***********************************************************************
+ *      NotifyVirtualDevices (WAYLAND.@)
+ */
+void WAYLAND_NotifyVirtualDevices(const struct gdi_virtual *virtual)
+{
+    const struct gdi_virtual *v = virtual;
+    size_t virtual_size;
+
+    for (v = virtual; v->mode.dmSize; ++v)
+        TRACE("%s => %s\n", wine_dbgstr_w(v->mode.dmDeviceName), wine_dbgstr_w(v->virtual_id));
+
+    virtual_size = (v - virtual + 1) * sizeof(*v);
+
+    pthread_mutex_lock(&process_wayland.output_mutex);
+    free(process_wayland.virtual);
+    process_wayland.virtual = malloc(virtual_size);
+    if (process_wayland.virtual) memcpy(process_wayland.virtual, virtual, virtual_size);
+    pthread_mutex_unlock(&process_wayland.output_mutex);
+
+    /* Refresh all windows to ensure they have been committed with proper
+     * scaling applied. */
+    enum_process_windows(refresh_hwnd);
 }
