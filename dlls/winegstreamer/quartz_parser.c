@@ -873,11 +873,6 @@ static bool amt_to_wg_format_audio_wma(const AM_MEDIA_TYPE *mt, struct wg_format
         FIXME("Unknown format type %s.\n", debugstr_guid(&mt->formattype));
         return false;
     }
-    if (mt->cbFormat < sizeof(*audio_format) || !mt->pbFormat)
-    {
-        ERR("Unexpected format size %lu.\n", mt->cbFormat);
-        return false;
-    }
 
     if (IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_MSAUDIO1))
         format->u.audio.version = 1;
