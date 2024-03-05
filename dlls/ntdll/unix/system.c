@@ -3994,7 +3994,7 @@ NTSTATUS WINAPI NtRaiseHardError( NTSTATUS status, ULONG count,
                                   ULONG params_mask, void **params,
                                   HARDERROR_RESPONSE_OPTION option, HARDERROR_RESPONSE *response )
 {
-    FIXME( "%08x stub\n", (int)status );
+    FIXME( "%#08x %u %#x %p %u %p: stub\n", (int)status, (int)count, (int)params_mask, params, option, response );
     return STATUS_NOT_IMPLEMENTED;
 }
 
