@@ -311,6 +311,20 @@ BOOL is_window( HWND hwnd )
     return ret;
 }
 
+BOOL is_window_ever_activated( HWND hwnd )
+{
+    BOOL ret = FALSE;
+
+    SERVER_START_REQ( get_window_info )
+    {
+        req->handle = wine_server_user_handle( hwnd );
+        if (!wine_server_call_err( req ))
+            ret = reply->is_ever_activated;
+    }
+    SERVER_END_REQ;
+    return ret;
+}
+
 /* see GetWindowThreadProcessId */
 DWORD get_window_thread( HWND hwnd, DWORD *process )
 {
@@ -3312,6 +3326,7 @@ static HWND swp_owner_popups( HWND hwnd, HWND after )
     TRACE( "(%p) after = %p\n", hwnd, after );
 
     if (get_window_long( hwnd, GWL_STYLE ) & WS_CHILD) return after;
+    if (!is_window_ever_activated( hwnd )) return after;
 
     if ((owner = get_window_relative( hwnd, GW_OWNER )))
     {
@@ -3765,7 +3780,8 @@ static BOOL can_activate_window( HWND hwnd )
     style = get_window_long( hwnd, GWL_STYLE );
     if (!(style & WS_VISIBLE)) return FALSE;
     if ((style & (WS_POPUP|WS_CHILD)) == WS_CHILD) return FALSE;
-    return !(style & WS_DISABLED);
+    if (style & WS_DISABLED) return FALSE;
+    return is_window_ever_activated( hwnd );
 }
 
 /*******************************************************************

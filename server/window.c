@@ -80,6 +80,7 @@ struct window
     unsigned int     is_linked : 1;   /* is it linked into the parent z-order list? */
     unsigned int     is_layered : 1;  /* has layered info been set? */
     unsigned int     is_orphan : 1;   /* is window orphaned */
+    unsigned int     is_ever_activated : 1;   /* is window ever activated */
     unsigned int     color_key;       /* color key for a layered window */
     unsigned int     alpha;           /* alpha value for a layered window */
     unsigned int     layered_flags;   /* flags for a layered window */
@@ -573,6 +574,7 @@ static struct window *create_window( struct window *parent, struct window *owner
     win->is_linked      = 0;
     win->is_layered     = 0;
     win->is_orphan      = 0;
+    win->is_ever_activated = 0;
     win->dpi_awareness  = DPI_AWARENESS_PER_MONITOR_AWARE;
     win->dpi            = 0;
     win->user_data      = 0;
@@ -2220,6 +2222,7 @@ DECL_HANDLER(get_window_info)
     reply->full_handle = win->handle;
     reply->last_active = win->handle;
     reply->is_unicode  = win->is_unicode;
+    reply->is_ever_activated = win->is_ever_activated;
     reply->awareness   = win->dpi_awareness;
     reply->dpi         = win->dpi ? win->dpi : get_monitor_dpi( win );
     if (get_user_object( win->last_active, USER_WINDOW )) reply->last_active = win->last_active;
@@ -2476,6 +2479,8 @@ DECL_HANDLER(set_window_pos)
         mirror_rect( &win->parent->client_rect, &surface_rect );
         mirror_rect( &win->parent->client_rect, &valid_rect );
     }
+
+    if (!win->is_ever_activated && !(flags & SWP_NOACTIVATE)) win->is_ever_activated = 1;
 
     win->paint_flags = (win->paint_flags & ~PAINT_CLIENT_FLAGS) | (req->paint_flags & PAINT_CLIENT_FLAGS);
     if (win->paint_flags & PAINT_HAS_PIXEL_FORMAT) update_pixel_format_flags( win );

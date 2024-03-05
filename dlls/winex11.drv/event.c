@@ -521,6 +521,20 @@ DWORD EVENT_x11_time_to_win32_time(Time time)
 
 }
 
+static BOOL is_window_ever_activated( HWND hwnd )
+{
+    BOOL ret = FALSE;
+
+    SERVER_START_REQ( get_window_info )
+    {
+        req->handle = wine_server_user_handle( hwnd );
+        if (!wine_server_call_err( req ))
+            ret = reply->is_ever_activated;
+    }
+    SERVER_END_REQ;
+    return ret;
+}
+
 /*******************************************************************
  *         can_activate_window
  *
@@ -537,7 +551,8 @@ static inline BOOL can_activate_window( HWND hwnd )
     if (NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_NOACTIVATE) return FALSE;
     if (hwnd == NtUserGetDesktopWindow()) return FALSE;
     if (NtUserGetWindowRect( hwnd, &rect ) && IsRectEmpty( &rect )) return FALSE;
-    return !(style & WS_DISABLED);
+    if (style & WS_DISABLED) return FALSE;
+    return is_window_ever_activated( hwnd );
 }
 
 
