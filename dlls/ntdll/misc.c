@@ -501,3 +501,29 @@ ULONG WINAPIV EtwTraceMessage( TRACEHANDLE handle, ULONG flags, LPGUID guid, /*U
     va_end( valist );
     return ret;
 }
+
+/******************************************************************************
+ *                  NtdllDefWindowProc_A (NTDLL.@)
+ */
+LRESULT WINAPI NtdllDefWindowProc_A( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam )
+{
+    LPARAM (WINAPI *pDefWindowProcA)(HWND,UINT,WPARAM,LPARAM); /* DefWindowProcA */
+    const UNICODE_STRING name = RTL_CONSTANT_STRING( L"user32.dll" );
+    NTSTATUS status;
+    HMODULE module;
+
+    if ((status = LdrGetDllHandle( NULL, 0, &name, &module )))
+    {
+        ERR("Failed to get user32.dll handle, status %08lx\n", status);
+        return 0; /* FIXME: Is this a good way to indicate failure? */
+    }
+
+    pDefWindowProcA = RtlFindExportedRoutineByName( module, "DefWindowProcA" );
+    if (!pDefWindowProcA)
+    {
+        ERR("Cannot find the function\n");
+        return 0; /* FIXME: Is this a good way to indicate failure? */
+    }
+
+    return pDefWindowProcA( hwnd, msg, wParam, lParam );
+}

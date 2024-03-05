@@ -455,6 +455,7 @@
 # @ stub NtWriteRequestData
 @ stdcall -syscall NtWriteVirtualMemory(long ptr ptr long ptr)
 @ stdcall -syscall NtYieldExecution()
+@ stdcall NtdllDefWindowProc_A(long long long long)
 @ stub PfxFindPrefix
 @ stub PfxInitialize
 @ stub PfxInsertPrefix
