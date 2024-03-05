@@ -2334,10 +2334,10 @@ NTSTATUS WINAPI NtQueryInformationAtom( RTL_ATOM atom, ATOM_INFORMATION_CLASS cl
 
 union tid_alert_entry
 {
-#ifdef HAVE_KQUEUE
-    int kq;
-#elif defined(__linux__)
+#ifdef __linux__
     LONG futex;
+#elif defined(HAVE_KQUEUE)
+    int kq;
 #else
     HANDLE event;
 #endif
@@ -2375,7 +2375,9 @@ static union tid_alert_entry *get_tid_alert_entry( HANDLE tid )
 
     entry = &tid_alert_blocks[block_idx][idx % TID_ALERT_BLOCK_SIZE];
 
-#ifdef HAVE_KQUEUE
+#ifdef __linux__
+    return entry;
+#elif defined(HAVE_KQUEUE)
     if (!entry->kq)
     {
         int kq = kqueue();
@@ -2405,8 +2407,6 @@ static union tid_alert_entry *get_tid_alert_entry( HANDLE tid )
         if (InterlockedCompareExchange( (LONG *)&entry->kq, kq, 0 ))
             close( kq );
     }
-#elif defined(__linux__)
-    return entry;
 #else
     if (!entry->event)
     {
@@ -2434,7 +2434,14 @@ NTSTATUS WINAPI NtAlertThreadByThreadId( HANDLE tid )
 
     if (!entry) return STATUS_INVALID_CID;
 
-#ifdef HAVE_KQUEUE
+#ifdef __linux__
+    {
+        LONG *futex = &entry->futex;
+        if (!InterlockedExchange( futex, 1 ))
+            futex_wake( futex, 1 );
+        return STATUS_SUCCESS;
+    }
+#elif defined(HAVE_KQUEUE)
     {
         static const struct kevent signal_event =
         {
@@ -2447,13 +2454,6 @@ NTSTATUS WINAPI NtAlertThreadByThreadId( HANDLE tid )
         };
 
         kevent( entry->kq, &signal_event, 1, NULL, 0, NULL );
-        return STATUS_SUCCESS;
-    }
-#elif defined(__linux__)
-    {
-        LONG *futex = &entry->futex;
-        if (!InterlockedExchange( futex, 1 ))
-            futex_wake( futex, 1 );
         return STATUS_SUCCESS;
     }
 #else
@@ -2484,59 +2484,6 @@ static LONGLONG update_timeout( ULONGLONG end )
 }
 #endif
 
-
-#ifdef HAVE_KQUEUE
-
-/***********************************************************************
- *             NtWaitForAlertByThreadId (NTDLL.@)
- */
-NTSTATUS WINAPI NtWaitForAlertByThreadId( const void *address, const LARGE_INTEGER *timeout )
-{
-    union tid_alert_entry *entry = get_tid_alert_entry( NtCurrentTeb()->ClientId.UniqueThread );
-    ULONGLONG end;
-    int ret;
-    struct timespec timespec;
-    struct kevent wait_event;
-
-    TRACE( "%p %s\n", address, debugstr_timeout( timeout ) );
-
-    if (!entry) return STATUS_INVALID_CID;
-
-    if (timeout)
-    {
-        if (timeout->QuadPart == TIMEOUT_INFINITE)
-            timeout = NULL;
-        else
-            end = get_absolute_timeout( timeout );
-    }
-
-    do
-    {
-        if (timeout)
-        {
-            LONGLONG timeleft = update_timeout( end );
-
-            timespec.tv_sec = timeleft / (ULONGLONG)TICKSPERSEC;
-            timespec.tv_nsec = (timeleft % TICKSPERSEC) * 100;
-            if (timespec.tv_sec > 0x7FFFFFFF) timeout = NULL;
-        }
-
-        ret = kevent( entry->kq, NULL, 0, &wait_event, 1, timeout ? &timespec : NULL );
-    } while (ret == -1 && errno == EINTR);
-
-    switch (ret)
-    {
-    case 1:
-        return STATUS_ALERTED;
-    case 0:
-        return STATUS_TIMEOUT;
-    default:
-        ERR( "kevent failed with error: %d (%s)\n", errno, strerror( errno ) );
-        return STATUS_INVALID_HANDLE;
-    }
-}
-
-#else
 
 /***********************************************************************
  *             NtWaitForAlertByThreadId (NTDLL.@)
@@ -2581,6 +2528,46 @@ NTSTATUS WINAPI NtWaitForAlertByThreadId( const void *address, const LARGE_INTEG
         }
         return STATUS_ALERTED;
     }
+#elif defined(HAVE_KQUEUE)
+    {
+        ULONGLONG end;
+        int ret;
+        struct timespec timespec;
+        struct kevent wait_event;
+
+        if (timeout)
+        {
+            if (timeout->QuadPart == TIMEOUT_INFINITE)
+                timeout = NULL;
+            else
+                end = get_absolute_timeout( timeout );
+        }
+
+        do
+        {
+            if (timeout)
+            {
+                LONGLONG timeleft = update_timeout( end );
+
+                timespec.tv_sec = timeleft / (ULONGLONG)TICKSPERSEC;
+                timespec.tv_nsec = (timeleft % TICKSPERSEC) * 100;
+                if (timespec.tv_sec > 0x7FFFFFFF) timeout = NULL;
+            }
+
+            ret = kevent( entry->kq, NULL, 0, &wait_event, 1, timeout ? &timespec : NULL );
+        } while (ret == -1 && errno == EINTR);
+
+        switch (ret)
+        {
+        case 1:
+            return STATUS_ALERTED;
+        case 0:
+            return STATUS_TIMEOUT;
+        default:
+            ERR( "kevent failed with error: %d (%s)\n", errno, strerror( errno ) );
+            return STATUS_INVALID_HANDLE;
+        }
+    }
 #else
     {
         NTSTATUS status = NtWaitForSingleObject( entry->event, FALSE, timeout );
@@ -2590,7 +2577,6 @@ NTSTATUS WINAPI NtWaitForAlertByThreadId( const void *address, const LARGE_INTEG
 #endif
 }
 
-#endif
 
 /* Notify direct completion of async and close the wait handle if it is no longer needed.
  */
