@@ -905,6 +905,7 @@ This is an error since --enable-archs=$wine_arch was requested.])])
         continue
     fi
 
+    CFLAGS="$CFLAGS -I$srcdir/include/msvcrt/ -I$srcdir/include/"
     AS_VAR_PUSHDEF([wine_cv_crosscc_c99],[ac_cv_${wine_arch}_crosscc_c99])
     AC_MSG_CHECKING([for $CC option to enable C99 features])
     AC_CACHE_VAL([wine_cv_crosscc_c99],
