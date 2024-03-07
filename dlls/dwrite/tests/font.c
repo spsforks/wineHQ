@@ -1205,18 +1205,61 @@ static void test_CreateFontFromLOGFONT(void)
     ok(ref == 0, "factory is not released, %lu\n", ref);
 }
 
+static IDWriteFontFace *create_winetest_fontface(IDWriteFactory *factory)
+{
+    static IDWriteFontFileLoader rloader = { &resourcefontfileloadervtbl };
+    IDWriteFontFace *face;
+    IDWriteFontFile *file;
+    HRSRC fontsrc;
+    HRESULT hr;
+
+    hr = IDWriteFactory_RegisterFontFileLoader(factory, &rloader);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    fontsrc = FindResourceA(GetModuleHandleA(NULL), (LPCSTR)MAKEINTRESOURCE(1), (LPCSTR)RT_RCDATA);
+    ok(fontsrc != NULL, "Failed to find font resource\n");
+
+    hr = IDWriteFactory_CreateCustomFontFileReference(factory, &fontsrc, sizeof(HRSRC), &rloader, &file);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(file != NULL, "Failed to create font file reference\n");
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &face);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(face != NULL, "Failed to create font face\n");
+
+    hr = IDWriteFactory_UnregisterFontFileLoader(factory, &rloader);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    IDWriteFontFile_Release(file);
+    return face;
+}
+
+static inline void dwrite_matrix_multiply(DWRITE_MATRIX *a, const DWRITE_MATRIX *b)
+{
+    DWRITE_MATRIX tmp = *a;
+
+    a->m11 = tmp.m11 * b->m11 + tmp.m12 * b->m21;
+    a->m12 = tmp.m11 * b->m12 + tmp.m12 * b->m22;
+    a->m21 = tmp.m21 * b->m11 + tmp.m22 * b->m21;
+    a->m22 = tmp.m21 * b->m12 + tmp.m22 * b->m22;
+    a->dx = tmp.dx * b->m11 + tmp.dy * b->m21 + b->dx;
+    a->dy = tmp.dy * b->m12 + tmp.dy * b->m22 + b->dx;
+}
+
 static void test_CreateBitmapRenderTarget(void)
 {
     IDWriteBitmapRenderTarget *target, *target2;
     IDWriteBitmapRenderTarget1 *target1;
     IDWriteRenderingParams *params;
+    DWRITE_GLYPH_OFFSET offsets[2];
     IDWriteGdiInterop *interop;
     IDWriteFontFace *fontface;
+    DWRITE_MATRIX m, m2, ms;
     IDWriteFactory *factory;
     DWRITE_GLYPH_RUN run;
     HBITMAP hbm, hbm2;
     UINT16 glyphs[2];
-    DWRITE_MATRIX m;
+    RECT box, box2;
     DIBSECTION ds;
     XFORM xform;
     COLORREF c;
@@ -1506,6 +1549,99 @@ static void test_CreateBitmapRenderTarget(void)
     hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
         &run, params, RGB(255, 0, 0), NULL);
     ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+
+    /* Got render bounds if not intersect to render target */
+    SetRectEmpty(&box);
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, -100.0f, -100.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
+       &run, params, RGB(255, 0, 0), &box);
+    ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+    ok(!IsRectEmpty(&box), "got empty rect\n");
+
+    IDWriteFontFace_Release(fontface);
+    fontface  = create_winetest_fontface(factory);
+
+    /* 0xa9 map to a black rectangle */
+    ch = 0xa9;
+    glyphs[0] = 0;
+    hr = IDWriteFontFace_GetGlyphIndices(fontface, &ch, 1, glyphs);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(glyphs[0] > 0, "got 0\n");
+    glyphs[1] = glyphs[0];
+
+    offsets[0].advanceOffset = 0;
+    offsets[0].ascenderOffset = 0;
+    offsets[1].advanceOffset = 3;
+    offsets[1].ascenderOffset = 0;
+
+    memset(&run, 0, sizeof(run));
+    run.glyphCount = 2;
+    run.fontEmSize = 5.0f;
+    run.fontFace = fontface;
+    run.glyphIndices = glyphs;
+    run.glyphOffsets = offsets;
+
+    hr = IDWriteBitmapRenderTarget1_Resize(target1, 40, 30);
+    ok(hr == S_OK, "Failed to set target size, hr %#lx.\n", hr);
+
+    /* Check bounding box in different transform */
+    memset(&ms, 0, sizeof(ms));
+    ms.m11 = ms.m22 = 2.0f;
+    for (int i = 0; i < 3; i++)
+    {
+        m2 = m;
+        memset(&m, 0, sizeof(m));
+        switch (i)
+        {
+            case 0:
+                /* dont apply transform first */
+                m.m11 = m.m22 = 1;
+                break;
+            case 1:
+                /* then rotate 45 degree */
+                m.m11 = m.m22 = cos(3.1415 / 4);
+                m.m12 = sin(3.1415 / 4);
+                m.m21 = -m.m12;
+                dwrite_matrix_multiply(&m, &m2);
+                break;
+            case 2:
+                /* then shift on x with 10px */
+                m.m11 = m.m22 = 1;
+                m.dx = 10;
+                dwrite_matrix_multiply(&m, &m2);
+                break;
+            default:
+                m = m2;
+                break;
+        }
+
+        /* Draw in double ddpi */
+        hr = IDWriteBitmapRenderTarget_SetPixelsPerDip(target, 2.0);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        hr = IDWriteBitmapRenderTarget_SetCurrentTransform(target, &m);
+        ok(hr == S_OK, "Failed to set current transform, hr %#lx.\n", hr);
+
+        SetRectEmpty(&box);
+        hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 5.0f, 2.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
+            &run, params, RGB(255, 0, 0), &box);
+        ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+
+        /* Draw in one ddpi, scale in double first, then apply transform matrix */
+        hr = IDWriteBitmapRenderTarget_SetPixelsPerDip(target, 1.0);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        m2 = m;
+        dwrite_matrix_multiply(&m2, &ms);
+        hr = IDWriteBitmapRenderTarget_SetCurrentTransform(target, &m2);
+        ok(hr == S_OK, "Failed to set current transform, hr %#lx.\n", hr);
+
+        SetRectEmpty(&box2);
+        hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 5.0f, 2.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
+            &run, params, RGB(255, 0, 0), &box2);
+        ok(hr == S_OK, "Failed to draw a run, hr %#lx.\n", hr);
+
+        ok(box.left == box2.left && box.right == box2.right && box.top== box2.top && box.bottom == box2.bottom,
+            "%d: Bounding box dismatch %s != %s\n", i, wine_dbgstr_rect(&box), wine_dbgstr_rect(&box2));
+    }
 
     IDWriteRenderingParams_Release(params);
 
@@ -5525,7 +5661,7 @@ static void test_GetGlyphCount(void)
     IDWriteFontFile_Release(file);
 
     count = IDWriteFontFace_GetGlyphCount(fontface);
-    ok(count == 8, "got %u\n", count);
+    ok(count == 9, "got %u\n", count);
 
     IDWriteFontFace_Release(fontface);
     ref = IDWriteFactory_Release(factory);

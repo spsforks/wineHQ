@@ -337,6 +337,18 @@ static inline DWORD colorref_to_pixel_888(COLORREF color)
     return (((color >> 16) & 0xff) | (color & 0xff00) | ((color << 16) & 0xff0000));
 }
 
+static inline void dwrite_matrix_multiply(DWRITE_MATRIX *a, const DWRITE_MATRIX *b)
+{
+    DWRITE_MATRIX tmp = *a;
+
+    a->m11 = tmp.m11 * b->m11 + tmp.m12 * b->m21;
+    a->m12 = tmp.m11 * b->m12 + tmp.m12 * b->m22;
+    a->m21 = tmp.m21 * b->m11 + tmp.m22 * b->m21;
+    a->m22 = tmp.m21 * b->m12 + tmp.m22 * b->m22;
+    a->dx = tmp.dx * b->m11 + tmp.dy * b->m21 + b->dx;
+    a->dy = tmp.dy * b->m12 + tmp.dy * b->m22 + b->dx;
+}
+
 static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *iface,
     FLOAT originX, FLOAT originY, DWRITE_MEASURING_MODE measuring_mode,
     DWRITE_GLYPH_RUN const *run, IDWriteRenderingParams *params, COLORREF color,
@@ -347,7 +359,7 @@ static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *ifac
     DWRITE_RENDERING_MODE1 rendermode;
     DWRITE_GRID_FIT_MODE gridfitmode;
     DWRITE_TEXTURE_TYPE texturetype;
-    DWRITE_GLYPH_RUN scaled_run;
+    DWRITE_MATRIX m, scale = { 0 };
     IDWriteFontFace3 *fontface;
     RECT target_rect, bounds;
     HRESULT hr;
@@ -429,9 +441,10 @@ static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *ifac
         return hr;
     }
 
-    scaled_run = *run;
-    scaled_run.fontEmSize *= target->ppdip;
-    hr = IDWriteFactory7_CreateGlyphRunAnalysis(target->factory, &scaled_run, &target->m, rendermode, measuring_mode,
+    m = target->m;
+    scale.m11 = scale.m22 = target->ppdip;
+    dwrite_matrix_multiply(&m, &scale);
+    hr = IDWriteFactory7_CreateGlyphRunAnalysis(target->factory, run, &m, rendermode, measuring_mode,
             gridfitmode, target->antialiasmode, originX, originY, &analysis);
     if (FAILED(hr))
     {
@@ -451,6 +464,7 @@ static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *ifac
         }
         texturetype = DWRITE_TEXTURE_CLEARTYPE_3x1;
     }
+    if (bbox_ret) *bbox_ret = bounds;
 
     if (IntersectRect(&target_rect, &target_rect, &bounds))
     {
