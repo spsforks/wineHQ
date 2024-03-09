@@ -3812,12 +3812,13 @@ static GpStatus initialize_decoder_wic(IStream *stream, REFGUID container, IWICB
 }
 
 typedef void (*metadata_reader_func)(GpBitmap *bitmap, IWICBitmapDecoder *decoder, UINT frame);
+typedef HRESULT (*create_bitmap_func)(IWICBitmapDecoder *decoder, PixelFormat gdip_format, UINT active_frame, GpBitmap **image);
 
-static GpStatus decode_frame_wic(IWICBitmapDecoder *decoder, BOOL force_conversion,
-    UINT active_frame, metadata_reader_func metadata_reader, GpImage **image)
+static GpStatus decode_frame_wic(IWICBitmapDecoder *decoder, BOOL force_conversion, UINT active_frame,
+    create_bitmap_func create_bitmap, metadata_reader_func metadata_reader, GpImage **image)
 {
     GpStatus status=Ok;
-    GpBitmap *bitmap;
+    GpBitmap *bitmap = NULL;
     HRESULT hr;
     IWICBitmapFrameDecode *frame;
     IWICBitmapSource *source=NULL;
@@ -3866,51 +3867,54 @@ static GpStatus decode_frame_wic(IWICBitmapDecoder *decoder, BOOL force_conversi
 
         if (SUCCEEDED(hr)) /* got source */
         {
-            hr = IWICBitmapSource_GetSize(source, &width, &height);
-
-            if (SUCCEEDED(hr))
-                status = GdipCreateBitmapFromScan0(width, height, 0, gdip_format,
-                    NULL, &bitmap);
-
-            if (SUCCEEDED(hr) && status == Ok) /* created bitmap */
+            if(create_bitmap)
+                create_bitmap(decoder, gdip_format, active_frame, &bitmap);
+            else
             {
-                status = GdipBitmapLockBits(bitmap, NULL, ImageLockModeWrite,
-                    gdip_format, &lockeddata);
-                if (status == Ok) /* locked bitmap */
+                hr = IWICBitmapSource_GetSize(source, &width, &height);
+
+                if (SUCCEEDED(hr))
+                    status = GdipCreateBitmapFromScan0(width, height, 0, gdip_format, NULL, &bitmap);
+
+                if (SUCCEEDED(hr) && status == Ok) /* created bitmap */
                 {
-                    wrc.X = 0;
-                    wrc.Width = width;
-                    wrc.Height = 1;
-                    for (i=0; i<height; i++)
+                    status = GdipBitmapLockBits(bitmap, NULL, ImageLockModeWrite,
+                        gdip_format, &lockeddata);
+                    if (status == Ok) /* locked bitmap */
                     {
-                        wrc.Y = i;
-                        hr = IWICBitmapSource_CopyPixels(source, &wrc, abs(lockeddata.Stride),
-                            abs(lockeddata.Stride), (BYTE*)lockeddata.Scan0+lockeddata.Stride*i);
-                        if (FAILED(hr)) break;
+                        wrc.X = 0;
+                        wrc.Width = width;
+                        wrc.Height = 1;
+                        for (i=0; i<height; i++)
+                        {
+                            wrc.Y = i;
+                            hr = IWICBitmapSource_CopyPixels(source, &wrc, abs(lockeddata.Stride),
+                                abs(lockeddata.Stride), (BYTE*)lockeddata.Scan0+lockeddata.Stride*i);
+                            if (FAILED(hr)) break;
+                        }
+
+                        GdipBitmapUnlockBits(bitmap, &lockeddata);
                     }
-
-                    GdipBitmapUnlockBits(bitmap, &lockeddata);
                 }
+            }
 
-                if (SUCCEEDED(hr) && status == Ok)
-                    *image = &bitmap->image;
-                else
+            if (SUCCEEDED(hr) && status == Ok)
+            {
+                double dpix, dpiy;
+
+                *image = &bitmap->image;
+                hr = IWICBitmapSource_GetResolution(source, &dpix, &dpiy);
+                if (SUCCEEDED(hr))
                 {
-                    *image = NULL;
-                    GdipDisposeImage(&bitmap->image);
+                    bitmap->image.xres = dpix;
+                    bitmap->image.yres = dpiy;
                 }
-
-                if (SUCCEEDED(hr) && status == Ok)
-                {
-                    double dpix, dpiy;
-                    hr = IWICBitmapSource_GetResolution(source, &dpix, &dpiy);
-                    if (SUCCEEDED(hr))
-                    {
-                        bitmap->image.xres = dpix;
-                        bitmap->image.yres = dpiy;
-                    }
-                    hr = S_OK;
-                }
+                hr = S_OK;
+            }
+            else
+            {
+                *image = NULL;
+                if(bitmap) GdipDisposeImage(&bitmap->image);
             }
 
             IWICBitmapSource_Release(source);
@@ -3977,7 +3981,7 @@ static GpStatus decode_image_wic(IStream *stream, REFGUID container,
     if(status != Ok)
         return status;
 
-    status = decode_frame_wic(decoder, FALSE, 0, metadata_reader, image);
+    status = decode_frame_wic(decoder, FALSE, 0, NULL, metadata_reader, image);
     IWICBitmapDecoder_Release(decoder);
     return status;
 }
@@ -3988,7 +3992,7 @@ static GpStatus select_frame_wic(GpImage *image, UINT active_frame)
     GpImage *new_image;
     GpStatus status;
 
-    status = decode_frame_wic(image->decoder, FALSE, active_frame, NULL, &new_image);
+    status = decode_frame_wic(image->decoder, FALSE, active_frame, NULL, NULL, &new_image);
     if(status != Ok)
         return status;
 
@@ -4063,6 +4067,85 @@ static HRESULT blit_gif_frame(GpBitmap *bitmap, IWICBitmapFrameDecode *frame, BO
         }
     }
     free(new_bits);
+    return hr;
+}
+
+static LONG get_gif_width(IWICMetadataReader *reader)
+{
+    PropertyItem *prop;
+    LONG width = 0;
+
+    prop = get_property(reader, &GUID_MetadataFormatLSD, L"Width");
+    if (prop)
+    {
+        if(prop->type == PropertyTagTypeShort && prop->length == 2)
+            width = *(SHORT *)prop->value;
+        heap_free(prop);
+    }
+
+    return width;
+}
+
+static LONG get_gif_height(IWICMetadataReader *reader)
+{
+    PropertyItem *prop;
+    LONG height = 0;
+
+    prop = get_property(reader, &GUID_MetadataFormatLSD, L"Height");
+    if (prop)
+    {
+        if(prop->type == PropertyTagTypeShort && prop->length == 2)
+            height = *(SHORT *)prop->value;
+        heap_free(prop);
+    }
+
+    return height;
+}
+
+static HRESULT gif_create_bitmap(IWICBitmapDecoder *decoder, PixelFormat gdip_format, UINT active_frame, GpBitmap **image)
+{
+    HRESULT hr;
+    IWICBitmapFrameDecode *frame;
+    IWICMetadataBlockReader *block_reader;
+    IWICMetadataReader *reader;
+    GpBitmap *bitmap;
+    UINT width = 0, height = 0;
+    int i;
+
+    hr = IWICBitmapDecoder_QueryInterface(decoder, &IID_IWICMetadataBlockReader, (void **)&block_reader);
+    if (hr == S_OK)
+    {
+        UINT block_count = 0;
+        hr = IWICMetadataBlockReader_GetCount(block_reader, &block_count);
+        if (hr == S_OK)
+        {
+            for (i = 0; i < block_count; i++)
+            {
+                hr = IWICMetadataBlockReader_GetReaderByIndex(block_reader, i, &reader);
+                if (hr == S_OK)
+                {
+                    if(!width) width = get_gif_width(reader);
+                    if(!height) height = get_gif_height(reader);
+                    IWICMetadataReader_Release(reader);
+                }
+            }
+        }
+        IWICMetadataBlockReader_Release(block_reader);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        if(GdipCreateBitmapFromScan0(width, height, 0, gdip_format, NULL, &bitmap) == Ok)
+        {
+            hr = IWICBitmapDecoder_GetFrame(decoder, active_frame, &frame);
+            if (SUCCEEDED(hr)) hr = blit_gif_frame(bitmap, frame, active_frame==0);
+        }
+        else
+            hr = E_FAIL;
+    }
+
+    if (SUCCEEDED(hr) && image) *image = bitmap;
+
     return hr;
 }
 
@@ -4252,7 +4335,7 @@ static GpStatus decode_image_png(IStream* stream, GpImage **image)
                      has_png_transparency_chunk(stream))
                 force_conversion = TRUE;
 
-            status = decode_frame_wic(decoder, force_conversion, 0, png_metadata_reader, image);
+            status = decode_frame_wic(decoder, force_conversion, 0, NULL, png_metadata_reader, image);
         }
         else
             status = hresult_to_status(hr);
@@ -4281,7 +4364,7 @@ static GpStatus decode_image_gif(IStream* stream, GpImage **image)
     if(FAILED(hr))
         return hresult_to_status(hr);
 
-    status = decode_frame_wic(decoder, frame_count > 1, 0, gif_metadata_reader, image);
+    status = decode_frame_wic(decoder, frame_count > 1, 0, gif_create_bitmap, gif_metadata_reader, image);
     IWICBitmapDecoder_Release(decoder);
     if(status != Ok)
         return status;
