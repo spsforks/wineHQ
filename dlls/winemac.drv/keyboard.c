@@ -723,6 +723,7 @@ void macdrv_compute_keyboard_layout(struct macdrv_thread_data *thread_data)
         { '?', VK_OEM_COMMA },
         { '~', VK_OEM_PLUS },
         { ']', VK_OEM_4 },
+        { '(', VK_OEM_4 },
         { '\'', VK_OEM_3 },
         { 0x00A7, VK_OEM_7 },
         { '<', VK_OEM_102 },
