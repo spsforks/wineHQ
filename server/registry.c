@@ -1885,10 +1885,20 @@ void init_registry(void)
                                     'C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
                                     'P','e','r','f','l','i','b','\\',
                                     '0','0','9'};
+    static const WCHAR system[] = {'S','y','s','t','e','m'};
+    static const WCHAR cs001[] = {'t','C','o','n','t','r','o','l','S','e','t','0','0','1'};
+    static const WCHAR ccs[] = {'C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t'};
+    static const WCHAR cs001_path[] = {'\\','R','E','G','I','S','T','R','Y','\\',
+                                       'M','a','c','h','i','n','e','\\',
+                                       'S','y','s','t','e','m','\\',
+                                       'C','o','n','t','r','o','l','S','e','t','0','0','1'};
     static const struct unicode_str root_name = { REGISTRY, sizeof(REGISTRY) };
     static const struct unicode_str HKLM_name = { HKLM, sizeof(HKLM) };
     static const struct unicode_str HKU_name = { HKU_default, sizeof(HKU_default) };
     static const struct unicode_str perflib_name = { perflib, sizeof(perflib) };
+    static const struct unicode_str system_name = { system, sizeof(system) };
+    static const struct unicode_str cs001_name = { cs001, sizeof(cs001) };
+    static const struct unicode_str ccs_name = { ccs, sizeof(ccs) };
 
     WCHAR *current_user_path;
     struct unicode_str current_user_str;
@@ -1905,10 +1915,31 @@ void init_registry(void)
     assert( root_key );
     release_object( root_key );
 
-    /* load system.reg into Registry\Machine */
-
+    /* create the Registry\Machine key */
     if (!(hklm = create_key_recursive( root_key, &HKLM_name, current_time )))
         fatal_error( "could not create Machine registry key\n" );
+
+    /* create the Registry\Machine\System\CurrentControlSet symlink */
+    if ((key = create_key_recursive( hklm, &system_name, current_time )))
+    {
+        struct key *subkey;
+        subkey = create_key_object( &key->obj, &cs001_name, OBJ_OPENIF, 0, current_time, NULL );
+        if (subkey)
+        {
+            release_object( subkey );
+            subkey = create_key_object( &key->obj, &ccs_name, OBJ_OPENIF | OBJ_OPENLINK,
+                                        REG_OPTION_CREATE_LINK, current_time, NULL );
+            release_object( key );
+            if (subkey)
+            {
+                if (subkey->flags & KEY_SYMLINK)
+                    set_value( subkey, &symlink_str, REG_LINK, cs001_path, sizeof(cs001_path) );
+                release_object( subkey );
+            }
+        }
+    }
+
+    /* load system.reg into Registry\Machine */
 
     if (!load_init_registry_from_file( "system.reg", hklm ))
     {
