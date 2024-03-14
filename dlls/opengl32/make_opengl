@@ -185,6 +185,16 @@ my %manual_win_thunks =
      "wglQueryRendererStringWINE" => 1,
      "wglSwapBuffers" => 1,
     );
+my %manual_unix_functions =
+    (
+     "glDebugMessageCallback" => 1,
+     "glDebugMessageCallbackAMD" => 1,
+     "glDebugMessageCallbackARB" => 1,
+     "glGetString" => 1,
+     "glGetStringi" => 1,
+     "glGetIntegerv" => 1,
+     "wglGetProcAddress" => 1,
+    );
 my %manual_wow64_thunks =
     (
      "glClientWaitSync" => 1,
@@ -709,7 +719,7 @@ sub needs_wrapper($$)
 {
     my ($name, $func) = @_;
 
-    return 1 if $name =~ /^glDebugMessageCallback|^glGetString|^glGetIntegerv|^wglGetProcAddress/;
+    return 1 if defined $manual_unix_functions{$name};
 
     # check if return value needs special handling
     (my $type = $func->[0]->textContent()) =~ s/ $//;
