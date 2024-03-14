@@ -2810,6 +2810,112 @@ static void test_query_directory(void)
     pNtClose( dir );
 }
 
+static NTSTATUS open_object( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr, const WCHAR *type )
+{
+    if (wcscmp( type, L"Event" ) == 0)
+        return pNtOpenEvent( handle, access, attr );
+    if (wcscmp( type, L"KeyedEvent" ) == 0)
+        return pNtOpenKeyedEvent( handle, access, attr );
+    if (wcscmp( type, L"Mutant" ) == 0)
+        return pNtOpenMutant( handle, access, attr );
+    if (wcscmp( type, L"Section" ) == 0)
+        return pNtOpenSection( handle, access, attr );
+    if (wcscmp( type, L"Semaphore" ) == 0)
+        return pNtOpenSemaphore( handle, access, attr );
+    if (wcscmp( type, L"SymbolicLink" ) == 0)
+        return pNtOpenSymbolicLinkObject( handle, access, attr );
+    if (wcscmp( type, L"Timer" ) == 0)
+        return pNtOpenTimer( handle, access, attr );
+    return STATUS_ACCESS_DENIED;
+}
+
+static void test_kernel_objs_delete(void)
+{
+    union
+    {
+        DIRECTORY_BASIC_INFORMATION dbi[2];
+        char buffer[0x1000];
+    } info;
+    OBJECT_ATTRIBUTES krnobjs_attr;
+    ULONG context = 0, size = 0;
+    BOOLEAN restart_enum = TRUE;
+    UNICODE_STRING krnobjs_str;
+    HANDLE krnobjs = NULL;
+    NTSTATUS status;
+
+    if (winetest_platform_is_wine)
+    {
+        skip("wine crashes when \\KernelObjects\\* are deleted\n");
+        return;
+    }
+
+    RtlInitUnicodeString( &krnobjs_str, L"\\KernelObjects" );
+    InitializeObjectAttributes( &krnobjs_attr, &krnobjs_str, 0, NULL, NULL );
+    status = pNtOpenDirectoryObject( &krnobjs, DIRECTORY_QUERY, &krnobjs_attr );
+    ok( !status, "NtOpenDirectoryObject returned %#lx\n", status );
+
+    for (;;)
+    {
+        OBJECT_ATTRIBUTES child_attr;
+        OBJECT_BASIC_INFORMATION obi, obi2;
+        ULONG obi_len, obi2_len;
+        BOOLEAN maybe_deleted = FALSE;
+        HANDLE child;
+
+        memset( &info, 0xcc, sizeof(info) );
+        status = NtQueryDirectoryObject( krnobjs, info.dbi, sizeof(info), TRUE, restart_enum, &context, &size );
+        restart_enum = FALSE;
+        ok( !status || status == STATUS_NO_MORE_ENTRIES, "NtQueryDirectoryObject returned %#lx\n", status );
+        if (status) break;
+
+        ok( !!info.dbi[0].ObjectName.Buffer, "expected no less than 1 entry\n" );
+        ok( !!info.dbi[0].ObjectTypeName.Buffer, "expected no less than 1 entry\n" );
+        ok( !info.dbi[1].ObjectName.Buffer, "expected no more than 1 entry\n" );
+        ok( !info.dbi[1].ObjectTypeName.Buffer, "expected no more than 1 entry\n" );
+
+        if (winetest_debug > 1) trace( "Trying to open %s %s\n", wine_dbgstr_w(info.dbi[0].ObjectTypeName.Buffer), wine_dbgstr_w(info.dbi[0].ObjectName.Buffer) );
+        InitializeObjectAttributes( &child_attr, &info.dbi[0].ObjectName, 0, krnobjs, NULL );
+        child = NULL;
+        status = open_object( &child, MAXIMUM_ALLOWED, &child_attr, info.dbi[0].ObjectTypeName.Buffer );
+        ok( !status || status == STATUS_ACCESS_DENIED, "open object returned %08lx\n", status );
+        if (status) continue;
+
+        status = pNtQueryObject( child, ObjectBasicInformation, &obi, sizeof(obi), &obi_len );
+        ok( !status, "NtQueryObject returned %08lx\n", status );
+
+        trace( "Trying to delete %s with access %08lx\n", wine_dbgstr_w(child_attr.ObjectName->Buffer), obi.GrantedAccess );
+        status = NtMakeTemporaryObject( child );
+        ok( status == ((obi.GrantedAccess & DELETE) ? 0 : STATUS_ACCESS_DENIED), "NtMakeTemporaryObject() returned %08lx\n", status );
+        maybe_deleted = !NT_ERROR( status );
+        NtClose( child );
+
+        if (maybe_deleted)
+        {
+            HANDLE child2 = NULL;
+
+            status = open_object( &child2, MAXIMUM_ALLOWED, &child_attr, info.dbi[0].ObjectTypeName.Buffer );
+            if (status == STATUS_OBJECT_NAME_NOT_FOUND)
+            {
+                /* object deleted; restart enum from the beginning */
+                restart_enum = TRUE;
+                continue;
+            }
+            ok( !status, "reopen object returned %08lx\n", status );
+
+            status = pNtQueryObject( child2, ObjectBasicInformation, &obi2, sizeof(obi2), &obi2_len );
+            ok( !status, "NtQueryObject returned %08lx\n", status );
+            ok( !(obi2.Attributes & OBJ_PERMANENT), "expected OBJ_PERMANENT unset, got %08lx\n", obi2.Attributes );
+
+            if (winetest_debug > 1) trace( "HandleCount: %lu -> %lu\n", obi.HandleCount, obi2.HandleCount );
+            if (winetest_debug > 1) trace( "PointerCount: %lu -> %lu\n", obi.PointerCount, obi2.PointerCount );
+
+            NtClose( child2 );
+        }
+    }
+
+    NtClose( krnobjs );
+}
+
 #define test_object_name_with_null(a,b) _test_object_name_with_null(__LINE__,a,b)
 static void _test_object_name_with_null(unsigned line, HANDLE handle, UNICODE_STRING *expect)
 {
@@ -3219,4 +3325,5 @@ START_TEST(om)
     test_globalroot();
     test_object_identity();
     test_query_directory();
+    test_kernel_objs_delete();
 }
