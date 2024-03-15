@@ -1369,6 +1369,18 @@ INT macdrv_GetKeyNameText(LONG lparam, LPWSTR buffer, INT size)
             if (!len)
                 break;
 
+            if (status == noErr && len == 1)
+            {
+                CFStringRef stringRef = CFStringCreateWithCharacters(kCFAllocatorDefault, buffer, len);
+                CFMutableStringRef mutableStringRef = CFStringCreateMutableCopy(kCFAllocatorDefault, 0, stringRef);
+
+                CFStringUppercase(mutableStringRef, CFLocaleGetSystem());
+                if (CFStringGetLength(mutableStringRef) == 1)
+                    CFStringGetCharacters(mutableStringRef, CFRangeMake(0, 1), buffer);
+                CFRelease(stringRef);
+                CFRelease(mutableStringRef);
+            }
+
             TRACE("lparam 0x%08x -> %s\n", (unsigned int)lparam, debugstr_w(buffer));
             return len;
         }
