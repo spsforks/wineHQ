@@ -356,7 +356,7 @@ static void test_ID3DXFont(IDirect3DDevice9 *device)
     IDirect3DTexture9 *texture;
     D3DSURFACE_DESC surf_desc;
     IDirect3DDevice9 *bufdev;
-    GLYPHMETRICS glyph_metrics;
+    GLYPHMETRICS glyph_metrics, gm_grayscale;
     D3DXFONT_DESCA desc;
     ID3DXSprite *sprite;
     RECT rect, blackbox;
@@ -605,15 +605,27 @@ static void test_ID3DXFont(IDirect3DDevice9 *device)
         count = GetGlyphOutlineW(hdc, glyph, GGO_GLYPH_INDEX | GGO_METRICS, &glyph_metrics, 0, NULL, &mat);
         ok(count != GDI_ERROR, "Unexpected count %#lx.\n", count);
 
+        count = GetGlyphOutlineW(hdc, glyph, GGO_GLYPH_INDEX | GGO_GRAY8_BITMAP, &gm_grayscale, 0, NULL, &mat);
+        ok(count != GDI_ERROR, "Unexpected count %#lx.\n", count);
+
         ret = ID3DXFont_GetTextMetricsW(font, &tm);
         ok(ret, "Unexpected ret %#x.\n", ret);
 
-        todo_wine ok(blackbox.right - blackbox.left == glyph_metrics.gmBlackBoxX + 2, "Got %ld, expected %d.\n",
+        todo_wine_if(blackbox.right - blackbox.left < glyph_metrics.gmBlackBoxX + 2)
+        ok(blackbox.right - blackbox.left == glyph_metrics.gmBlackBoxX + 2, "Got %ld, expected %d.\n",
                 blackbox.right - blackbox.left, glyph_metrics.gmBlackBoxX + 2);
-        todo_wine ok(blackbox.bottom - blackbox.top == glyph_metrics.gmBlackBoxY + 2, "Got %ld, expected %d.\n",
+
+        todo_wine_if(blackbox.bottom - blackbox.top < glyph_metrics.gmBlackBoxY + 2)
+        ok(blackbox.bottom - blackbox.top == glyph_metrics.gmBlackBoxY + 2, "Got %ld, expected %d.\n",
                 blackbox.bottom - blackbox.top, glyph_metrics.gmBlackBoxY + 2);
+
+        todo_wine_if(glyph_metrics.gmptGlyphOrigin.x != gm_grayscale.gmptGlyphOrigin.x
+                && cellinc.x == gm_grayscale.gmptGlyphOrigin.x - 1)
         ok(cellinc.x == glyph_metrics.gmptGlyphOrigin.x - 1, "Got %ld, expected %ld.\n",
                 cellinc.x, glyph_metrics.gmptGlyphOrigin.x - 1);
+
+        todo_wine_if(glyph_metrics.gmptGlyphOrigin.y != gm_grayscale.gmptGlyphOrigin.y
+                && cellinc.y == tm.tmAscent - gm_grayscale.gmptGlyphOrigin.y - 1)
         ok(cellinc.y == tm.tmAscent - glyph_metrics.gmptGlyphOrigin.y - 1, "Got %ld, expected %ld.\n",
                 cellinc.y, tm.tmAscent - glyph_metrics.gmptGlyphOrigin.y - 1);
 
