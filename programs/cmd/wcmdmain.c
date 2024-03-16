@@ -37,6 +37,7 @@ extern struct env_stack *pushd_directories;
 
 BATCH_CONTEXT *context = NULL;
 DWORD errorlevel;
+BOOL lastCmdStatus;
 WCHAR quals[MAXSTRING], param1[MAXSTRING], param2[MAXSTRING];
 BOOL  interactive;
 FOR_CONTEXT forloopcontext; /* The 'for' loop context */
@@ -1046,7 +1047,7 @@ void WCMD_run_program (WCHAR *command, BOOL called)
   if (!firstParam) return;
 
   if (!firstParam[0]) {
-      errorlevel = 0;
+      WCMD_set_errorlevel(0);
       return;
   }
 
@@ -1244,8 +1245,13 @@ void WCMD_run_program (WCHAR *command, BOOL called)
            or for console applications                                    */
         if (!interactive || (console && !HIWORD(console)))
             WaitForSingleObject (pe.hProcess, INFINITE);
-        GetExitCodeProcess (pe.hProcess, &errorlevel);
-        if (errorlevel == STILL_ACTIVE) errorlevel = 0;
+
+        {
+          DWORD exitCode = 0;
+          GetExitCodeProcess (pe.hProcess, &exitCode);
+          if (exitCode == STILL_ACTIVE) WCMD_set_errorlevel(0);
+          else WCMD_set_errorlevel(exitCode);
+        }
 
         CloseHandle(pe.hProcess);
         CloseHandle(pe.hThread);
@@ -1271,7 +1277,7 @@ void WCMD_run_program (WCHAR *command, BOOL called)
 
   /* If a command fails to launch, it sets errorlevel 9009 - which
      does not seem to have any associated constant definition     */
-  errorlevel = 9009;
+  WCMD_set_errorlevel(9009);
   return;
 
 }
@@ -2369,6 +2375,7 @@ CMD_LIST *WCMD_process_commands(CMD_LIST *thisCmd, BOOL oneBracket,
                                 BOOL retrycall) {
 
     int bdepth = -1;
+    CMD_LIST *prevCmd = NULL;
 
     if (thisCmd && oneBracket) bdepth = thisCmd->bracketDepth;
 
@@ -2390,12 +2397,41 @@ CMD_LIST *WCMD_process_commands(CMD_LIST *thisCmd, BOOL oneBracket,
          about them and it will be handled in there)
          Also, skip over any batch labels (eg. :fred)          */
       if (thisCmd->command && thisCmd->command[0] != ':') {
-        WINE_TRACE("Executing command: '%s'\n", wine_dbgstr_w(thisCmd->command));
-        WCMD_execute (thisCmd->command, thisCmd->redirects, &thisCmd, retrycall);
+        /* Process the command chaining */
+        if ( (thisCmd->prevDelim == CMD_ONSUCCESS && lastCmdStatus == FALSE) ||
+             (thisCmd->prevDelim == CMD_ONFAILURE && lastCmdStatus == TRUE) ) {
+          if (prevCmd && prevCmd->bracketDepth < thisCmd->bracketDepth) {
+            /* Skipping the chain of commands in brackets */
+            int bd = thisCmd->bracketDepth;
+            do {
+              WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+              prevCmd = thisCmd;
+              thisCmd = thisCmd->nextcommand;
+            } while (thisCmd && bd <= thisCmd->bracketDepth);
+            continue;
+          } else if (thisCmd->prevDelim == CMD_ONFAILURE && lastCmdStatus == TRUE) {
+            /* Skipping all chaining commands after '||', i.e. '|| cmd2 && cmd3 || cmd4'*/
+            do {
+              WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+              prevCmd = thisCmd;
+              thisCmd = thisCmd->nextcommand;
+            } while (thisCmd && (thisCmd->prevDelim == CMD_ONSUCCESS || thisCmd->prevDelim == CMD_ONFAILURE));
+            continue;
+          } else {
+            /* Skipping the next command */
+            WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+          }
+        } else {
+          WINE_TRACE("Executing command: '%s'\n", wine_dbgstr_w(thisCmd->command));
+          WCMD_execute (thisCmd->command, thisCmd->redirects, &thisCmd, retrycall);
+        }
       }
 
       /* Step on unless the command itself already stepped on */
-      if (thisCmd == origCmd) thisCmd = thisCmd->nextcommand;
+      if (thisCmd == origCmd) {
+        prevCmd = thisCmd;
+        thisCmd = thisCmd->nextcommand;
+      }
     }
     return NULL;
 }

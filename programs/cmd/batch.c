@@ -653,7 +653,7 @@ void WCMD_call (WCHAR *command) {
   if (*command != ':') {
     WCMD_run_program(command, TRUE);
     /* If the thing we try to run does not exist, call returns 1 */
-    if (errorlevel) errorlevel=1;
+    if (errorlevel) WCMD_set_errorlevel(1);
   } else {
 
     WCHAR gotoLabel[MAX_PATH];

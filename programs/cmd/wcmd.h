@@ -200,9 +200,21 @@ typedef struct _FOR_CONTEXT {
  */
 extern WCHAR quals[MAXSTRING], param1[MAXSTRING], param2[MAXSTRING];
 extern DWORD errorlevel;
+extern BOOL lastCmdStatus;
 extern BATCH_CONTEXT *context;
 extern FOR_CONTEXT forloopcontext;
 extern BOOL delayedsubst;
+
+static inline void WCMD_set_errorlevel(DWORD newValue)
+{
+  errorlevel = newValue;
+  lastCmdStatus = (errorlevel == 0);
+}
+
+static inline void WCMD_set_lastCmdStatus(BOOL isSucceeded)
+{
+  lastCmdStatus = isSucceeded;
+}
 
 #endif /* !RC_INVOKED */
 
