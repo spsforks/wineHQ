@@ -39,6 +39,16 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLGetApplicationPolicy(HSLP handle, const WCHAR *name, UINT *type, UINT *count, BYTE **data)
+{
+    FIXME("(%p %s %p %p %p) stub\n", handle, debugstr_w(name), type, count, data );
+
+    *count = 0;
+    *data = NULL;
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );
@@ -48,12 +58,29 @@ HRESULT WINAPI SLOpen(HSLC *handle)
 
     *handle = (HSLC)0xdeadbeef;
 
+    /*
+     * Microsoft office stops crashing and just adds to the title a suffix of
+     * "(Non-Commercial Use) (Unlicensed Product)" if we make the thread sleep forever
+     */
+    for (;;) {
+        Sleep(1000);
+    }
+
     return S_OK;
 }
 
 HRESULT WINAPI SLClose(HSLC handle)
 {
     FIXME("(%p) stub\n", handle );
+
+    return S_OK;
+}
+
+HRESULT WINAPI SLLoadApplicationPolicies(const SLID *app, const SLID *product, DWORD flags, HSLP *result)
+{
+    FIXME("(%s,%s,%lx,%p) stub\n", wine_dbgstr_guid(app), wine_dbgstr_guid(product), flags, result);
+
+    *result = NULL;
 
     return S_OK;
 }

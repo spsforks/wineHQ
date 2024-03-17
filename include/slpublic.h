@@ -33,6 +33,8 @@ typedef GUID SLID;
 
 typedef PVOID HSLC;
 
+typedef PVOID HSLP;
+
 typedef enum _tagSLDATATYPE
 {
     SL_DATA_NONE     = REG_NONE,
@@ -63,9 +65,11 @@ typedef struct _tagSL_LICENSING_STATUS
 } SL_LICENSING_STATUS;
 
 SLCAPI HRESULT WINAPI SLGetLicensingStatusInformation(HSLC, const SLID*, const SLID*, LPCWSTR, UINT*, SL_LICENSING_STATUS**);
+SLCAPI HRESULT WINAPI SLGetApplicationPolicy(HSLP, const WCHAR *, UINT *, UINT *, BYTE **);
 SLCAPI HRESULT WINAPI SLGetWindowsInformation(LPCWSTR, SLDATATYPE*, UINT*, LPBYTE*);
 SLCAPI HRESULT WINAPI SLGetWindowsInformationDWORD(LPCWSTR, LPDWORD);
 SLCAPI HRESULT WINAPI SLOpen(HSLC*);
+SLCAPI HRESULT WINAPI SLLoadApplicationPolicies(const SLID *, const SLID *, DWORD, HSLP *);
 
 #ifdef __cplusplus
 }

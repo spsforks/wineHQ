@@ -30,7 +30,7 @@
 @ stub SLGenerateOfflineInstallationIdEx
 @ stub SLGetActiveLicenseInfo
 @ stub SLGetApplicationInformation
-@ stub SLGetApplicationPolicy
+@ stdcall SLGetApplicationPolicy(ptr wstr ptr ptr ptr)
 @ stub SLGetAuthenticationResult
 @ stub SLGetEncryptedPIDEx
 @ stub SLGetGenuineInformation
@@ -50,7 +50,7 @@
 @ stub SLInstallProofOfPurchase
 @ stub SLInstallProofOfPurchaseEx
 @ stub SLIsGenuineLocalEx
-@ stub SLLoadApplicationPolicies
+@ stdcall SLLoadApplicationPolicies(ptr ptr long ptr)
 @ stdcall SLOpen(ptr)
 @ stdcall SLPersistApplicationPolicies(ptr ptr long)
 @ stub SLPersistRTSPayloadOverride
