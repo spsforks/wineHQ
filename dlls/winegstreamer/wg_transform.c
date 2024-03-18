@@ -38,6 +38,7 @@
 #include "mferror.h"
 
 #include "unix_private.h"
+#include "wine/debug.h"
 
 #define GST_SAMPLE_FLAG_WG_CAPS_CHANGED (GST_MINI_OBJECT_FLAG_LAST << 0)
 
@@ -53,14 +54,13 @@ struct wg_transform
 
     GstAtomicQueue *input_queue;
 
-    bool input_is_flipped;
-    GstElement *video_flip;
-
+    struct wg_format input_format;
     struct wg_format output_format;
     GstAtomicQueue *output_queue;
     GstSample *output_sample;
     bool output_caps_changed;
     GstCaps *output_caps;
+    GstCaps *input_caps;
 };
 
 static struct wg_transform *get_transform(wg_transform_t trans)
@@ -68,18 +68,158 @@ static struct wg_transform *get_transform(wg_transform_t trans)
     return (struct wg_transform *)(ULONG_PTR)trans;
 }
 
-static void align_video_info_planes(gsize plane_align, GstVideoInfo *info, GstVideoAlignment *align)
+static void align_video_info_planes(struct wg_format *format, gsize plane_align,
+        GstVideoInfo *info, GstVideoAlignment *align)
 {
     gst_video_alignment_reset(align);
 
     align->padding_right = ((plane_align + 1) - (info->width & plane_align)) & plane_align;
     align->padding_bottom = ((plane_align + 1) - (info->height & plane_align)) & plane_align;
+    align->padding_right = max(align->padding_right, format->u.video.padding.right);
+    align->padding_bottom = max(align->padding_bottom, format->u.video.padding.bottom);
+    align->padding_top = format->u.video.padding.top;
+    align->padding_left = format->u.video.padding.left;
+
+    if (format->u.video.height < 0)
+    {
+        gsize top = align->padding_top;
+        align->padding_top = align->padding_bottom;
+        align->padding_bottom = top;
+    }
+
     align->stride_align[0] = plane_align;
     align->stride_align[1] = plane_align;
     align->stride_align[2] = plane_align;
     align->stride_align[3] = plane_align;
 
     gst_video_info_align(info, align);
+
+    if (format->u.video.height < 0)
+    {
+        for (guint i = 0; i < ARRAY_SIZE(info->offset); ++i)
+        {
+            info->offset[i] += (info->height - 1) * info->stride[i];
+            info->stride[i] = -info->stride[i];
+        }
+    }
+}
+
+static void update_format_width_padding(struct wg_format *max, struct wg_format *min)
+{
+    max->u.video.padding.right += max->u.video.width - min->u.video.width;
+    max->u.video.width = min->u.video.width;
+}
+
+static void update_format_height_padding(struct wg_format *max, struct wg_format *min)
+{
+    max->u.video.padding.bottom += abs(max->u.video.height) - abs(min->u.video.height);
+    max->u.video.height = (max->u.video.height < 0 ? -1 : 1) * abs(min->u.video.height);
+}
+
+static void update_format_padding(struct wg_format *input_format, struct wg_format *output_format)
+{
+    if (input_format->major_type != output_format->major_type)
+        return;
+    if (input_format->major_type != WG_MAJOR_TYPE_VIDEO)
+        return;
+
+    if (input_format->u.video.width > output_format->u.video.width)
+        update_format_width_padding(input_format, output_format);
+    else
+        update_format_width_padding(output_format, input_format);
+
+    if (abs(input_format->u.video.height) > abs(output_format->u.video.height))
+        update_format_height_padding(input_format, output_format);
+    else
+        update_format_height_padding(output_format, input_format);
+}
+
+typedef struct
+{
+    GstVideoBufferPool parent;
+    GstVideoInfo info;
+} WgVideoBufferPool;
+
+typedef struct
+{
+    GstVideoBufferPoolClass parent_class;
+} WgVideoBufferPoolClass;
+
+G_DEFINE_TYPE(WgVideoBufferPool, wg_video_buffer_pool, GST_TYPE_VIDEO_BUFFER_POOL);
+
+static void buffer_add_video_meta(GstBuffer *buffer, GstVideoInfo *info)
+{
+    GstVideoMeta *meta;
+
+    if (!(meta = gst_buffer_get_video_meta(buffer)))
+        meta = gst_buffer_add_video_meta(buffer, GST_VIDEO_FRAME_FLAG_NONE,
+                        info->finfo->format, info->width, info->height);
+
+    if (!meta)
+        GST_ERROR("Failed to add video meta to buffer %"GST_PTR_FORMAT, buffer);
+    else
+    {
+        memcpy(meta->offset, info->offset, sizeof(info->offset));
+        memcpy(meta->stride, info->stride, sizeof(info->stride));
+    }
+}
+
+static GstFlowReturn wg_video_buffer_pool_alloc_buffer(GstBufferPool *gst_pool, GstBuffer **buffer,
+        GstBufferPoolAcquireParams *params)
+{
+    GstBufferPoolClass *parent_class = GST_BUFFER_POOL_CLASS(wg_video_buffer_pool_parent_class);
+    WgVideoBufferPool *pool = (WgVideoBufferPool *)gst_pool;
+    GstFlowReturn ret;
+
+    GST_LOG("%"GST_PTR_FORMAT", buffer %p, params %p", pool, buffer, params);
+
+    if (!(ret = parent_class->alloc_buffer(gst_pool, buffer, params)))
+    {
+        buffer_add_video_meta(*buffer, &pool->info);
+        GST_INFO("%"GST_PTR_FORMAT" allocated buffer %"GST_PTR_FORMAT, pool, *buffer);
+    }
+
+    return ret;
+}
+
+static void wg_video_buffer_pool_init(WgVideoBufferPool * pool) {}
+
+static void wg_video_buffer_pool_class_init(WgVideoBufferPoolClass *klass)
+{
+    GstBufferPoolClass *pool_class = GST_BUFFER_POOL_CLASS(klass);
+    pool_class->alloc_buffer = wg_video_buffer_pool_alloc_buffer;
+}
+
+static WgVideoBufferPool *wg_video_buffer_pool_create(GstCaps *caps, gsize plane_align,
+        GstAllocator *allocator, struct wg_format *format, GstVideoAlignment *align)
+{
+    WgVideoBufferPool *pool;
+    GstStructure *config;
+
+    if (!(pool = g_object_new(wg_video_buffer_pool_get_type(), NULL)))
+        return NULL;
+
+    if (!gst_video_info_from_caps(&pool->info, caps))
+        GST_ERROR("Failed to create video info from caps %" GST_PTR_FORMAT, caps);
+    else
+        align_video_info_planes(format, plane_align, &pool->info, align);
+
+    if (!(config = gst_buffer_pool_get_config(GST_BUFFER_POOL(pool))))
+        GST_ERROR("Failed to get %"GST_PTR_FORMAT" config.", pool);
+    else
+    {
+        gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+        gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+        gst_buffer_pool_config_set_video_alignment(config, align);
+
+        gst_buffer_pool_config_set_params(config, caps, pool->info.size, 0, 0);
+        gst_buffer_pool_config_set_allocator(config, allocator, NULL);
+        if (!gst_buffer_pool_set_config(GST_BUFFER_POOL(pool), config))
+            GST_ERROR("Failed to set %"GST_PTR_FORMAT" config.", pool);
+    }
+
+    GST_INFO("Created %"GST_PTR_FORMAT, pool);
+    return pool;
 }
 
 static GstFlowReturn transform_sink_chain_cb(GstPad *pad, GstObject *parent, GstBuffer *buffer)
@@ -128,12 +268,10 @@ static gboolean transform_src_query_cb(GstPad *pad, GstObject *parent, GstQuery 
 
 static gboolean transform_sink_query_allocation(struct wg_transform *transform, GstQuery *query)
 {
-    gsize plane_align = transform->attrs.output_plane_align;
-    GstStructure *config, *params;
+    WgVideoBufferPool *pool;
     GstVideoAlignment align;
+    GstStructure *params;
     gboolean needs_pool;
-    GstBufferPool *pool;
-    GstVideoInfo info;
     GstCaps *caps;
 
     GST_LOG("transform %p, %"GST_PTR_FORMAT, transform, query);
@@ -142,11 +280,9 @@ static gboolean transform_sink_query_allocation(struct wg_transform *transform, 
     if (stream_type_from_caps(caps) != GST_STREAM_TYPE_VIDEO || !needs_pool)
         return false;
 
-    if (!gst_video_info_from_caps(&info, caps)
-            || !(pool = gst_video_buffer_pool_new()))
+    if (!(pool = wg_video_buffer_pool_create(caps, transform->attrs.output_plane_align,
+            transform->allocator, &transform->output_format, &align)))
         return false;
-
-    align_video_info_planes(plane_align, &info, &align);
 
     if ((params = gst_structure_new("video-meta",
             "padding-top", G_TYPE_UINT, align.padding_top,
@@ -159,30 +295,15 @@ static gboolean transform_sink_query_allocation(struct wg_transform *transform, 
         gst_structure_free(params);
     }
 
-    if (!(config = gst_buffer_pool_get_config(pool)))
-        GST_ERROR("Failed to get %"GST_PTR_FORMAT" config.", pool);
-    else
-    {
-        gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-        gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-        gst_buffer_pool_config_set_video_alignment(config, &align);
-
-        gst_buffer_pool_config_set_params(config, caps,
-                info.size, 0, 0);
-        gst_buffer_pool_config_set_allocator(config, transform->allocator, NULL);
-        if (!gst_buffer_pool_set_config(pool, config))
-            GST_ERROR("Failed to set %"GST_PTR_FORMAT" config.", pool);
-    }
-
     /* Prevent pool reconfiguration, we don't want another alignment. */
-    if (!gst_buffer_pool_set_active(pool, true))
+    if (!gst_buffer_pool_set_active(GST_BUFFER_POOL(pool), true))
         GST_ERROR("%"GST_PTR_FORMAT" failed to activate.", pool);
 
-    gst_query_add_allocation_pool(query, pool, info.size, 0, 0);
+    gst_query_add_allocation_pool(query, GST_BUFFER_POOL(pool), pool->info.size, 0, 0);
     gst_query_add_allocation_param(query, transform->allocator, NULL);
 
     GST_INFO("Proposing %"GST_PTR_FORMAT", buffer size %#zx, %"GST_PTR_FORMAT", for %"GST_PTR_FORMAT,
-            pool, info.size, transform->allocator, query);
+            pool, pool->info.size, transform->allocator, query);
 
     g_object_unref(pool);
     return true;
@@ -321,15 +442,11 @@ NTSTATUS wg_transform_destroy(void *args)
     g_object_unref(transform->my_src);
     gst_query_unref(transform->drain_query);
     gst_caps_unref(transform->output_caps);
+    gst_caps_unref(transform->input_caps);
     gst_atomic_queue_unref(transform->output_queue);
     free(transform);
 
     return STATUS_SUCCESS;
-}
-
-static bool wg_format_video_is_flipped(const struct wg_format *format)
-{
-    return format->major_type == WG_MAJOR_TYPE_VIDEO && (format->u.video.height < 0);
 }
 
 NTSTATUS wg_transform_create(void *args)
@@ -338,10 +455,10 @@ NTSTATUS wg_transform_create(void *args)
     struct wg_format output_format = *params->output_format;
     struct wg_format input_format = *params->input_format;
     GstElement *first = NULL, *last = NULL, *element;
-    GstCaps *raw_caps = NULL, *src_caps = NULL;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     GstPadTemplate *template = NULL;
     struct wg_transform *transform;
+    GstCaps *raw_caps = NULL;
     const gchar *media_type;
     GstEvent *event;
 
@@ -358,18 +475,22 @@ NTSTATUS wg_transform_create(void *args)
     if (!(transform->allocator = wg_allocator_create()))
         goto out;
     transform->attrs = *params->attrs;
+
+    /* GStreamer cannot include the buffer padding in the frame sizes but MF does, make sure the formats have the same */
+    update_format_padding(&input_format, &output_format);
+    transform->input_format = input_format;
     transform->output_format = output_format;
 
-    if (!(src_caps = transform_format_to_caps(transform, &input_format)))
+    if (!(transform->input_caps = transform_format_to_caps(transform, &input_format)))
         goto out;
-    if (!(template = gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS, src_caps)))
+    if (!(template = gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS, transform->input_caps)))
         goto out;
     transform->my_src = gst_pad_new_from_template(template, "src");
     g_object_unref(template);
     if (!transform->my_src)
         goto out;
 
-    GST_INFO("transform %p input caps %"GST_PTR_FORMAT, transform, src_caps);
+    GST_INFO("transform %p input caps %"GST_PTR_FORMAT, transform, transform->input_caps);
 
     gst_pad_set_element_private(transform->my_src, transform);
     gst_pad_set_query_function(transform->my_src, transform_src_query_cb);
@@ -408,7 +529,7 @@ NTSTATUS wg_transform_create(void *args)
         case WG_MAJOR_TYPE_VIDEO_INDEO:
         case WG_MAJOR_TYPE_VIDEO_WMV:
         case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            if (!(element = find_element(GST_ELEMENT_FACTORY_TYPE_DECODER, src_caps, raw_caps))
+            if (!(element = find_element(GST_ELEMENT_FACTORY_TYPE_DECODER, transform->input_caps, raw_caps))
                     || !append_element(transform->container, element, &first, &last))
             {
                 gst_caps_unref(raw_caps);
@@ -451,15 +572,6 @@ NTSTATUS wg_transform_create(void *args)
             if (!(element = create_element("videoconvert", "base"))
                     || !append_element(transform->container, element, &first, &last))
                 goto out;
-            if (!(transform->video_flip = create_element("videoflip", "base"))
-                    || !append_element(transform->container, transform->video_flip, &first, &last))
-                goto out;
-            transform->input_is_flipped = wg_format_video_is_flipped(&input_format);
-            if (transform->input_is_flipped != wg_format_video_is_flipped(&output_format))
-                gst_util_set_object_arg(G_OBJECT(transform->video_flip), "method", "vertical-flip");
-            if (!(element = create_element("videoconvert", "base"))
-                    || !append_element(transform->container, element, &first, &last))
-                goto out;
             /* Let GStreamer choose a default number of threads. */
             gst_util_set_object_arg(G_OBJECT(element), "n-threads", "0");
             break;
@@ -493,7 +605,7 @@ NTSTATUS wg_transform_create(void *args)
     if (!(event = gst_event_new_stream_start("stream"))
             || !push_event(transform->my_src, event))
         goto out;
-    if (!(event = gst_event_new_caps(src_caps))
+    if (!(event = gst_event_new_caps(transform->input_caps))
             || !push_event(transform->my_src, event))
         goto out;
 
@@ -506,8 +618,6 @@ NTSTATUS wg_transform_create(void *args)
             || !push_event(transform->my_src, event))
         goto out;
 
-    gst_caps_unref(src_caps);
-
     GST_INFO("Created winegstreamer transform %p.", transform);
     params->transform = (wg_transform_t)(ULONG_PTR)transform;
     return STATUS_SUCCESS;
@@ -519,8 +629,8 @@ out:
         gst_caps_unref(transform->output_caps);
     if (transform->my_src)
         gst_object_unref(transform->my_src);
-    if (src_caps)
-        gst_caps_unref(src_caps);
+    if (transform->input_caps)
+        gst_caps_unref(transform->input_caps);
     if (transform->allocator)
         wg_allocator_destroy(transform->allocator);
     if (transform->drain_query)
@@ -543,16 +653,23 @@ NTSTATUS wg_transform_set_output_format(void *args)
 {
     struct wg_transform_set_output_format_params *params = args;
     struct wg_transform *transform = get_transform(params->transform);
-    const struct wg_format *format = params->format;
+    struct wg_format output_format = *params->format;
     GstSample *sample;
     GstCaps *caps;
 
-    if (!(caps = transform_format_to_caps(transform, format)))
+    if (output_format.major_type == WG_MAJOR_TYPE_VIDEO)
     {
-        GST_ERROR("Failed to convert format %p to caps.", format);
+        /* GStreamer cannot include the buffer padding in the frame sizes but MF does, make sure the formats have the same */
+        update_format_width_padding(&output_format, &transform->output_format);
+        update_format_height_padding(&output_format, &transform->output_format);
+    }
+
+    if (!(caps = transform_format_to_caps(transform, &output_format)))
+    {
+        GST_ERROR("Failed to convert format to caps.");
         return STATUS_UNSUCCESSFUL;
     }
-    transform->output_format = *format;
+    transform->output_format = output_format;
 
     GST_INFO("transform %p output caps %"GST_PTR_FORMAT, transform, caps);
 
@@ -571,15 +688,6 @@ NTSTATUS wg_transform_set_output_format(void *args)
     gst_caps_unref(transform->output_caps);
     transform->output_caps = caps;
 
-    if (transform->video_flip)
-    {
-        const char *value;
-        if (transform->input_is_flipped != wg_format_video_is_flipped(format))
-            value = "vertical-flip";
-        else
-            value = "none";
-        gst_util_set_object_arg(G_OBJECT(transform->video_flip), "method", value);
-    }
     if (!push_event(transform->my_sink, gst_event_new_reconfigure()))
     {
         GST_ERROR("Failed to reconfigure transform %p.", transform);
@@ -613,6 +721,7 @@ NTSTATUS wg_transform_push_data(void *args)
     struct wg_transform_push_data_params *params = args;
     struct wg_transform *transform = get_transform(params->transform);
     struct wg_sample *sample = params->sample;
+    GstVideoInfo video_info;
     GstBuffer *buffer;
     guint length;
 
@@ -636,6 +745,14 @@ NTSTATUS wg_transform_push_data(void *args)
         GST_INFO("Wrapped %u/%u bytes from sample %p to %"GST_PTR_FORMAT, sample->size, sample->max_size, sample, buffer);
     }
 
+    if (stream_type_from_caps(transform->input_caps) == GST_STREAM_TYPE_VIDEO
+            && gst_video_info_from_caps(&video_info, transform->input_caps))
+    {
+        GstVideoAlignment align;
+        align_video_info_planes(&transform->input_format, 0, &video_info, &align);
+        buffer_add_video_meta(buffer, &video_info);
+    }
+
     if (sample->flags & WG_SAMPLE_FLAG_HAS_PTS)
         GST_BUFFER_PTS(buffer) = sample->pts * 100;
     if (sample->flags & WG_SAMPLE_FLAG_HAS_DURATION)
@@ -650,25 +767,14 @@ NTSTATUS wg_transform_push_data(void *args)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS copy_video_buffer(GstBuffer *buffer, GstCaps *caps, gsize plane_align,
-        struct wg_sample *sample, gsize *total_size)
+static NTSTATUS copy_video_buffer(GstBuffer *buffer, const GstVideoInfo *src_video_info,
+        const GstVideoInfo *dst_video_info, struct wg_sample *sample, gsize *total_size)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     GstVideoFrame src_frame, dst_frame;
-    GstVideoInfo src_info, dst_info;
-    GstVideoAlignment align;
     GstBuffer *dst_buffer;
 
-    if (!gst_video_info_from_caps(&src_info, caps))
-    {
-        GST_ERROR("Failed to get video info from caps.");
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    dst_info = src_info;
-    align_video_info_planes(plane_align, &dst_info, &align);
-
-    if (sample->max_size < dst_info.size)
+    if (sample->max_size < dst_video_info->size)
     {
         GST_ERROR("Output buffer is too small.");
         return STATUS_BUFFER_TOO_SMALL;
@@ -680,14 +786,14 @@ static NTSTATUS copy_video_buffer(GstBuffer *buffer, GstCaps *caps, gsize plane_
         GST_ERROR("Failed to wrap wg_sample into GstBuffer");
         return STATUS_UNSUCCESSFUL;
     }
-    gst_buffer_set_size(dst_buffer, dst_info.size);
-    *total_size = sample->size = dst_info.size;
+    gst_buffer_set_size(dst_buffer, dst_video_info->size);
+    *total_size = sample->size = dst_video_info->size;
 
-    if (!gst_video_frame_map(&src_frame, &src_info, buffer, GST_MAP_READ))
+    if (!gst_video_frame_map(&src_frame, src_video_info, buffer, GST_MAP_READ))
         GST_ERROR("Failed to map source frame.");
     else
     {
-        if (!gst_video_frame_map(&dst_frame, &dst_info, dst_buffer, GST_MAP_WRITE))
+        if (!gst_video_frame_map(&dst_frame, dst_video_info, dst_buffer, GST_MAP_WRITE))
             GST_ERROR("Failed to map destination frame.");
         else
         {
@@ -704,8 +810,7 @@ static NTSTATUS copy_video_buffer(GstBuffer *buffer, GstCaps *caps, gsize plane_
     return status;
 }
 
-static NTSTATUS copy_buffer(GstBuffer *buffer, GstCaps *caps, struct wg_sample *sample,
-        gsize *total_size)
+static NTSTATUS copy_buffer(GstBuffer *buffer, struct wg_sample *sample, gsize *total_size)
 {
     GstMapInfo info;
 
@@ -730,38 +835,8 @@ static NTSTATUS copy_buffer(GstBuffer *buffer, GstCaps *caps, struct wg_sample *
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS read_transform_output_data(GstBuffer *buffer, GstCaps *caps, gsize plane_align,
-        struct wg_sample *sample)
+static void sample_set_flags_from_buffer(struct wg_sample *sample, GstBuffer *buffer, gsize total_size)
 {
-    gsize total_size;
-    bool needs_copy;
-    NTSTATUS status;
-    GstMapInfo info;
-
-    if (!gst_buffer_map(buffer, &info, GST_MAP_READ))
-    {
-        GST_ERROR("Failed to map buffer %"GST_PTR_FORMAT, buffer);
-        sample->size = 0;
-        return STATUS_UNSUCCESSFUL;
-    }
-    needs_copy = info.data != wg_sample_data(sample);
-    total_size = sample->size = info.size;
-    gst_buffer_unmap(buffer, &info);
-
-    if (!needs_copy)
-        status = STATUS_SUCCESS;
-    else if (stream_type_from_caps(caps) == GST_STREAM_TYPE_VIDEO)
-        status = copy_video_buffer(buffer, caps, plane_align, sample, &total_size);
-    else
-        status = copy_buffer(buffer, caps, sample, &total_size);
-
-    if (status)
-    {
-        GST_ERROR("Failed to copy buffer %"GST_PTR_FORMAT, buffer);
-        sample->size = 0;
-        return status;
-    }
-
     if (GST_BUFFER_PTS_IS_VALID(buffer))
     {
         sample->flags |= WG_SAMPLE_FLAG_HAS_PTS;
@@ -783,14 +858,79 @@ static NTSTATUS read_transform_output_data(GstBuffer *buffer, GstCaps *caps, gsi
         sample->flags |= WG_SAMPLE_FLAG_SYNC_POINT;
     if (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT))
         sample->flags |= WG_SAMPLE_FLAG_DISCONTINUITY;
+}
+
+static bool sample_needs_copy_buffer(struct wg_sample *sample, GstBuffer *buffer, gsize *total_size)
+{
+    GstMapInfo info;
+    bool needs_copy;
+
+    if (!gst_buffer_map(buffer, &info, GST_MAP_READ))
+    {
+        GST_ERROR("Failed to map buffer %"GST_PTR_FORMAT, buffer);
+        sample->size = 0;
+        return STATUS_UNSUCCESSFUL;
+    }
+    needs_copy = info.data != wg_sample_data(sample);
+    *total_size = sample->size = info.size;
+    gst_buffer_unmap(buffer, &info);
+
+    return needs_copy;
+}
+
+static NTSTATUS sample_read_video_buffer(struct wg_sample *sample, GstBuffer *buffer,
+        const GstVideoInfo *src_video_info, const GstVideoInfo *dst_video_info)
+{
+    gsize total_size;
+    NTSTATUS status;
+    bool needs_copy;
+
+    if (!(needs_copy = sample_needs_copy_buffer(sample, buffer, &total_size)))
+        status = STATUS_SUCCESS;
+    else
+        status = copy_video_buffer(buffer, src_video_info, dst_video_info, sample, &total_size);
+
+    if (status)
+    {
+        GST_ERROR("Failed to copy buffer %"GST_PTR_FORMAT, buffer);
+        sample->size = 0;
+        return status;
+    }
+
+    sample_set_flags_from_buffer(sample, buffer, total_size);
 
     if (needs_copy)
+        GST_WARNING("Copied %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
+    else if (sample->flags & WG_SAMPLE_FLAG_INCOMPLETE)
+        GST_ERROR("Partial read %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
+    else
+        GST_INFO("Read %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS sample_read_other_buffer(struct wg_sample *sample, GstBuffer *buffer)
+{
+    gsize total_size;
+    NTSTATUS status;
+    bool needs_copy;
+
+    if (!(needs_copy = sample_needs_copy_buffer(sample, buffer, &total_size)))
+        status = STATUS_SUCCESS;
+    else
+        status = copy_buffer(buffer, sample, &total_size);
+
+    if (status)
     {
-        if (stream_type_from_caps(caps) == GST_STREAM_TYPE_VIDEO)
-            GST_WARNING("Copied %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
-        else
-            GST_INFO("Copied %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
+        GST_ERROR("Failed to copy buffer %"GST_PTR_FORMAT, buffer);
+        sample->size = 0;
+        return status;
     }
+
+    sample_set_flags_from_buffer(sample, buffer, total_size);
+
+    if (needs_copy)
+        GST_INFO("Copied %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
     else if (sample->flags & WG_SAMPLE_FLAG_INCOMPLETE)
         GST_ERROR("Partial read %u bytes, sample %p, flags %#x", sample->size, sample, sample->flags);
     else
@@ -823,8 +963,10 @@ NTSTATUS wg_transform_read_data(void *args)
 {
     struct wg_transform_read_data_params *params = args;
     struct wg_transform *transform = get_transform(params->transform);
+    GstVideoInfo src_video_info, dst_video_info;
     struct wg_sample *sample = params->sample;
     struct wg_format *format = params->format;
+    GstVideoAlignment align = {0};
     GstBuffer *output_buffer;
     GstCaps *output_caps;
     bool discard_data;
@@ -842,38 +984,50 @@ NTSTATUS wg_transform_read_data(void *args)
     output_buffer = gst_sample_get_buffer(transform->output_sample);
     output_caps = gst_sample_get_caps(transform->output_sample);
 
+    if (stream_type_from_caps(output_caps) == GST_STREAM_TYPE_VIDEO)
+    {
+        gsize plane_align = transform->attrs.output_plane_align;
+        GstVideoMeta *meta;
+
+        if (!gst_video_info_from_caps(&src_video_info, output_caps))
+            GST_ERROR("Failed to get video info from %"GST_PTR_FORMAT, output_caps);
+        dst_video_info = src_video_info;
+
+        /* set the desired output buffer alignment and stride on the dest video info */
+        align_video_info_planes(&transform->output_format, plane_align,
+                &dst_video_info, &align);
+
+        /* copy the actual output buffer alignment and stride to the src video info */
+        if ((meta = gst_buffer_get_video_meta(output_buffer)))
+        {
+            memcpy(src_video_info.offset, meta->offset, sizeof(meta->offset));
+            memcpy(src_video_info.stride, meta->stride, sizeof(meta->stride));
+        }
+    }
+
     if (GST_MINI_OBJECT_FLAG_IS_SET(transform->output_sample, GST_SAMPLE_FLAG_WG_CAPS_CHANGED))
     {
+        struct wg_format output_format;
+
         GST_MINI_OBJECT_FLAG_UNSET(transform->output_sample, GST_SAMPLE_FLAG_WG_CAPS_CHANGED);
 
         GST_INFO("transform %p output caps %"GST_PTR_FORMAT, transform, output_caps);
 
-        if (format)
+        wg_format_from_caps(&output_format, output_caps);
+        if (output_format.major_type == WG_MAJOR_TYPE_VIDEO)
         {
-            gsize plane_align = transform->attrs.output_plane_align;
-            GstVideoAlignment align;
-            GstVideoInfo info;
-
-            wg_format_from_caps(format, output_caps);
-
-            if (format->major_type == WG_MAJOR_TYPE_VIDEO
-                    && gst_video_info_from_caps(&info, output_caps))
-            {
-                align_video_info_planes(plane_align, &info, &align);
-
-                GST_INFO("Returning video alignment left %u, top %u, right %u, bottom %u.", align.padding_left,
-                        align.padding_top, align.padding_right, align.padding_bottom);
-
-                format->u.video.padding.left = align.padding_left;
-                format->u.video.width += format->u.video.padding.left;
-                format->u.video.padding.right = align.padding_right;
-                format->u.video.width += format->u.video.padding.right;
-                format->u.video.padding.top = align.padding_top;
-                format->u.video.height += format->u.video.padding.top;
-                format->u.video.padding.bottom = align.padding_bottom;
-                format->u.video.height += format->u.video.padding.bottom;
-            }
+            if (transform->output_format.u.video.height < 0)
+                output_format.u.video.height *= -1;
+            output_format.u.video.padding.left = align.padding_left;
+            output_format.u.video.padding.right = align.padding_right;
+            output_format.u.video.padding.top = align.padding_top;
+            output_format.u.video.padding.bottom = align.padding_bottom;
+            GST_INFO("new video padding rect %s", wine_dbgstr_rect(&output_format.u.video.padding));
         }
+
+        if (format)
+            *format = output_format;
+        transform->output_format = output_format;
 
         params->result = MF_E_TRANSFORM_STREAM_CHANGE;
         GST_INFO("Format changed detected, returning no output");
@@ -881,8 +1035,13 @@ NTSTATUS wg_transform_read_data(void *args)
         return STATUS_SUCCESS;
     }
 
-    if ((status = read_transform_output_data(output_buffer, output_caps,
-                transform->attrs.output_plane_align, sample)))
+    if (stream_type_from_caps(output_caps) == GST_STREAM_TYPE_VIDEO)
+        status = sample_read_video_buffer(sample, output_buffer,
+                &src_video_info, &dst_video_info);
+    else
+        status = sample_read_other_buffer(sample, output_buffer);
+
+    if (status)
     {
         wg_allocator_release_sample(transform->allocator, sample, false);
         return status;

@@ -519,6 +519,22 @@ static IMFMediaType *mf_media_type_from_wg_format_video(const struct wg_format *
             if (FAILED(MFCreateMediaType(&type)))
                 return NULL;
 
+            if (format->u.video.padding.left || format->u.video.padding.right
+                    || format->u.video.padding.top || format->u.video.padding.bottom)
+            {
+                MFVideoArea aperture =
+                {
+                    .OffsetX = {.value = format->u.video.padding.left},
+                    .OffsetY = {.value = format->u.video.padding.top},
+                    .Area.cx = width, .Area.cy = height,
+                };
+                width += format->u.video.padding.left + format->u.video.padding.right;
+                height += format->u.video.padding.top + format->u.video.padding.bottom;
+
+                IMFMediaType_SetBlob(type, &MF_MT_MINIMUM_DISPLAY_APERTURE,
+                        (BYTE *)&aperture, sizeof(aperture));
+            }
+
             IMFMediaType_SetGUID(type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
             IMFMediaType_SetGUID(type, &MF_MT_SUBTYPE, video_formats[i].subtype);
             IMFMediaType_SetUINT64(type, &MF_MT_FRAME_SIZE, make_uint64(width, height));
@@ -531,21 +547,6 @@ static IMFMediaType *mf_media_type_from_wg_format_video(const struct wg_format *
             if (format->u.video.height < 0)
                 stride = -stride;
             IMFMediaType_SetUINT32(type, &MF_MT_DEFAULT_STRIDE, stride);
-
-            if (format->u.video.padding.left || format->u.video.padding.right
-                || format->u.video.padding.top || format->u.video.padding.bottom)
-            {
-                MFVideoArea aperture =
-                {
-                    .OffsetX = {.value = format->u.video.padding.left},
-                    .OffsetY = {.value = format->u.video.padding.top},
-                    .Area.cx = width - format->u.video.padding.right - format->u.video.padding.left,
-                    .Area.cy = height - format->u.video.padding.bottom - format->u.video.padding.top,
-                };
-
-                IMFMediaType_SetBlob(type, &MF_MT_MINIMUM_DISPLAY_APERTURE,
-                        (BYTE *)&aperture, sizeof(aperture));
-            }
 
             return type;
         }
@@ -706,6 +707,8 @@ static void mf_media_type_to_wg_format_video(IMFMediaType *type, const GUID *sub
         format->u.video.padding.top = aperture.OffsetY.value;
         format->u.video.padding.right = format->u.video.width - aperture.Area.cx - aperture.OffsetX.value;
         format->u.video.padding.bottom = format->u.video.height - aperture.Area.cy - aperture.OffsetY.value;
+        format->u.video.width -= format->u.video.padding.left + format->u.video.padding.right;
+        format->u.video.height -= format->u.video.padding.top + format->u.video.padding.bottom;
     }
 
     if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &frame_rate)) && (UINT32)frame_rate)
