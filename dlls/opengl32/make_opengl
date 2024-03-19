@@ -194,6 +194,7 @@ my %manual_unix_functions =
      "glGetStringi" => 1,
      "glGetIntegerv" => 1,
      "wglGetPixelFormatAttribivARB" => 1,
+     "wglGetPixelFormatAttribfvARB" => 1,
      "wglGetProcAddress" => 1,
     );
 my %manual_wow64_thunks =

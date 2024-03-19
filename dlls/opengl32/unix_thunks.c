@@ -41,6 +41,7 @@ extern NTSTATUS ext_wglCreateContextAttribsARB( void *args );
 extern NTSTATUS ext_wglCreatePbufferARB( void *args );
 extern NTSTATUS ext_wglDestroyPbufferARB( void *args );
 extern NTSTATUS ext_wglGetPbufferDCARB( void *args );
+extern NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args );
 extern NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args );
 extern NTSTATUS ext_wglMakeContextCurrentARB( void *args );
 extern NTSTATUS ext_wglQueryPbufferARB( void *args );
@@ -24123,15 +24124,6 @@ NTSTATUS ext_wglGetExtensionsStringEXT( void *args )
     struct wglGetExtensionsStringEXT_params *params = args;
     const struct opengl_funcs *funcs = params->teb->glTable;
     params->ret = funcs->ext.p_wglGetExtensionsStringEXT();
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args )
-{
-    struct wglGetPixelFormatAttribfvARB_params *params = args;
-    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
-    if (!funcs || !funcs->ext.p_wglGetPixelFormatAttribfvARB) return STATUS_NOT_IMPLEMENTED;
-    params->ret = funcs->ext.p_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat, params->iLayerPlane, params->nAttributes, params->piAttributes, params->pfValues );
     return STATUS_SUCCESS;
 }
 

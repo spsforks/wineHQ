@@ -992,6 +992,42 @@ static BOOL wrap_wglGetPixelFormatAttribivARB( HDC hdc, int iPixelFormat, int iL
     return TRUE;
 }
 
+static BOOL wrap_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+                                               UINT nAttributes, const int *pfAttributes, FLOAT *pfValues )
+{
+    const struct opengl_funcs *funcs = get_dc_funcs( hdc );
+    const struct wgl_pixel_format *formats, *format;
+    UINT num_formats;
+    UINT i;
+
+    TRACE( "(%p, %d, %d, %d, %p, %p)\n", hdc, iPixelFormat, iLayerPlane, nAttributes, pfAttributes, pfValues );
+
+    num_formats = funcs->wgl.p_get_pixel_formats( &formats );
+
+    if (iPixelFormat > 0 && iPixelFormat - 1 < num_formats)
+        format = &formats[iPixelFormat - 1];
+    else
+        format = NULL;
+
+    for (i = 0; i < nAttributes; ++i)
+    {
+        int attrib = pfAttributes[i];
+        switch (attrib)
+        {
+        case WGL_NUMBER_PIXEL_FORMATS_ARB:
+            pfValues[i] = num_formats;
+            break;
+        default:
+            if (format && (iLayerPlane == 0 || !wgl_attrib_uses_layer( attrib )))
+                pfValues[i] = wgl_pixel_format_get_attrib( format, attrib );
+            else
+                return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
 static BOOL wrap_wglMakeContextCurrentARB( TEB *teb, HDC draw_hdc, HDC read_hdc, HGLRC hglrc )
 {
     BOOL ret = TRUE;
@@ -1284,6 +1320,35 @@ NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args )
         params->ret = wrap_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat,
                                                          params->iLayerPlane, params->nAttributes,
                                                          params->piAttributes, params->piValues );
+    }
+    else
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args )
+{
+    struct wglGetPixelFormatAttribfvARB_params *params = args;
+    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+
+    if (!funcs) return STATUS_NOT_IMPLEMENTED;
+
+    if (funcs->ext.p_wglGetPixelFormatAttribfvARB &&
+        funcs->ext.p_wglGetPixelFormatAttribfvARB != (void *)1)
+    {
+        params->ret =
+            funcs->ext.p_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat,
+                                                       params->iLayerPlane, params->nAttributes,
+                                                       params->piAttributes, params->pfValues );
+    }
+    else if (funcs->wgl.p_get_pixel_formats)
+    {
+        params->ret = wrap_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat,
+                                                         params->iLayerPlane, params->nAttributes,
+                                                         params->piAttributes, params->pfValues );
     }
     else
     {
