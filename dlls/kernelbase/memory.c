@@ -546,6 +546,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WriteProcessMemory( HANDLE process, void *addr, co
 
     if (NT_SUCCESS(status)) 
     {
+        NtFlushInstructionCache( process, addr, size );
         return set_ntstatus( status );
     }
 
@@ -564,6 +565,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WriteProcessMemory( HANDLE process, void *addr, co
     protect_status = NtProtectVirtualMemory( process, &base_addr, &region_size, old_prot, &old_prot );
     if (!NT_SUCCESS(protect_status)) return set_ntstatus( protect_status );
 
+    NtFlushInstructionCache( process, addr, size );
     return set_ntstatus( status );
 }
 
