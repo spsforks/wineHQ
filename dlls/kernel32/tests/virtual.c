@@ -83,6 +83,8 @@ static void test_VirtualAllocEx(void)
     DWORD old_prot;
     MEMORY_BASIC_INFORMATION info;
     HANDLE hProcess;
+    NTSTATUS status;
+    NTSTATUS (NTAPI *pNtWriteVirtualMemory)(HANDLE, void *, const void *, SIZE_T, SIZE_T *);
 
     /* Same process */
     addr1 = VirtualAllocEx(GetCurrentProcess(), NULL, alloc_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -121,6 +123,17 @@ static void test_VirtualAllocEx(void)
     bytes_read = 0xdeadbeef;
     b = ReadProcessMemory(hProcess, addr1, src, 0, &bytes_read);
     ok(b && !bytes_read, "read failed: %lu\n", GetLastError());
+
+    /* test write to read-only execute region */
+    addr2 = VirtualAllocEx(hProcess, NULL, alloc_size, MEM_COMMIT,
+                           PAGE_EXECUTE_READ);
+    ok(addr2 != NULL, "VirtualAllocEx error %lu\n", GetLastError());
+    b = WriteProcessMemory(hProcess, addr2, src, alloc_size, &bytes_written);
+    ok(b, "WriteProcessMemory should succeed on a PAGE_EXECUTE_READ region. Failed error: %lu\n", GetLastError());
+    pNtWriteVirtualMemory = (NTSTATUS (NTAPI *)(HANDLE, void *, const void *, SIZE_T, SIZE_T *))
+        GetProcAddress(GetModuleHandleW(L"ntdll"), "NtWriteVirtualMemory");
+    status = pNtWriteVirtualMemory(hProcess, addr2, src, alloc_size, &bytes_written);
+    ok(!NT_SUCCESS(status), "Expected NtWriteVirtualMemory to fail on PAGE_EXECUTE_READ, but got status: %lu\n", status);
 
     /* test invalid source buffers */
 
