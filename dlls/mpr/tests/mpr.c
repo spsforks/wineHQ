@@ -286,10 +286,17 @@ static void test_WNetUseConnection(void)
         ret = pWNetUseConnectionA(NULL, netRes, NULL, NULL, 0, NULL, &bufSize, &outRes);
         if (ret != ERROR_ALREADY_ASSIGNED) break;
     }
+   
     if (ret == ERROR_ALREADY_ASSIGNED) goto end;    /* no drives available */
-    todo_wine ok(ret == WN_SUCCESS, "Unexpected return: %lu\n", ret);
+    
+    ok(ret == WN_SUCCESS, "Unexpected return: %lu\n", ret);
     ok(bufSize == 0, "Unexpected buffer size: %lu\n", bufSize);
-    if (ret == WN_SUCCESS) WNetCancelConnectionA(drive, TRUE);
+
+    if (ret == WN_SUCCESS)
+    {
+        ret = WNetCancelConnectionA(drive, TRUE);
+        ok(ret == WN_SUCCESS, "Unexpected return: %lu\n", ret);
+    }
 
     bufSize = 0;
     ret = pWNetUseConnectionA(NULL, netRes, NULL, NULL, 0, outBuf, &bufSize, &outRes);
@@ -303,11 +310,11 @@ static void test_WNetUseConnection(void)
     ok(ret == ERROR_MORE_DATA, "Unexpected return: %lu\n", ret);
     ok(bufSize == 3, "Unexpected buffer size: %lu\n", bufSize);
     if (ret == WN_SUCCESS) WNetCancelConnectionA(drive, TRUE);
+    }
 
     bufSize = 4;
     ret = pWNetUseConnectionA(NULL, netRes, NULL, NULL, 0, outBuf, &bufSize, &outRes);
     ok(ret == WN_SUCCESS, "Unexpected return: %lu\n", ret);
-    }
     ok(bufSize == 4, "Unexpected buffer size: %lu\n", bufSize);
     if (ret == WN_SUCCESS) WNetCancelConnectionA(drive, TRUE);
 

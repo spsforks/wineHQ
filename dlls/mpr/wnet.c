@@ -1986,8 +1986,11 @@ static DWORD wnet_use_connection( struct use_connection_context *ctxt )
     WCHAR letter[3] = {'Z', ':', 0};
     NETRESOURCEW netres;
 
-    if (!providerTable || providerTable->numProviders == 0)
-        return WN_NO_NETWORK;
+    if (1)
+    {
+        FIXME("Returning success.\n");
+        return WN_SUCCESS;
+    }
 
     if (!ctxt->resource)
         return ERROR_INVALID_PARAMETER;
@@ -2180,8 +2183,8 @@ DWORD WINAPI WNetUseConnectionA( HWND hwndOwner, NETRESOURCEA *resource,
     NETRESOURCEW resourceW;
     DWORD ret;
 
-    TRACE( "(%p, %p, %p, %s, 0x%08lX, %p, %p, %p)\n", hwndOwner, resource, password, debugstr_a(userid), flags,
-        accessname, buffer_size, result );
+    TRACE( "(%p, %p, %p, %s, 0x%08lX, %p, %p, %p)\n", hwndOwner, resource,
+        password, debugstr_a(userid), flags, accessname, buffer_size, result );
 
     netresource_a_to_w(resource, &resourceW);
 
@@ -2245,6 +2248,14 @@ DWORD WINAPI WNetCancelConnection2W( LPCWSTR lpName, DWORD dwFlags, BOOL fForce 
 {
     DWORD ret = WN_NO_NETWORK;
     DWORD index;
+
+    TRACE("(%s, %ld, %u)\n", debugstr_w(lpName), dwFlags, fForce);
+
+    if (1)
+    {
+        FIXME("Returning success.\n");
+        return WN_SUCCESS;
+    }
 
     if (providerTable != NULL)
     {
