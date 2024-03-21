@@ -48,6 +48,7 @@ static struct opengl_funcs opengl_funcs;
 static EGLDisplay egl_display;
 static char wgl_extensions[4096];
 static EGLConfig *egl_configs;
+static struct wgl_pixel_format *wgl_pixel_formats;
 static int num_egl_configs;
 
 #define USE_GL_FUNC(name) #name,
@@ -546,61 +547,6 @@ static BOOL wayland_wglDeleteContext(struct wgl_context *ctx)
 
 static BOOL has_opengl(void);
 
-static int wayland_wglDescribePixelFormat(HDC hdc, int fmt, UINT size,
-                                          PIXELFORMATDESCRIPTOR *pfd)
-{
-    EGLint val;
-    EGLConfig config;
-
-    if (!has_opengl()) return 0;
-    if (!pfd) return num_egl_configs;
-    if (size < sizeof(*pfd)) return 0;
-    if (fmt <= 0 || fmt > num_egl_configs) return 0;
-
-    config = egl_configs[fmt - 1];
-
-    memset(pfd, 0, sizeof(*pfd));
-    pfd->nSize = sizeof(*pfd);
-    pfd->nVersion = 1;
-    pfd->dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER |
-                   PFD_SUPPORT_COMPOSITION;
-    pfd->iPixelType = PFD_TYPE_RGBA;
-    pfd->iLayerType = PFD_MAIN_PLANE;
-
-    /* Although the documentation describes cColorBits as excluding alpha, real
-     * drivers tend to return the full pixel size, so do the same. */
-    p_eglGetConfigAttrib(egl_display, config, EGL_BUFFER_SIZE, &val);
-    pfd->cColorBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_RED_SIZE, &val);
-    pfd->cRedBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_GREEN_SIZE, &val);
-    pfd->cGreenBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_BLUE_SIZE, &val);
-    pfd->cBlueBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_ALPHA_SIZE, &val);
-    pfd->cAlphaBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_DEPTH_SIZE, &val);
-    pfd->cDepthBits = val;
-    p_eglGetConfigAttrib(egl_display, config, EGL_STENCIL_SIZE, &val);
-    pfd->cStencilBits = val;
-
-    /* Although we don't get information from EGL about the component shifts
-     * or the native format, the 0xARGB order is the most common. */
-    pfd->cBlueShift = 0;
-    pfd->cGreenShift = pfd->cBlueBits;
-    pfd->cRedShift = pfd->cGreenBits + pfd->cBlueBits;
-    if (pfd->cAlphaBits)
-        pfd->cAlphaShift = pfd->cRedBits + pfd->cGreenBits + pfd->cBlueBits;
-    else
-        pfd->cAlphaShift = 0;
-
-    TRACE("fmt %u color %u %u/%u/%u/%u depth %u stencil %u\n",
-          fmt, pfd->cColorBits, pfd->cRedBits, pfd->cGreenBits, pfd->cBlueBits,
-          pfd->cAlphaBits, pfd->cDepthBits, pfd->cStencilBits);
-
-    return num_egl_configs;
-}
-
 static const char *wayland_wglGetExtensionsStringARB(HDC hdc)
 {
     TRACE("() returning \"%s\"\n", wgl_extensions);
@@ -762,6 +708,23 @@ static BOOL wayland_wglSwapIntervalEXT(int interval)
     return ret;
 }
 
+static void wayland_get_pixel_formats(struct wgl_pixel_format *formats,
+                                      UINT max_formats, UINT *num_formats,
+                                      UINT *num_onscreen_formats)
+{
+    if (!has_opengl())
+    {
+        *num_formats = *num_onscreen_formats = 0;
+        return;
+    }
+    if (formats)
+    {
+        memcpy(formats, wgl_pixel_formats,
+               sizeof(*formats) * min(max_formats, num_egl_configs));
+    }
+    *num_formats = *num_onscreen_formats = num_egl_configs;
+}
+
 static BOOL has_extension(const char *list, const char *ext)
 {
     size_t len = strlen(ext);
@@ -825,6 +788,63 @@ static BOOL init_opengl_funcs(void)
     return TRUE;
 }
 
+static void convert_egl_to_wgl_format(EGLConfig config, int id,
+                                      struct wgl_pixel_format *fmt)
+{
+    EGLint value;
+
+    fmt->id = id;
+    fmt->draw_to_window = GL_TRUE;
+    fmt->acceleration = 2; /* Full acceleration */
+    fmt->support_opengl = GL_TRUE;
+    fmt->double_buffer = GL_TRUE;
+
+#define SET_ATTRIB(wgl_field, attrib) \
+    value = 0; \
+    p_eglGetConfigAttrib(egl_display, config, attrib, &value); \
+    fmt->wgl_field = value;
+
+#define SET_ATTRIB_VALUE(wgl_field, attrib, val) \
+    value = 0; \
+    p_eglGetConfigAttrib(egl_display, config, attrib, &value); \
+    fmt->wgl_field = val;
+
+    SET_ATTRIB_VALUE(transparent, EGL_TRANSPARENT_TYPE, (value == EGL_TRANSPARENT_RGB));
+    SET_ATTRIB_VALUE(pixel_type, EGL_COLOR_COMPONENT_TYPE_EXT,
+                     (value == EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT) ? 3 : 0);
+
+    SET_ATTRIB(color_bits, EGL_BUFFER_SIZE);
+    SET_ATTRIB(red_bits, EGL_RED_SIZE);
+    SET_ATTRIB(green_bits, EGL_GREEN_SIZE);
+    SET_ATTRIB(blue_bits, EGL_BLUE_SIZE);
+    SET_ATTRIB(alpha_bits, EGL_ALPHA_SIZE);
+    /* Although we don't get information from EGL about the component shifts
+     * or the native format, the 0xARGB order is the most common. */
+    fmt->blue_shift = 0;
+    fmt->green_shift = fmt->blue_bits;
+    fmt->red_shift = fmt->green_bits + fmt->blue_bits;
+    if (fmt->alpha_bits)
+        fmt->alpha_shift = fmt->red_bits + fmt->green_bits + fmt->blue_bits;
+    else
+        fmt->alpha_shift = 0;
+
+    SET_ATTRIB(depth_bits, EGL_DEPTH_SIZE);
+    SET_ATTRIB(stencil_bits, EGL_STENCIL_SIZE);
+    SET_ATTRIB(transparent_red_value, EGL_TRANSPARENT_RED_VALUE);
+    SET_ATTRIB(transparent_green_value, EGL_TRANSPARENT_GREEN_VALUE);
+    SET_ATTRIB(transparent_blue_value, EGL_TRANSPARENT_BLUE_VALUE);
+    SET_ATTRIB(sample_buffers, EGL_SAMPLE_BUFFERS);
+    SET_ATTRIB(samples, EGL_SAMPLES);
+    SET_ATTRIB(bind_to_texture_rgb, EGL_BIND_TO_TEXTURE_RGB);
+    SET_ATTRIB(bind_to_texture_rgba, EGL_BIND_TO_TEXTURE_RGBA);
+    /* Rectangle? */
+
+    /* TODO: Advertise SRGB and support it for surface creation*/
+
+#undef SET_ATTRIB
+#undef SET_ATTRIB_VALUE
+}
+
 static BOOL init_egl_configs(void)
 {
     EGLint i;
@@ -852,23 +872,35 @@ static BOOL init_egl_configs(void)
         return FALSE;
     }
 
-    if (TRACE_ON(waylanddrv))
+    if (!(wgl_pixel_formats = calloc(1, num_egl_configs * sizeof(*wgl_pixel_formats))))
     {
-        for (i = 0; i < num_egl_configs; i++)
+        ERR("Failed to allocate memory for wgl_pixel_formats\n");
+        free(egl_configs);
+        egl_configs = NULL;
+        return FALSE;
+    }
+
+    for (i = 0; i < num_egl_configs; i++)
+    {
+        convert_egl_to_wgl_format(egl_configs[i], i + 1, &wgl_pixel_formats[i]);
+
+        if (TRACE_ON(waylanddrv))
         {
             EGLint id, type, visual_id, native, render, color, r, g, b, a, d, s;
+
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_NATIVE_VISUAL_ID, &visual_id);
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_SURFACE_TYPE, &type);
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_RENDERABLE_TYPE, &render);
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_CONFIG_ID, &id);
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_NATIVE_RENDERABLE, &native);
             p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_COLOR_BUFFER_TYPE, &color);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_RED_SIZE, &r);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_GREEN_SIZE, &g);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_BLUE_SIZE, &b);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_ALPHA_SIZE, &a);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_DEPTH_SIZE, &d);
-            p_eglGetConfigAttrib(egl_display, egl_configs[i], EGL_STENCIL_SIZE, &s);
+            r = wgl_pixel_formats[i].red_bits;
+            g = wgl_pixel_formats[i].green_bits;
+            b = wgl_pixel_formats[i].blue_bits;
+            a = wgl_pixel_formats[i].alpha_bits;
+            d = wgl_pixel_formats[i].depth_bits;
+            s = wgl_pixel_formats[i].stencil_bits;
+
             TRACE("%u: config %d id %d type %x visual %d native %d render %x "
                   "colortype %d rgba %d,%d,%d,%d depth %u stencil %d\n",
                   num_egl_configs, i, id, type, visual_id, native, render,
@@ -980,12 +1012,12 @@ static struct opengl_funcs opengl_funcs =
         .p_wglCopyContext = wayland_wglCopyContext,
         .p_wglCreateContext = wayland_wglCreateContext,
         .p_wglDeleteContext = wayland_wglDeleteContext,
-        .p_wglDescribePixelFormat = wayland_wglDescribePixelFormat,
         .p_wglGetProcAddress = wayland_wglGetProcAddress,
         .p_wglMakeCurrent = wayland_wglMakeCurrent,
         .p_wglSetPixelFormat = wayland_wglSetPixelFormat,
         .p_wglShareLists = wayland_wglShareLists,
         .p_wglSwapBuffers = wayland_wglSwapBuffers,
+        .p_get_pixel_formats = wayland_get_pixel_formats,
     }
 };
 
