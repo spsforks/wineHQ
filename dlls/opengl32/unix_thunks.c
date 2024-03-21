@@ -37,6 +37,7 @@ extern NTSTATUS ext_glDebugMessageCallbackAMD( void *args );
 extern NTSTATUS ext_glDebugMessageCallbackARB( void *args );
 extern NTSTATUS ext_glGetStringi( void *args );
 extern NTSTATUS ext_wglBindTexImageARB( void *args );
+extern NTSTATUS ext_wglChoosePixelFormatARB( void *args );
 extern NTSTATUS ext_wglCreateContextAttribsARB( void *args );
 extern NTSTATUS ext_wglCreatePbufferARB( void *args );
 extern NTSTATUS ext_wglDestroyPbufferARB( void *args );
@@ -24082,15 +24083,6 @@ static NTSTATUS ext_wglAllocateMemoryNV( void *args )
     struct wglAllocateMemoryNV_params *params = args;
     const struct opengl_funcs *funcs = params->teb->glTable;
     params->ret = funcs->ext.p_wglAllocateMemoryNV( params->size, params->readfreq, params->writefreq, params->priority );
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS ext_wglChoosePixelFormatARB( void *args )
-{
-    struct wglChoosePixelFormatARB_params *params = args;
-    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
-    if (!funcs || !funcs->ext.p_wglChoosePixelFormatARB) return STATUS_NOT_IMPLEMENTED;
-    params->ret = funcs->ext.p_wglChoosePixelFormatARB( params->hdc, params->piAttribIList, params->pfAttribFList, params->nMaxFormats, params->piFormats, params->nNumFormats );
     return STATUS_SUCCESS;
 }
 
