@@ -879,7 +879,11 @@ HRESULT h264_decoder_create(REFIID riid, void **out)
             .height = 1080,
         },
     };
-    static const struct wg_format input_format = {.major_type = WG_MAJOR_TYPE_VIDEO_H264};
+    static const struct wg_format input_format =
+    {
+        .major_type = WG_MAJOR_TYPE_VIDEO,
+        .u.video.format = WG_VIDEO_FORMAT_H264,
+    };
     struct wg_transform_attrs attrs = {0};
     wg_transform_t transform;
     IMFTransform *iface;

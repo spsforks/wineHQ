@@ -341,45 +341,44 @@ static GstCaps *transform_get_parsed_caps(struct wg_format *format, const char *
 
     switch (format->major_type)
     {
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
+    case WG_MAJOR_TYPE_AUDIO:
+        switch (format->u.audio.format)
+        {
+        case WG_AUDIO_FORMAT_MPEG1:
             gst_caps_set_simple(parsed_caps, "parsed", G_TYPE_BOOLEAN, true, "mpegversion", G_TYPE_INT, 1,
-                    "layer", G_TYPE_INT, format->u.audio_mpeg1.layer, NULL);
+                    "layer", G_TYPE_INT, format->u.audio.layer, NULL);
             break;
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
+        case WG_AUDIO_FORMAT_MPEG4:
             gst_caps_set_simple(parsed_caps, "framed", G_TYPE_BOOLEAN, true, "mpegversion", G_TYPE_INT, 4, NULL);
             break;
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-            gst_caps_set_simple(parsed_caps, "wmaversion", G_TYPE_INT, format->u.audio_wma.version, NULL);
+        case WG_AUDIO_FORMAT_WMA:
+            gst_caps_set_simple(parsed_caps, "wmaversion", G_TYPE_INT, format->u.audio.version, NULL);
             break;
-        case WG_MAJOR_TYPE_VIDEO_H264:
+        }
+        break;
+
+    case WG_MAJOR_TYPE_VIDEO:
+        switch (format->u.video.format)
+        {
+        case WG_VIDEO_FORMAT_H264:
             gst_caps_set_simple(parsed_caps, "parsed", G_TYPE_BOOLEAN, true, NULL);
             break;
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
+        case WG_VIDEO_FORMAT_MPEG1:
             gst_caps_set_simple(parsed_caps, "parsed", G_TYPE_BOOLEAN, true, "mpegversion", G_TYPE_INT, 1, NULL);
             break;
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-            switch (format->u.video_wmv.format)
-            {
-                case WG_WMV_VIDEO_FORMAT_WMV1:
-                    gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 1, NULL);
-                    break;
-                case WG_WMV_VIDEO_FORMAT_WMV2:
-                    gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 2, NULL);
-                    break;
-                case WG_WMV_VIDEO_FORMAT_WMV3:
-                case WG_WMV_VIDEO_FORMAT_WMVA:
-                case WG_WMV_VIDEO_FORMAT_WVC1:
-                    gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 3, NULL);
-                    break;
-                default:
-                    GST_WARNING("Unknown WMV format %u.", format->u.video_wmv.format);
-                    break;
-            }
+        case WG_VIDEO_FORMAT_WMV1:
+            gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 1, NULL);
             break;
-        case WG_MAJOR_TYPE_AUDIO:
-        case WG_MAJOR_TYPE_VIDEO:
-        case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_VIDEO_FORMAT_WMV2:
+            gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 2, NULL);
             break;
+        case WG_VIDEO_FORMAT_WMV3:
+        case WG_VIDEO_FORMAT_WMVA:
+        case WG_VIDEO_FORMAT_WVC1:
+            gst_caps_set_simple(parsed_caps, "wmvversion", G_TYPE_INT, 3, NULL);
+            break;
+        }
+        break;
     }
 
     return parsed_caps;
@@ -455,40 +454,26 @@ NTSTATUS wg_transform_create(void *args)
     if (!(sink_caps = gst_caps_new_empty_simple(media_type)))
         goto out;
 
-    switch (input_format.major_type)
+    if (wg_format_is_compressed(&input_format))
     {
-        case WG_MAJOR_TYPE_VIDEO_H264:
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            if ((element = find_element(GST_ELEMENT_FACTORY_TYPE_PARSER, src_caps, parsed_caps))
-                    && !append_element(transform->container, element, &first, &last))
-                goto out;
-            else if (!element)
-            {
-                gst_caps_unref(parsed_caps);
-                parsed_caps = gst_caps_ref(src_caps);
-            }
+        if ((element = find_element(GST_ELEMENT_FACTORY_TYPE_PARSER, src_caps, parsed_caps))
+                && !append_element(transform->container, element, &first, &last))
+            goto out;
+        else if (!element)
+        {
+            gst_caps_unref(parsed_caps);
+            parsed_caps = gst_caps_ref(src_caps);
+        }
 
-            if (!(element = find_element(GST_ELEMENT_FACTORY_TYPE_DECODER, parsed_caps, sink_caps))
-                    || !append_element(transform->container, element, &first, &last))
-                goto out;
-            break;
-
-        case WG_MAJOR_TYPE_AUDIO:
-        case WG_MAJOR_TYPE_VIDEO:
-            break;
-        case WG_MAJOR_TYPE_UNKNOWN:
-            GST_FIXME("Format %u not implemented!", input_format.major_type);
+        if (!(element = find_element(GST_ELEMENT_FACTORY_TYPE_DECODER, parsed_caps, sink_caps))
+                || !append_element(transform->container, element, &first, &last))
             goto out;
     }
 
-    switch (output_format.major_type)
+    if (wg_format_is_uncompressed(&output_format))
     {
+        switch (output_format.major_type)
+        {
         case WG_MAJOR_TYPE_AUDIO:
             /* The MF audio decoder transforms allow decoding to various formats
              * as well as resampling the audio at the same time, whereas
@@ -523,18 +508,7 @@ NTSTATUS wg_transform_create(void *args)
             /* Let GStreamer choose a default number of threads. */
             gst_util_set_object_arg(G_OBJECT(element), "n-threads", "0");
             break;
-
-        case WG_MAJOR_TYPE_UNKNOWN:
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
-        case WG_MAJOR_TYPE_VIDEO_H264:
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            GST_FIXME("Format %u not implemented!", output_format.major_type);
-            goto out;
+        }
     }
 
     if (!link_src_to_element(transform->my_src, first))

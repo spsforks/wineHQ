@@ -1635,33 +1635,76 @@ static const enum wg_video_format video_formats[] =
     WG_VIDEO_FORMAT_RGB15,
 };
 
-static const char *get_major_type_string(enum wg_major_type type)
+static const char *get_format_string(const struct wg_format *format)
 {
-    switch (type)
+    switch (format->major_type)
     {
-        case WG_MAJOR_TYPE_AUDIO:
+    case WG_MAJOR_TYPE_UNKNOWN:
+        return "unknown";
+
+    case WG_MAJOR_TYPE_AUDIO:
+        switch (format->u.audio.format)
+        {
+        case WG_AUDIO_FORMAT_UNKNOWN:
             return "audio";
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
+        case WG_AUDIO_FORMAT_U8:
+            return "pcm_u8";
+        case WG_AUDIO_FORMAT_S16LE:
+            return "pcm_s16le";
+        case WG_AUDIO_FORMAT_S24LE:
+            return "pcm_s24le";
+        case WG_AUDIO_FORMAT_S32LE:
+            return "pcm_s32le";
+        case WG_AUDIO_FORMAT_F32LE:
+            return "pcm_f32le";
+        case WG_AUDIO_FORMAT_F64LE:
+            return "pcm_f64le";
+        case WG_AUDIO_FORMAT_MPEG1:
             return "mpeg1-audio";
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
+        case WG_AUDIO_FORMAT_MPEG4:
             return "mpeg4-audio";
-        case WG_MAJOR_TYPE_AUDIO_WMA:
+        case WG_AUDIO_FORMAT_WMA:
             return "wma";
-        case WG_MAJOR_TYPE_VIDEO:
+        }
+
+    case WG_MAJOR_TYPE_VIDEO:
+        switch (format->u.video.format)
+        {
+        case WG_AUDIO_FORMAT_UNKNOWN:
+        case WG_VIDEO_FORMAT_BGRA:
+        case WG_VIDEO_FORMAT_BGRx:
+        case WG_VIDEO_FORMAT_BGR:
+        case WG_VIDEO_FORMAT_RGB15:
+        case WG_VIDEO_FORMAT_RGB16:
+        case WG_VIDEO_FORMAT_AYUV:
+        case WG_VIDEO_FORMAT_I420:
+        case WG_VIDEO_FORMAT_NV12:
+        case WG_VIDEO_FORMAT_UYVY:
+        case WG_VIDEO_FORMAT_YUY2:
+        case WG_VIDEO_FORMAT_YV12:
+        case WG_VIDEO_FORMAT_YVYU:
             return "video";
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
+        case WG_VIDEO_FORMAT_CINEPAK:
             return "cinepak";
-        case WG_MAJOR_TYPE_VIDEO_H264:
+        case WG_VIDEO_FORMAT_H264:
             return "h264";
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-            return "wmv";
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
+        case WG_VIDEO_FORMAT_INDEO:
             return "indeo";
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
+        case WG_VIDEO_FORMAT_MPEG1:
             return "mpeg1-video";
-        case WG_MAJOR_TYPE_UNKNOWN:
-            return "unknown";
+        case WG_VIDEO_FORMAT_WMV1:
+            return "wmv1";
+        case WG_VIDEO_FORMAT_WMV2:
+            return "wmv2";
+        case WG_VIDEO_FORMAT_WMV3:
+            return "wmv3";
+        case WG_VIDEO_FORMAT_WMVA:
+            return "wmva";
+        case WG_VIDEO_FORMAT_WVC1:
+            return "wvc1";
+        }
     }
+
     assert(0);
     return NULL;
 }
@@ -1701,7 +1744,7 @@ static HRESULT wm_reader_read_stream_sample(struct wm_reader *reader, struct wg_
     if (!(stream = wm_reader_get_stream_by_stream_number(reader, buffer->stream + 1)))
         return E_INVALIDARG;
 
-    TRACE("Got buffer for '%s' stream %p.\n", get_major_type_string(stream->format.major_type), stream);
+    TRACE("Got buffer for '%s' stream %p.\n", get_format_string(&stream->format), stream);
 
     if (FAILED(hr = wm_stream_allocate_sample(stream, buffer->size, sample)))
     {
@@ -1999,8 +2042,10 @@ static HRESULT WINAPI reader_GetOutputFormat(IWMSyncReader2 *iface,
 
     wg_parser_stream_get_preferred_format(stream->wg_stream, &format);
 
-    switch (format.major_type)
+    if (wg_format_is_uncompressed(&format))
     {
+        switch (format.major_type)
+        {
         case WG_MAJOR_TYPE_VIDEO:
             if (index >= ARRAY_SIZE(video_formats))
             {
@@ -2021,19 +2066,11 @@ static HRESULT WINAPI reader_GetOutputFormat(IWMSyncReader2 *iface,
             }
             format.u.audio.format = WG_AUDIO_FORMAT_S16LE;
             break;
-
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
-        case WG_MAJOR_TYPE_VIDEO_H264:
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            FIXME("Format %u not implemented!\n", format.major_type);
-            break;
-        case WG_MAJOR_TYPE_UNKNOWN:
-            break;
+        }
+    }
+    else
+    {
+        FIXME("Format %u not implemented!\n", format.major_type);
     }
 
     LeaveCriticalSection(&reader->cs);
@@ -2059,27 +2096,10 @@ static HRESULT WINAPI reader_GetOutputFormatCount(IWMSyncReader2 *iface, DWORD o
     }
 
     wg_parser_stream_get_preferred_format(stream->wg_stream, &format);
-    switch (format.major_type)
-    {
-        case WG_MAJOR_TYPE_VIDEO:
-            *count = ARRAY_SIZE(video_formats);
-            break;
-
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
-        case WG_MAJOR_TYPE_VIDEO_H264:
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            FIXME("Format %u not implemented!\n", format.major_type);
-            /* fallthrough */
-        case WG_MAJOR_TYPE_AUDIO:
-        case WG_MAJOR_TYPE_UNKNOWN:
-            *count = 1;
-            break;
-    }
+    if (format.major_type == WG_MAJOR_TYPE_VIDEO && !wg_format_is_compressed(&format))
+        *count = ARRAY_SIZE(video_formats);
+    else
+        *count = 1;
 
     LeaveCriticalSection(&reader->cs);
     return S_OK;

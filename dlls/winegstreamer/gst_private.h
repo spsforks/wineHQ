@@ -146,8 +146,10 @@ HRESULT wg_transform_read_dmo(wg_transform_t transform, DMO_OUTPUT_DATA_BUFFER *
 HRESULT gstreamer_byte_stream_handler_create(REFIID riid, void **obj);
 
 unsigned int wg_format_get_stride(const struct wg_format *format);
-
 bool wg_video_format_is_rgb(enum wg_video_format format);
+bool wg_format_is_uncompressed(const struct wg_format *format);
+bool wg_format_is_compressed(const struct wg_format *format);
+bool wg_format_is_wmv(const struct wg_format *format);
 
 HRESULT aac_decoder_create(REFIID riid, void **ret);
 HRESULT h264_decoder_create(REFIID riid, void **ret);

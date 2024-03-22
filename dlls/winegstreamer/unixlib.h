@@ -34,21 +34,13 @@ enum wg_major_type
 {
     WG_MAJOR_TYPE_UNKNOWN = 0,
     WG_MAJOR_TYPE_AUDIO,
-    WG_MAJOR_TYPE_AUDIO_MPEG1,
-    WG_MAJOR_TYPE_AUDIO_MPEG4,
-    WG_MAJOR_TYPE_AUDIO_WMA,
     WG_MAJOR_TYPE_VIDEO,
-    WG_MAJOR_TYPE_VIDEO_CINEPAK,
-    WG_MAJOR_TYPE_VIDEO_H264,
-    WG_MAJOR_TYPE_VIDEO_WMV,
-    WG_MAJOR_TYPE_VIDEO_INDEO,
-    WG_MAJOR_TYPE_VIDEO_MPEG1,
 };
 
 typedef UINT32 wg_audio_format;
 enum wg_audio_format
 {
-    WG_AUDIO_FORMAT_UNKNOWN,
+    WG_AUDIO_FORMAT_UNKNOWN = 0,
 
     WG_AUDIO_FORMAT_U8,
     WG_AUDIO_FORMAT_S16LE,
@@ -56,12 +48,16 @@ enum wg_audio_format
     WG_AUDIO_FORMAT_S32LE,
     WG_AUDIO_FORMAT_F32LE,
     WG_AUDIO_FORMAT_F64LE,
+
+    WG_AUDIO_FORMAT_MPEG1,
+    WG_AUDIO_FORMAT_MPEG4,
+    WG_AUDIO_FORMAT_WMA,
 };
 
 typedef UINT32 wg_video_format;
 enum wg_video_format
 {
-    WG_VIDEO_FORMAT_UNKNOWN,
+    WG_VIDEO_FORMAT_UNKNOWN = 0,
 
     WG_VIDEO_FORMAT_BGRA,
     WG_VIDEO_FORMAT_BGRx,
@@ -76,17 +72,17 @@ enum wg_video_format
     WG_VIDEO_FORMAT_YUY2,
     WG_VIDEO_FORMAT_YV12,
     WG_VIDEO_FORMAT_YVYU,
-};
 
-typedef UINT32 wg_wmv_video_format;
-enum wg_wmv_video_format
-{
-    WG_WMV_VIDEO_FORMAT_UNKNOWN,
-    WG_WMV_VIDEO_FORMAT_WMV1,
-    WG_WMV_VIDEO_FORMAT_WMV2,
-    WG_WMV_VIDEO_FORMAT_WMV3,
-    WG_WMV_VIDEO_FORMAT_WMVA,
-    WG_WMV_VIDEO_FORMAT_WVC1,
+    WG_VIDEO_FORMAT_CINEPAK,
+    WG_VIDEO_FORMAT_H264,
+    WG_VIDEO_FORMAT_INDEO,
+    WG_VIDEO_FORMAT_MPEG1,
+
+    WG_VIDEO_FORMAT_WMV1,
+    WG_VIDEO_FORMAT_WMV2,
+    WG_VIDEO_FORMAT_WMV3,
+    WG_VIDEO_FORMAT_WMVA,
+    WG_VIDEO_FORMAT_WVC1,
 };
 
 struct wg_format
@@ -95,38 +91,37 @@ struct wg_format
 
     union
     {
+        /* Valid members for different audio formats:
+         *
+         * Uncompressed(PCM): channels, channel_mask, rate.
+         * MPEG1: channels, rate, layer.
+         * MPEG4: payload_type, codec_data_len, codec_data.
+         * WMA: channels, rate, version, bitrate, depth, block_align, layer,
+         *         payload_type, codec_data_len, codec_data. */
         struct
         {
             wg_audio_format format;
-
             uint32_t channels;
             uint32_t channel_mask; /* In WinMM format. */
             uint32_t rate;
-        } audio;
-        struct
-        {
+            uint32_t version;
+            uint32_t bitrate;
+            uint32_t depth;
+            uint32_t block_align;
             uint32_t layer;
-            uint32_t rate;
-            uint32_t channels;
-        } audio_mpeg1;
-        struct
-        {
             uint32_t payload_type;
             uint32_t codec_data_len;
             unsigned char codec_data[64];
-        } audio_mpeg4;
-        struct
-        {
-            uint32_t version;
-            uint32_t bitrate;
-            uint32_t rate;
-            uint32_t depth;
-            uint32_t channels;
-            uint32_t block_align;
-            uint32_t codec_data_len;
-            unsigned char codec_data[64];
-        } audio_wma;
+        } audio;
 
+        /* Valid members for different video formats:
+         *
+         * Uncompressed(RGB and YUV): width, height, fps_n, fps_d.
+         * CINEPAK: width, height, fps_n, fps_d.
+         * H264: width, height, fps_n, fps_d, profile, level, codec_data_len, codec_data.
+         * INDEO: width, height, fps_n, fps_d, version.
+         * MPEG1: width, height, fps_n, fps_d.
+         * WMV: width, height, fps_n, fps_d, version, codec_data_len, codec_data. */
         struct
         {
             wg_video_format format;
@@ -135,42 +130,12 @@ struct wg_format
             int32_t width, height;
             uint32_t fps_n, fps_d;
             RECT padding;
-        } video;
-        struct
-        {
-            uint32_t width;
-            uint32_t height;
-            uint32_t fps_n;
-            uint32_t fps_d;
-        } video_cinepak;
-        struct
-        {
-            int32_t width, height;
-            uint32_t fps_n, fps_d;
             uint32_t profile;
             uint32_t level;
-            uint32_t codec_data_len;
-            unsigned char codec_data[64];
-        } video_h264;
-        struct
-        {
-            wg_wmv_video_format format;
-            int32_t width, height;
-            uint32_t fps_n, fps_d;
-            uint32_t codec_data_len;
-            unsigned char codec_data[64];
-        } video_wmv;
-        struct
-        {
-            int32_t width, height;
-            uint32_t fps_n, fps_d;
             uint32_t version;
-        } video_indeo;
-        struct
-        {
-            int32_t width, height;
-            uint32_t fps_n, fps_d;
-        } video_mpeg1;
+            uint32_t codec_data_len;
+            unsigned char codec_data[64];
+        } video;
     } u;
 };
 

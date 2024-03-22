@@ -652,6 +652,37 @@ bool wg_video_format_is_rgb(enum wg_video_format format)
         case WG_VIDEO_FORMAT_RGB16:
             return true;
 
+        default:
+            return false;
+    }
+}
+
+bool wg_format_is_uncompressed(const struct wg_format *format)
+{
+    switch (format->major_type)
+    {
+    case WG_MAJOR_TYPE_AUDIO:
+        switch (format->u.audio.format)
+        {
+        case WG_AUDIO_FORMAT_U8:
+        case WG_AUDIO_FORMAT_S16LE:
+        case WG_AUDIO_FORMAT_S24LE:
+        case WG_AUDIO_FORMAT_S32LE:
+        case WG_AUDIO_FORMAT_F32LE:
+        case WG_AUDIO_FORMAT_F64LE:
+            return true;
+        default:
+            return false;
+        }
+
+    case WG_MAJOR_TYPE_VIDEO:
+        switch (format->u.video.format)
+        {
+        case WG_VIDEO_FORMAT_BGRA:
+        case WG_VIDEO_FORMAT_BGRx:
+        case WG_VIDEO_FORMAT_BGR:
+        case WG_VIDEO_FORMAT_RGB15:
+        case WG_VIDEO_FORMAT_RGB16:
         case WG_VIDEO_FORMAT_AYUV:
         case WG_VIDEO_FORMAT_I420:
         case WG_VIDEO_FORMAT_NV12:
@@ -659,11 +690,32 @@ bool wg_video_format_is_rgb(enum wg_video_format format)
         case WG_VIDEO_FORMAT_YUY2:
         case WG_VIDEO_FORMAT_YV12:
         case WG_VIDEO_FORMAT_YVYU:
-        case WG_VIDEO_FORMAT_UNKNOWN:
-            break;
-    }
+            return true;
+        default:
+            return false;
+        }
 
-    return false;
+    default:
+        return false;
+    }
+}
+
+bool wg_format_is_compressed(const struct wg_format *format)
+{
+    return format->major_type != WG_MAJOR_TYPE_UNKNOWN
+            && !wg_format_is_uncompressed(format)
+            && !(format->major_type == WG_MAJOR_TYPE_AUDIO && format->u.audio.format == WG_AUDIO_FORMAT_UNKNOWN)
+            && !(format->major_type == WG_MAJOR_TYPE_VIDEO && format->u.video.format == WG_VIDEO_FORMAT_UNKNOWN);
+}
+
+bool wg_format_is_wmv(const struct wg_format *format)
+{
+    return format->major_type == WG_MAJOR_TYPE_VIDEO
+        && (format->u.video.format == WG_VIDEO_FORMAT_WMV1
+        || format->u.video.format == WG_VIDEO_FORMAT_WMV2
+        || format->u.video.format == WG_VIDEO_FORMAT_WMV3
+        || format->u.video.format == WG_VIDEO_FORMAT_WMVA
+        || format->u.video.format == WG_VIDEO_FORMAT_WVC1);
 }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
