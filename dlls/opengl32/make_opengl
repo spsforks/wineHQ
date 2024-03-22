@@ -193,6 +193,7 @@ my %manual_unix_functions =
      "glGetString" => 1,
      "glGetStringi" => 1,
      "glGetIntegerv" => 1,
+     "wglGetPixelFormatAttribivARB" => 1,
      "wglGetProcAddress" => 1,
     );
 my %manual_wow64_thunks =
@@ -890,6 +891,59 @@ printf HEADER "#define WINE_WGL_DRIVER_VERSION %u\n\n", $wgl_version + 1;
 print HEADER "struct wgl_context;\n";
 print HEADER "struct wgl_pbuffer;\n\n";
 
+print HEADER "struct wgl_pixel_format\n";
+print HEADER "{\n";
+print HEADER "    unsigned int id;\n";
+print HEADER "    unsigned int draw_to_window:1;\n";
+print HEADER "    unsigned int draw_to_bitmap:1;\n";
+print HEADER "    unsigned int acceleration:2; /* 0=No, 1=Generic, 2=Full */\n";
+print HEADER "    unsigned int need_palette:1;\n";
+print HEADER "    unsigned int need_system_palette:1;\n";
+print HEADER "    unsigned int swap_layer_buffers:1;\n";
+print HEADER "    unsigned int swap_method:2; /* 0=Exchange, 1=Copy, 2=Undefined */\n";
+print HEADER "    unsigned int number_overlays:8;\n";
+print HEADER "    unsigned int number_underlays:8;\n";
+print HEADER "    unsigned int transparent:1;\n";
+print HEADER "    unsigned int support_gdi:1;\n";
+print HEADER "    unsigned int support_opengl:1;\n";
+print HEADER "    unsigned int double_buffer:1;\n";
+print HEADER "    unsigned int stereo:1;\n";
+print HEADER "    unsigned int pixel_type:2; /* 0=RGBA, 1=ColorIndex, 2=RGBA_UNSIGNED_FLOAT 3=RGBA_FLOAT */\n";
+print HEADER "    unsigned int color_bits:11;\n";
+print HEADER "    unsigned int red_bits:8;\n";
+print HEADER "    unsigned int red_shift:8;\n";
+print HEADER "    unsigned int green_bits:8;\n";
+print HEADER "    unsigned int green_shift:8;\n";
+print HEADER "    unsigned int blue_bits:8;\n";
+print HEADER "    unsigned int blue_shift:8;\n";
+print HEADER "    unsigned int alpha_bits:8;\n";
+print HEADER "    unsigned int alpha_shift:8;\n";
+print HEADER "    unsigned int accum_bits:8;\n";
+print HEADER "    unsigned int accum_red_bits:8;\n";
+print HEADER "    unsigned int accum_green_bits:8;\n";
+print HEADER "    unsigned int accum_blue_bits:8;\n";
+print HEADER "    unsigned int accum_alpha_bits:8;\n";
+print HEADER "    unsigned int depth_bits:8;\n";
+print HEADER "    unsigned int stencil_bits:8;\n";
+print HEADER "    unsigned int aux_buffers:8;\n";
+print HEADER "    unsigned int draw_to_pbuffer:1;\n";
+print HEADER "    unsigned int max_pbuffer_pixels;\n";
+print HEADER "    unsigned int max_pbuffer_width;\n";
+print HEADER "    unsigned int max_pbuffer_height;\n";
+print HEADER "    unsigned int transparent_red_value;\n";
+print HEADER "    unsigned int transparent_green_value;\n";
+print HEADER "    unsigned int transparent_blue_value;\n";
+print HEADER "    unsigned int transparent_alpha_value;\n";
+print HEADER "    unsigned int transparent_index_value;\n";
+print HEADER "    unsigned int sample_buffers:1;\n";
+print HEADER "    unsigned int samples:8;\n";
+print HEADER "    unsigned int bind_to_texture_rgb:1;\n";
+print HEADER "    unsigned int bind_to_texture_rgba:1;\n";
+print HEADER "    unsigned int bind_to_texture_rectangle_rgb:1;\n";
+print HEADER "    unsigned int bind_to_texture_rectangle_rgba:1;\n";
+print HEADER "    unsigned int framebuffer_srgb_capable:1;\n";
+print HEADER "};\n\n";
+
 print HEADER "struct opengl_funcs\n{\n";
 print HEADER "    struct\n    {\n";
 foreach (sort keys %wgl_functions)
@@ -899,6 +953,7 @@ foreach (sort keys %wgl_functions)
     my $func_ret = get_func_ret( $wgl_functions{$_}, 1 );
     printf HEADER "        %-10s (WINE_GLAPI *p_$_)($decl_args);\n", $func_ret;
 }
+printf HEADER "        %-10s (WINE_GLAPI *p_get_pixel_formats)( const struct wgl_pixel_format ** formats );\n", "UINT";
 print HEADER "    } wgl;\n\n";
 
 print HEADER "    struct\n    {\n";

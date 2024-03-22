@@ -437,6 +437,134 @@ static BOOL check_extension_support( TEB *teb, const char *extension, const char
     return FALSE;
 }
 
+static BOOL wgl_attrib_uses_layer( int attrib )
+{
+    switch (attrib)
+    {
+    case WGL_ACCELERATION_ARB:
+    case WGL_TRANSPARENT_ARB:
+    case WGL_SHARE_DEPTH_ARB:
+    case WGL_SHARE_STENCIL_ARB:
+    case WGL_SHARE_ACCUM_ARB:
+    case WGL_TRANSPARENT_RED_VALUE_ARB:
+    case WGL_TRANSPARENT_GREEN_VALUE_ARB:
+    case WGL_TRANSPARENT_BLUE_VALUE_ARB:
+    case WGL_TRANSPARENT_ALPHA_VALUE_ARB:
+    case WGL_TRANSPARENT_INDEX_VALUE_ARB:
+    case WGL_SUPPORT_OPENGL_ARB:
+    case WGL_DOUBLE_BUFFER_ARB:
+    case WGL_STEREO_ARB:
+    case WGL_PIXEL_TYPE_ARB:
+    case WGL_TYPE_COLORINDEX_ARB:
+    case WGL_COLOR_BITS_ARB:
+    case WGL_RED_BITS_ARB:
+    case WGL_RED_SHIFT_ARB:
+    case WGL_GREEN_BITS_ARB:
+    case WGL_GREEN_SHIFT_ARB:
+    case WGL_BLUE_BITS_ARB:
+    case WGL_BLUE_SHIFT_ARB:
+    case WGL_ALPHA_BITS_ARB:
+    case WGL_ALPHA_SHIFT_ARB:
+    case WGL_ACCUM_BITS_ARB:
+    case WGL_ACCUM_RED_BITS_ARB:
+    case WGL_ACCUM_GREEN_BITS_ARB:
+    case WGL_ACCUM_BLUE_BITS_ARB:
+    case WGL_ACCUM_ALPHA_BITS_ARB:
+    case WGL_DEPTH_BITS_ARB:
+    case WGL_STENCIL_BITS_ARB:
+    case WGL_AUX_BUFFERS_ARB:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static int wgl_pixel_format_get_attrib( const struct wgl_pixel_format *fmt, int attrib )
+{
+    switch (attrib)
+    {
+    case WGL_DRAW_TO_WINDOW_ARB: return fmt->draw_to_window;
+    case WGL_DRAW_TO_BITMAP_ARB: return fmt->draw_to_bitmap;
+    case WGL_ACCELERATION_ARB:
+        switch (fmt->acceleration)
+        {
+            case 0: return WGL_NO_ACCELERATION_ARB;
+            case 1: return WGL_GENERIC_ACCELERATION_ARB;
+            case 2: return WGL_FULL_ACCELERATION_ARB;
+        }
+        break;
+    case WGL_NEED_PALETTE_ARB: return fmt->need_palette;
+    case WGL_NEED_SYSTEM_PALETTE_ARB: return fmt->need_system_palette;
+    case WGL_SWAP_LAYER_BUFFERS_ARB: return fmt->swap_layer_buffers;
+    case WGL_SWAP_METHOD_ARB:
+        switch (fmt->swap_method)
+        {
+            case 0: return WGL_SWAP_EXCHANGE_ARB;
+            case 1: return WGL_SWAP_COPY_ARB;
+            case 2: return WGL_SWAP_UNDEFINED_ARB;
+        }
+        break;
+    case WGL_NUMBER_OVERLAYS_ARB: return fmt->number_overlays;
+    case WGL_NUMBER_UNDERLAYS_ARB: return fmt->number_underlays;
+    case WGL_TRANSPARENT_ARB: return fmt->transparent;
+    case WGL_SHARE_DEPTH_ARB:
+    case WGL_SHARE_STENCIL_ARB:
+    case WGL_SHARE_ACCUM_ARB:
+        /* We support only a main plane at the moment which by definition
+         * shares the depth/stencil/accum buffers with itself. */
+        return GL_TRUE;
+    case WGL_SUPPORT_GDI_ARB: return fmt->support_gdi;
+    case WGL_SUPPORT_OPENGL_ARB: return fmt->support_opengl;
+    case WGL_DOUBLE_BUFFER_ARB: return fmt->double_buffer;
+    case WGL_STEREO_ARB: return fmt->stereo;
+    case WGL_PIXEL_TYPE_ARB:
+        switch (fmt->pixel_type)
+        {
+            case 0: return WGL_TYPE_RGBA_ARB;
+            case 1: return WGL_TYPE_COLORINDEX_ARB;
+            case 2: return WGL_TYPE_RGBA_UNSIGNED_FLOAT_EXT;
+            case 3: return WGL_TYPE_RGBA_FLOAT_ARB;
+        }
+        break;
+    case WGL_COLOR_BITS_ARB: return fmt->color_bits;
+    case WGL_RED_BITS_ARB: return fmt->red_bits;
+    case WGL_RED_SHIFT_ARB: return fmt->red_shift;
+    case WGL_GREEN_BITS_ARB: return fmt->green_bits;
+    case WGL_GREEN_SHIFT_ARB: return fmt->green_shift;
+    case WGL_BLUE_BITS_ARB: return fmt->blue_bits;
+    case WGL_BLUE_SHIFT_ARB: return fmt->blue_shift;
+    case WGL_ALPHA_BITS_ARB: return fmt->alpha_bits;
+    case WGL_ALPHA_SHIFT_ARB: return fmt->alpha_shift;
+    case WGL_ACCUM_BITS_ARB: return fmt->accum_bits;
+    case WGL_ACCUM_RED_BITS_ARB: return fmt->accum_red_bits;
+    case WGL_ACCUM_GREEN_BITS_ARB: return fmt->accum_green_bits;
+    case WGL_ACCUM_BLUE_BITS_ARB: return fmt->accum_blue_bits;
+    case WGL_ACCUM_ALPHA_BITS_ARB: return fmt->accum_alpha_bits;
+    case WGL_DEPTH_BITS_ARB: return fmt->depth_bits;
+    case WGL_STENCIL_BITS_ARB: return fmt->stencil_bits;
+    case WGL_AUX_BUFFERS_ARB: return fmt->aux_buffers;
+    case WGL_DRAW_TO_PBUFFER_ARB: return fmt->draw_to_pbuffer;
+    case WGL_MAX_PBUFFER_PIXELS_ARB: return fmt->max_pbuffer_pixels;
+    case WGL_MAX_PBUFFER_WIDTH_ARB: return fmt->max_pbuffer_width;
+    case WGL_MAX_PBUFFER_HEIGHT_ARB: return fmt->max_pbuffer_height;
+    case WGL_TRANSPARENT_RED_VALUE_ARB: return fmt->transparent_red_value;
+    case WGL_TRANSPARENT_GREEN_VALUE_ARB: return fmt->transparent_green_value;
+    case WGL_TRANSPARENT_BLUE_VALUE_ARB: return fmt->transparent_blue_value;
+    case WGL_TRANSPARENT_ALPHA_VALUE_ARB: return fmt->transparent_alpha_value;
+    case WGL_TRANSPARENT_INDEX_VALUE_ARB: return fmt->transparent_index_value;
+    case WGL_SAMPLE_BUFFERS_ARB: return fmt->sample_buffers;
+    case WGL_SAMPLES_ARB: return fmt->samples;
+    case WGL_BIND_TO_TEXTURE_RGB_ARB: return fmt->bind_to_texture_rgb;
+    case WGL_BIND_TO_TEXTURE_RGBA_ARB: return fmt->bind_to_texture_rgba;
+    case WGL_BIND_TO_TEXTURE_RECTANGLE_RGB_NV: return fmt->bind_to_texture_rectangle_rgb;
+    case WGL_BIND_TO_TEXTURE_RECTANGLE_RGBA_NV: return fmt->bind_to_texture_rectangle_rgba;
+    case WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB: return fmt->framebuffer_srgb_capable;
+    default: FIXME( "unsupported 0x%x WGL attribute\n", attrib );
+    }
+
+    return 0;
+}
+
 static void wrap_glGetIntegerv( TEB *teb, GLenum pname, GLint *data )
 {
     const struct opengl_funcs *funcs = teb->glTable;
@@ -828,6 +956,42 @@ static HDC wrap_wglGetPbufferDCARB( HPBUFFERARB handle )
     return ptr->funcs->ext.p_wglGetPbufferDCARB( ptr->u.pbuffer );
 }
 
+static BOOL wrap_wglGetPixelFormatAttribivARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+                                               UINT nAttributes, const int *piAttributes, INT *piValues )
+{
+    const struct opengl_funcs *funcs = get_dc_funcs( hdc );
+    const struct wgl_pixel_format *formats, *format;
+    UINT num_formats;
+    UINT i;
+
+    TRACE( "(%p, %d, %d, %d, %p, %p)\n", hdc, iPixelFormat, iLayerPlane, nAttributes, piAttributes, piValues );
+
+    num_formats = funcs->wgl.p_get_pixel_formats( &formats );
+
+    if (iPixelFormat > 0 && iPixelFormat - 1 < num_formats)
+        format = &formats[iPixelFormat - 1];
+    else
+        format = NULL;
+
+    for (i = 0; i < nAttributes; ++i)
+    {
+        int attrib = piAttributes[i];
+        switch (attrib)
+        {
+        case WGL_NUMBER_PIXEL_FORMATS_ARB:
+            piValues[i] = num_formats;
+            break;
+        default:
+            if (format && (iLayerPlane == 0 || !wgl_attrib_uses_layer( attrib )))
+                piValues[i] = wgl_pixel_format_get_attrib( format, attrib );
+            else
+                return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
 static BOOL wrap_wglMakeContextCurrentARB( TEB *teb, HDC draw_hdc, HDC read_hdc, HGLRC hglrc )
 {
     BOOL ret = TRUE;
@@ -1097,6 +1261,35 @@ NTSTATUS ext_wglGetPbufferDCARB( void *args )
     pthread_mutex_lock( &wgl_lock );
     params->ret = wrap_wglGetPbufferDCARB( params->hPbuffer );
     pthread_mutex_unlock( &wgl_lock );
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args )
+{
+    struct wglGetPixelFormatAttribivARB_params *params = args;
+    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+
+    if (!funcs) return STATUS_NOT_IMPLEMENTED;
+
+    if (funcs->ext.p_wglGetPixelFormatAttribivARB &&
+        funcs->ext.p_wglGetPixelFormatAttribivARB != (void *)1)
+    {
+        params->ret =
+            funcs->ext.p_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat,
+                                                       params->iLayerPlane, params->nAttributes,
+                                                       params->piAttributes, params->piValues );
+    }
+    else if (funcs->wgl.p_get_pixel_formats)
+    {
+        params->ret = wrap_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat,
+                                                         params->iLayerPlane, params->nAttributes,
+                                                         params->piAttributes, params->piValues );
+    }
+    else
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
     return STATUS_SUCCESS;
 }
 
