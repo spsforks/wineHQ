@@ -267,6 +267,7 @@ static XContext gl_pbuffer_context;
 static struct list context_list = LIST_INIT( context_list );
 static struct list pbuffer_list = LIST_INIT( pbuffer_list );
 static struct glx_pixel_format *pixel_formats;
+static struct wgl_pixel_format *wgl_pixel_formats;
 static int nb_pixel_formats, nb_onscreen_formats;
 static BOOL use_render_texture_emulation = TRUE;
 
@@ -996,6 +997,109 @@ static BOOL check_fbconfig_bitmap_capability(Display *display, GLXFBConfig fbcon
     return !dbuf && (value & GLX_PIXMAP_BIT);
 }
 
+static void init_wgl_pixel_format(Display *display, int i)
+{
+    struct glx_pixel_format *glx = &pixel_formats[i];
+    struct wgl_pixel_format *fmt = &wgl_pixel_formats[i];
+    int value;
+
+    fmt->id = i + 1;
+    fmt->support_opengl = GL_TRUE;
+
+#define SET_ATTRIB(wgl_field, attrib) \
+    value = 0; \
+    pglXGetFBConfigAttrib(display, glx->fbconfig, attrib, &value); \
+    fmt->wgl_field = value;
+
+#define SET_ATTRIB_VALUE(wgl_field, attrib, val) \
+    value = 0; \
+    pglXGetFBConfigAttrib(display, glx->fbconfig, attrib, &value); \
+    fmt->wgl_field = val;
+
+    SET_ATTRIB_VALUE(draw_to_window, GLX_DRAWABLE_TYPE, !!(value & GLX_WINDOW_BIT));
+
+    fmt->draw_to_bitmap = !!(glx->dwFlags & PFD_DRAW_TO_BITMAP);
+    if (glx->dwFlags & PFD_GENERIC_FORMAT)
+        fmt->acceleration = 0;
+    else if (glx->dwFlags & PFD_GENERIC_ACCELERATED)
+        fmt->acceleration = 1;
+    else
+        fmt->acceleration = 2;
+
+    value = 0;
+    pglXGetFBConfigAttrib(display, glx->fbconfig, GLX_SWAP_METHOD_OML, &value);
+    switch (value)
+    {
+    case GLX_SWAP_COPY_OML:
+        fmt->swap_method = 1;
+        break;
+    case GLX_SWAP_UNDEFINED_OML:
+        fmt->swap_method = 2;
+        break;
+    case GLX_SWAP_EXCHANGE_OML:
+    default:
+        fmt->swap_method = 0;
+        break;
+    }
+
+    SET_ATTRIB_VALUE(transparent, GLX_TRANSPARENT_TYPE, (value != GLX_NONE));
+
+    fmt->support_gdi = !!(glx->dwFlags & PFD_SUPPORT_GDI);
+    SET_ATTRIB(double_buffer, GLX_DOUBLEBUFFER);
+    if (fmt->double_buffer) fmt->support_gdi = GL_FALSE;
+    SET_ATTRIB(stereo, GLX_STEREO);
+
+    value = 0;
+    pglXGetFBConfigAttrib(display, glx->fbconfig, GLX_RENDER_TYPE, &value);
+    if (value & GLX_RGBA_BIT) { fmt->pixel_type = 0; }
+    else if (value & GLX_COLOR_INDEX_BIT)    { fmt->pixel_type = 1; }
+    else if (value & GLX_RGBA_FLOAT_BIT)     { fmt->pixel_type = 2; }
+    else if (value & GLX_RGBA_FLOAT_ATI_BIT) { fmt->pixel_type = 2; }
+    else if (value & GLX_RGBA_UNSIGNED_FLOAT_BIT_EXT) { fmt->pixel_type = 3; }
+
+    SET_ATTRIB(color_bits, GLX_BUFFER_SIZE);
+    SET_ATTRIB(red_bits, GLX_RED_SIZE);
+    SET_ATTRIB(green_bits, GLX_GREEN_SIZE);
+    SET_ATTRIB(blue_bits, GLX_BLUE_SIZE);
+    SET_ATTRIB(alpha_bits, GLX_ALPHA_SIZE);
+    /* Assume 0xARGB order */
+    fmt->blue_shift = 0;
+    fmt->green_shift = fmt->blue_bits;
+    fmt->red_shift = fmt->green_bits + fmt->blue_bits;
+    if (fmt->alpha_bits)
+        fmt->alpha_shift = fmt->red_bits + fmt->green_bits + fmt->blue_bits;
+    else
+        fmt->alpha_shift = 0;
+
+    SET_ATTRIB(accum_red_bits, GLX_ACCUM_RED_SIZE);
+    SET_ATTRIB(accum_green_bits, GLX_ACCUM_GREEN_SIZE);
+    SET_ATTRIB(accum_blue_bits, GLX_ACCUM_BLUE_SIZE);
+    SET_ATTRIB(accum_alpha_bits, GLX_ACCUM_ALPHA_SIZE);
+    fmt->accum_bits = fmt->accum_red_bits + fmt->accum_green_bits +
+                      fmt->accum_blue_bits + fmt->accum_alpha_bits;
+
+    SET_ATTRIB(depth_bits, GLX_DEPTH_SIZE);
+    SET_ATTRIB(stencil_bits, GLX_STENCIL_SIZE);
+    SET_ATTRIB(aux_buffers, GLX_AUX_BUFFERS);
+    SET_ATTRIB_VALUE(draw_to_pbuffer, GLX_DRAWABLE_TYPE, !!(value & GLX_PBUFFER_BIT));
+    SET_ATTRIB(transparent_red_value, GLX_TRANSPARENT_RED_VALUE);
+    SET_ATTRIB(transparent_green_value, GLX_TRANSPARENT_GREEN_VALUE);
+    SET_ATTRIB(transparent_blue_value, GLX_TRANSPARENT_BLUE_VALUE);
+    SET_ATTRIB(transparent_alpha_value, GLX_TRANSPARENT_ALPHA_VALUE);
+    SET_ATTRIB(transparent_index_value, GLX_TRANSPARENT_INDEX_VALUE);
+    SET_ATTRIB(sample_buffers, GLX_SAMPLE_BUFFERS_ARB);
+    SET_ATTRIB(samples, GLX_SAMPLES_ARB);
+    if (use_render_texture_emulation && fmt->pixel_type != 1 && fmt->draw_to_pbuffer)
+    {
+        fmt->bind_to_texture_rgb = GL_TRUE;
+        fmt->bind_to_texture_rgba = GL_TRUE;
+    }
+    SET_ATTRIB(framebuffer_srgb_capable, GLX_FRAMEBUFFER_SRGB_CAPABLE_EXT);
+
+#undef SET_ATTRIB
+#undef SET_ATTRIB_VALUE
+}
+
 static void init_pixel_formats( Display *display )
 {
     struct glx_pixel_format *list;
@@ -1105,6 +1209,10 @@ static void init_pixel_formats( Display *display )
     pixel_formats = list;
     nb_pixel_formats = size;
     nb_onscreen_formats = onscreen_size;
+
+    wgl_pixel_formats = calloc(nb_pixel_formats, sizeof(*wgl_pixel_formats));
+    for (i = 0; i < nb_pixel_formats; ++i)
+        init_wgl_pixel_format(display, i);
 }
 
 static inline BOOL is_valid_pixel_format( int format )
@@ -2680,6 +2788,11 @@ static BOOL X11DRV_wglChoosePixelFormatARB( HDC hdc, const int *piAttribIList, c
 
     qsort(formats, format_count, sizeof(*formats), compare_formats);
 
+    TRACE("Sorted formats (max=%d): ", nMaxFormats);
+    for (i = 0; i < format_count ; i++)
+        TRACE("%d, ", formats[i].format);
+    TRACE("\n");
+
     *nNumFormats = min(nMaxFormats, format_count);
     for (i = 0; i < *nNumFormats; ++i)
         piFormats[i] = formats[i].format;
@@ -3418,6 +3531,12 @@ static BOOL glxdrv_wglSwapBuffers( HDC hdc )
     return TRUE;
 }
 
+UINT glxdrv_get_pixel_formats( const struct wgl_pixel_format **formats )
+{
+    *formats = wgl_pixel_formats;
+    return nb_pixel_formats;
+}
+
 static struct opengl_funcs opengl_funcs =
 {
     {
@@ -3431,6 +3550,7 @@ static struct opengl_funcs opengl_funcs =
         glxdrv_wglSetPixelFormat,           /* p_wglSetPixelFormat */
         glxdrv_wglShareLists,               /* p_wglShareLists */
         glxdrv_wglSwapBuffers,              /* p_wglSwapBuffers */
+        glxdrv_get_pixel_formats,
     }
 };
 

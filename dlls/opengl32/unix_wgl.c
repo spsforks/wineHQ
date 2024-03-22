@@ -1496,6 +1496,7 @@ NTSTATUS ext_wglChoosePixelFormatARB( void *args )
 {
     struct wglChoosePixelFormatARB_params *params = args;
     const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+    UINT i;
 
     if (!funcs) return STATUS_NOT_IMPLEMENTED;
 
@@ -1506,18 +1507,31 @@ NTSTATUS ext_wglChoosePixelFormatARB( void *args )
             funcs->ext.p_wglChoosePixelFormatARB( params->hdc, params->piAttribIList,
                                                   params->pfAttribFList, params->nMaxFormats,
                                                   params->piFormats, params->nNumFormats );
+        TRACE("Formats from driver impl (max=%d): ", params->nMaxFormats);
+        for (i = 0; i < *params->nNumFormats; i++)
+            TRACE("%d, ", params->piFormats[i]);
+        TRACE("\n");
     }
-    else if (funcs->wgl.p_get_pixel_formats)
+
+
+    if (funcs->wgl.p_get_pixel_formats)
     {
         params->ret =
             wrap_wglChoosePixelFormatARB( params->hdc, params->piAttribIList,
                                           params->pfAttribFList, params->nMaxFormats,
                                           params->piFormats, params->nNumFormats );
+        TRACE("Formats from opengl32 impl (max=%d): ", params->nMaxFormats);
+        for (i = 0; i < *params->nNumFormats; i++)
+            TRACE("%d, ", params->piFormats[i]);
+        TRACE("\n");
     }
+
+    /*
     else
     {
         return STATUS_NOT_IMPLEMENTED;
     }
+    */
     return STATUS_SUCCESS;
 }
 
