@@ -421,11 +421,7 @@ WORD WINAPI K32WOWHandle16( HANDLE handle, WOW_HANDLE_TYPE type )
     }
 }
 
-/**********************************************************************
- *           K32WOWCallback16Ex         (KERNEL32.55)
- */
-BOOL WINAPI K32WOWCallback16Ex( DWORD vpfn16, DWORD dwFlags,
-                                DWORD cbArgs, LPVOID pArgs, LPDWORD pdwRetCode )
+static BOOL wow_callback16( DWORD vpfn16, DWORD dwFlags, DWORD cbArgs, void *pArgs, DWORD *pdwRetCode, BOOL interrupt )
 {
     /*
      * Arguments must be prepared in the correct order by the caller
@@ -460,9 +456,9 @@ BOOL WINAPI K32WOWCallback16Ex( DWORD vpfn16, DWORD dwFlags,
         *((SEGPTR *)stack) = call16_ret_addr;
         cbArgs += sizeof(SEGPTR);
 
-        _EnterWin16Lock();
+        if (!interrupt) _EnterWin16Lock();
         wine_call_to_16_regs( context, cbArgs, call16_handler );
-        _LeaveWin16Lock();
+        if (!interrupt) _LeaveWin16Lock();
 
         if (TRACE_ON(relay))
         {
@@ -500,10 +496,10 @@ BOOL WINAPI K32WOWCallback16Ex( DWORD vpfn16, DWORD dwFlags,
          * the callee to do so; after the routine has returned, the 16-bit
          * stack pointer is always reset to the position it had before.
          */
-        _EnterWin16Lock();
+        if (!interrupt) _EnterWin16Lock();
         ret = wine_call_to_16( (FARPROC16)vpfn16, cbArgs, call16_handler );
         if (pdwRetCode) *pdwRetCode = ret;
-        _LeaveWin16Lock();
+        if (!interrupt) _LeaveWin16Lock();
 
         if (TRACE_ON(relay))
         {
@@ -513,6 +509,25 @@ BOOL WINAPI K32WOWCallback16Ex( DWORD vpfn16, DWORD dwFlags,
     }
 
     return TRUE;  /* success */
+}
+
+/**********************************************************************
+ *           __wine_wow_interrupt16
+ *
+ * Simulates a hardware interrupt by running the callback without waiting for
+ * the current task to yield.
+ */
+BOOL __wine_wow_interrupt16( DWORD func, DWORD flags, DWORD arg_count, void *args, DWORD *ret_code )
+{
+    return wow_callback16( func, flags, arg_count, args, ret_code, TRUE );
+}
+
+/**********************************************************************
+ *           K32WOWCallback16Ex         (KERNEL32.55)
+ */
+BOOL WINAPI K32WOWCallback16Ex( DWORD func, DWORD flags, DWORD arg_count, void *args, DWORD *ret_code )
+{
+    return wow_callback16( func, flags, arg_count, args, ret_code, FALSE );
 }
 
 /**********************************************************************
