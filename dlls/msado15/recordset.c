@@ -32,6 +32,23 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(msado15);
 
+enum eCondition {
+    eGreater    = 1,
+    eGreaterEqual,
+    eLess,
+    eLessEqual,
+    eNotEqual,
+    eEqual,
+    eLike
+};
+
+struct column_filter
+{
+    LONG column;
+    enum eCondition condition;
+    VARIANT value;
+};
+
 struct fields;
 struct recordset
 {
@@ -51,6 +68,8 @@ struct recordset
     IRowset           *row_set;
     EditModeEnum      editmode;
     VARIANT            filter;
+    BSTR              criteria;
+    struct column_filter *criteria_col;
 
     DBTYPE            *columntypes;
     HACCESSOR         *haccessors;
@@ -1234,6 +1253,13 @@ static void close_recordset( struct recordset *recordset )
     if ( recordset->row_set ) IRowset_Release( recordset->row_set );
     recordset->row_set = NULL;
 
+    SysFreeString(recordset->criteria);
+    if (recordset->criteria_col)
+    {
+        VariantClear( &recordset->criteria_col->value );
+        free(recordset->criteria_col);
+    }
+
     VariantClear( &recordset->filter );
 
     if (!recordset->fields) return;
@@ -2374,12 +2400,267 @@ static HRESULT WINAPI recordset_put_MarshalOptions( _Recordset *iface, MarshalOp
     return E_NOTIMPL;
 }
 
+static LONG find_column_index(struct fields *fields, WCHAR *name)
+{
+    VARIANT column;
+    LONG ret = -1;
+    ULONG index;
+
+    V_VT(&column) = VT_BSTR;
+    V_BSTR(&column) = SysAllocString(name);
+
+    if (map_index(fields, &column, &index) == S_OK)
+        ret = index;
+    VariantClear(&column);
+
+    return ret;
+}
+
+static BOOL column_match_string(int condition, BSTR col_data, BSTR filter_data)
+{
+    BOOL match = FALSE;
+
+    switch (condition)
+    {
+        case eEqual:
+            match = lstrcmpW(col_data, filter_data) == 0;
+            break;
+        case eNotEqual:
+            match = lstrcmpW(col_data, filter_data) != 0;
+            break;
+        case eLike:
+            FIXME("LIKE currently not supported\n");
+            break;
+        default:
+            FIXME("Unsupported condition %d\n", condition);
+    }
+
+    return match;
+}
+
+static BOOL column_match_integer(int condition, INT col_data, INT filter_data)
+{
+    BOOL match = FALSE;
+
+    switch (condition)
+    {
+        case eEqual:
+            match = col_data == filter_data;
+            break;
+        case eNotEqual:
+            match = col_data != filter_data;
+            break;
+        case eLess:
+            match = col_data < filter_data;
+            break;
+        case eLessEqual:
+            match = col_data <= filter_data;
+            break;
+        case eGreater:
+            match = col_data > filter_data;
+            break;
+        case eGreaterEqual:
+            match = col_data >= filter_data;
+            break;
+        default:
+            FIXME("Unsupported condition %d\n", condition);
+    }
+
+    return match;
+}
+
+static HRESULT parse_find_filter(struct recordset *recordset, WCHAR *ptr)
+{
+    WCHAR data[1024];
+    int i = 0;
+
+    /* Find Column name */
+    while (*ptr && (iswalnum(*ptr) || *ptr == '_'))
+    {
+        data[i++] = *ptr;
+        ptr++;
+    }
+    data[i] = '\0';
+
+    if(!*data)
+        return MAKE_ADO_HRESULT( adErrInvalidArgument );
+
+    recordset->criteria_col->column = find_column_index(recordset->fields, data);
+    if (recordset->criteria_col->column == -1)
+        return MAKE_ADO_HRESULT( adErrItemNotFound );
+
+    /* Ignore whitespace */
+    while (*ptr && *ptr == ' ') ptr++;
+
+    /* Operation */
+    switch (*ptr)
+    {
+        case '=':
+            recordset->criteria_col->condition = eEqual;
+            ptr++;
+            break;
+
+        case '>':
+            recordset->criteria_col->condition = eGreater;
+            ptr++;
+            if (*ptr == '=')
+            {
+                recordset->criteria_col->condition = eGreaterEqual;
+                ptr++;
+            }
+            break;
+
+        case '<':
+            recordset->criteria_col->condition = eLess;
+            ptr++;
+            if (*ptr == '=')
+            {
+                recordset->criteria_col->condition = eLessEqual;
+                ptr++;
+            }
+            else if (*ptr == '>')
+            {
+                recordset->criteria_col->condition = eNotEqual;
+                ptr++;
+            }
+            break;
+
+        case '\0':
+             return MAKE_ADO_HRESULT( adErrInvalidArgument );
+
+        default:
+            FIXME("Currently unsupported operation\n");
+            return E_FAIL;
+    }
+
+    /* Ignore whitespace */
+    while (*ptr && *ptr == ' ') ptr++;
+
+    VariantInit(&recordset->criteria_col->value);
+
+    /* Value */
+    if (*ptr)
+    {
+        BOOL is_float = FALSE;
+        if (*ptr == '\'')
+        {
+            ptr++;
+            V_VT(&recordset->criteria_col->value) = VT_BSTR;
+            V_BSTR(&recordset->criteria_col->value) = SysAllocStringLen(ptr, wcslen(ptr)-1);
+        }
+        else
+        {
+            i = 0;
+            while (*ptr)
+            {
+                if(iswdigit(*ptr) || *ptr == '.')
+                {
+                    if(*ptr == '.')
+                        is_float = TRUE;
+
+                    data[i++] = *ptr;
+                    ptr++;
+                }
+                else if (*ptr == '\0')
+                    break;
+                else
+                    return MAKE_ADO_HRESULT( adErrInvalidArgument );
+            }
+            data[i++] = '\0';
+
+            if(is_float)
+            {
+                V_VT(&recordset->criteria_col->value) = VT_R4;
+                V_R4(&recordset->criteria_col->value) = _wtof(data);
+            }
+            else
+            {
+                V_VT(&recordset->criteria_col->value) = VT_I4;
+                V_I4(&recordset->criteria_col->value) = _wtoi(data);
+            }
+        }
+    }
+    else
+        return MAKE_ADO_HRESULT( adErrInvalidArgument );
+
+    return S_OK;
+}
+
 static HRESULT WINAPI recordset_Find( _Recordset *iface, BSTR criteria, LONG skip_records,
                                       SearchDirectionEnum search_direction, VARIANT start )
 {
-    FIXME( "%p, %s, %ld, %d, %s\n", iface, debugstr_w(criteria), skip_records, search_direction,
+    struct recordset *recordset = impl_from_Recordset( iface );
+    BOOL found = FALSE;
+    ULONG colcnt;
+    DataTypeEnum datatype;
+
+    TRACE( "%p, %s, %ld, %d, %s\n", recordset, debugstr_w(criteria), skip_records, search_direction,
            debugstr_variant(&start) );
-    return E_NOTIMPL;
+
+    if (recordset->state != adStateOpen) return MAKE_ADO_HRESULT( adErrObjectClosed );
+
+    if(!criteria || !*criteria)
+        return MAKE_ADO_HRESULT( adErrInvalidArgument );
+
+    if (!recordset->criteria || wcscmp(recordset->criteria, criteria) != 0)
+    {
+        HRESULT hr;
+
+        SysFreeString(recordset->criteria);
+        if (recordset->criteria_col)
+            free(recordset->criteria_col);
+
+        recordset->criteria = SysAllocString(criteria);
+        recordset->criteria_col = malloc(sizeof(struct column_filter));
+        if (!recordset->criteria_col)
+            return E_OUTOFMEMORY;
+
+        hr = parse_find_filter(recordset, criteria);
+        if(FAILED(hr))
+            return hr;
+
+        TRACE("Column %ld, condition %u, %s\n", recordset->criteria_col->column,
+              recordset->criteria_col->condition, debugstr_variant(&recordset->criteria_col->value));
+    }
+
+    colcnt = get_column_count(recordset);
+
+    field_get_Type(recordset->fields->field[recordset->criteria_col->column], &datatype);
+
+    recordset->index += skip_records;
+    for(; recordset->index < recordset->count; recordset->index++)
+    {
+        found = FALSE;
+
+        switch(datatype)
+        {
+            case adBSTR:
+            case adWChar:
+            {
+                found = column_match_string(recordset->criteria_col->condition,
+                                            V_BSTR(&recordset->data[recordset->index * colcnt + recordset->criteria_col->column]),
+                                            V_BSTR(&recordset->criteria_col->value));
+                break;
+            }
+            case adInteger:
+            {
+                found = column_match_integer(recordset->criteria_col->condition,
+                                         V_I4(&recordset->data[recordset->index * colcnt + recordset->criteria_col->column]),
+                                         V_I4(&recordset->criteria_col->value));
+                break;
+            }
+            default:
+                FIXME("Unsupported datatype %d\n", datatype);
+        }
+
+        if (found)
+        {
+            TRACE("Return record %ld\n", recordset->index);
+            break;
+        }
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI recordset_Cancel( _Recordset *iface )
@@ -2795,6 +3076,8 @@ HRESULT Recordset_create( void **obj )
     VariantInit( &recordset->filter );
     recordset->columntypes = NULL;
     recordset->haccessors = NULL;
+    recordset->criteria = NULL;
+    recordset->criteria_col = NULL;
 
     *obj = &recordset->Recordset_iface;
     TRACE( "returning iface %p\n", *obj );

@@ -19,8 +19,11 @@
 #include <stdio.h>
 #define COBJMACROS
 #include <initguid.h>
+#include <msdasc.h>
 #include <oledb.h>
 #include <olectl.h>
+#include <oledberr.h>
+#include <odbcinst.h>
 #include <msado15_backcompat.h>
 #include "wine/test.h"
 #include "msdasql.h"
@@ -57,7 +60,7 @@ static void test_Recordset(void)
     VARIANT missing, val, index;
     CursorLocationEnum location;
     CursorTypeEnum cursor;
-    BSTR name;
+    BSTR name, crit;
     HRESULT hr;
     VARIANT bookmark, filter, active;
     EditModeEnum editmode;
@@ -142,6 +145,12 @@ static void test_Recordset(void)
     V_I2(&filter) = 0;
     hr = _Recordset_put_Filter( recordset, filter );
     ok( hr == S_OK, "got %08lx\n", hr );
+
+    crit = SysAllocString(L"colu1=1");
+    V_VT( &index ) = VT_EMPTY;
+    hr = _Recordset_Find( recordset, crit, 0, adSearchForward, index );
+    ok( hr == MAKE_ADO_HRESULT( adErrObjectClosed ), "got %08lx\n", hr );
+    SysFreeString(crit);
 
     VariantInit( &missing );
     hr = _Recordset_AddNew( recordset, missing, missing );
@@ -1364,6 +1373,182 @@ static void test_Command(void)
     _Command_Release( command );
 }
 
+static BOOL db_created = TRUE;
+static char mdbpath[MAX_PATH];
+
+static void setup_database(void)
+{
+    char *driver;
+    DWORD code;
+    char buffer[1024];
+    WORD size;
+
+    if (winetest_interactive)
+    {
+        trace("assuming odbc 'wine_msado15' is available\n");
+        db_created = TRUE;
+        return;
+    }
+
+    /*
+     * 32 bit Windows has a default driver for "Microsoft Access Driver" (Windows 7+)
+     *  and has the ability to create files on the fly.
+     *
+     * 64 bit Windows ONLY has a driver for "SQL Server", which we cannot use since we don't have a
+     *   server to connect to.
+     *
+     * The filename passed to CREATE_DB must end in mdb.
+     */
+    GetTempPathA(sizeof(mdbpath), mdbpath);
+    strcat(mdbpath, "wine_msado15.mdb");
+
+    driver = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof("DSN=wine_msado15\0CREATE_DB=") + strlen(mdbpath) + 2);
+    memcpy(driver, "DSN=wine_msado15\0CREATE_DB=", sizeof("DSN=wine_msado15\0CREATE_DB="));
+    strcat(driver+sizeof("DSN=wine_msado15\0CREATE_DB=")-1, mdbpath);
+
+    db_created = SQLConfigDataSource(NULL, ODBC_ADD_DSN, "Microsoft Access Driver (*.mdb)", driver);
+    if (!db_created)
+    {
+        SQLInstallerError(1, &code, buffer, sizeof(buffer), &size);
+        trace("code  %ld, buffer %s, size %d\n", code, debugstr_a(buffer), size);
+
+        HeapFree(GetProcessHeap(), 0, driver);
+
+        return;
+    }
+
+    memcpy(driver, "DSN=wine_msado15\0DBQ=", sizeof("DSN=wine_msado15\0DBQ="));
+    strcat(driver+sizeof("DSN=wine_msado15\0DBQ=")-1, mdbpath);
+    db_created = SQLConfigDataSource(NULL, ODBC_ADD_DSN, "Microsoft Access Driver (*.mdb)", driver);
+
+    HeapFree(GetProcessHeap(), 0, driver);
+}
+
+static void cleanup_database(void)
+{
+    BOOL ret;
+
+    if (winetest_interactive)
+        return;
+
+    ret = SQLConfigDataSource(NULL, ODBC_REMOVE_DSN, "Microsoft Access Driver (*.mdb)", "DSN=wine_msado15\0\0");
+    if (!ret)
+    {
+        DWORD code;
+        char buffer[1024];
+        WORD size;
+
+        SQLInstallerError(1, &code, buffer, sizeof(buffer), &size);
+        trace("code  %ld, buffer %s, size %d\n", code, debugstr_a(buffer), size);
+    }
+
+    DeleteFileA(mdbpath);
+}
+
+struct recfilter
+{
+    const WCHAR *filter;
+    HRESULT expected;
+};
+
+static void test_recordset_Find(void)
+{
+    HRESULT hr;
+    _Connection *connection;
+    _Recordset *recordset;
+    VARIANT start_index;
+    BSTR str;
+    int i;
+    static const struct recfilter filters[] =
+    {
+        {L"field1 = 1", MAKE_ADO_HRESULT( adErrItemNotFound ) },
+        {L"col1 = 1 OR col3 = 2", MAKE_ADO_HRESULT( adErrInvalidArgument ) },
+        {L"col1 = 3", S_OK },
+        {L"'testing.col1' = 4", MAKE_ADO_HRESULT( adErrInvalidArgument ) },
+        {L"col1 =", MAKE_ADO_HRESULT( adErrInvalidArgument ) },
+        {L"col1 <> 5", S_OK },
+        {L"col1 = 6", S_OK },
+        {L"col1 >= 7", S_OK },
+        {L"col1 <= 8", S_OK },
+        {L"col3 < 9.4", S_OK },
+        {L"", MAKE_ADO_HRESULT( adErrInvalidArgument ) },
+    };
+
+    setup_database();
+
+    if (!db_created)
+    {
+        skip("ODBC source wine_msado15 not available.\n");
+        return;
+    }
+
+    str = SysAllocString(L"Provider=MSDASQL.1;Persist Security Info=False;Data Source=wine_msado15");
+
+    hr = CoCreateInstance( &CLSID_Connection, NULL, CLSCTX_INPROC_SERVER, &IID__Connection, (void**)&connection );
+    ok( hr == S_OK, "got %08lx\n", hr );
+
+    hr = _Connection_put_CursorLocation( connection, adUseClient );
+    ok( hr == S_OK, "got %08lx\n", hr );
+
+    hr = _Connection_Open( connection, str, NULL, NULL, adConnectUnspecified );
+    ok( hr == S_OK, "got %08lx\n", hr );
+    SysFreeString( str );
+
+    str = SysAllocString(L"CREATE TABLE testing (col1 INT, col2 VARCHAR(20) NOT NULL, col3 FLOAT)");
+    hr = _Connection_Execute(connection, str, NULL, 0, &recordset);
+    ok( hr == S_OK || hr == DB_E_ERRORSINCOMMAND /* Table already exists */, "got %08lx\n", hr );
+    if (hr == S_OK)
+        _Recordset_Release(recordset);
+    SysFreeString( str );
+    str = SysAllocString(L"insert into testing values(1, 'red', 1.0)");
+    hr = _Connection_Execute(connection, str, NULL, 0, &recordset);
+    ok( hr == S_OK, "got %08lx\n", hr );
+    _Recordset_Release(recordset);
+    SysFreeString( str );
+
+    str = SysAllocString(L"insert into testing values(2, 'blue', 2.0)");
+    hr = _Connection_Execute(connection, str, NULL, 0, &recordset);
+    ok( hr == S_OK, "got %08lx\n", hr );
+    _Recordset_Release(recordset);
+    SysFreeString( str );
+
+    str = SysAllocString(L"SELECT * from testing");
+    hr = _Connection_Execute(connection, str, NULL, 0, &recordset);
+    ok( hr == S_OK, "got %08lx\n", hr );
+    SysFreeString( str );
+
+    for (i=0; i < ARRAY_SIZE(filters); i++)
+    {
+        BSTR crit = SysAllocString( filters[i].filter );
+
+        hr = _Recordset_MoveFirst( recordset );
+        ok( hr == S_OK, "got %08lx\n", hr );
+
+        V_VT( &start_index ) = VT_I4;
+        V_I4( &start_index) = 0;
+
+        hr = _Recordset_Find( recordset, crit, 0, adSearchForward, start_index );
+        ok( hr == filters[i].expected, "%d got %08lx expected %08lx\n", i, hr, filters[i].expected );
+        SysFreeString( crit );
+    }
+    str = SysAllocStringLen( NULL, 0 );
+    hr = _Recordset_Find( recordset, str, 0, adSearchForward, start_index );
+    ok( hr == MAKE_ADO_HRESULT( adErrInvalidArgument ), "got %08lx\n", hr );
+    SysFreeString( str );
+
+    hr = _Recordset_Find( recordset, NULL, 0, adSearchForward, start_index );
+    ok( hr == MAKE_ADO_HRESULT( adErrInvalidArgument ), "got %08lx\n", hr );
+
+    hr = _Recordset_Close( recordset );
+    ok( hr == S_OK, "got %08lx\n", hr );
+    _Recordset_Release( recordset );
+
+    hr = _Connection_Close( connection );
+    ok( hr == S_OK, "got %08lx\n", hr );
+
+    cleanup_database();
+}
+
 struct conn_event {
     ConnectionEventsVt conn_event_sink;
     LONG refs;
@@ -1583,6 +1768,7 @@ START_TEST(msado15)
     test_ConnectionPoint();
     test_Fields();
     test_Recordset();
+    test_recordset_Find();
     test_Stream();
     test_Command();
     CoUninitialize();
