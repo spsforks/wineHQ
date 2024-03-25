@@ -58,6 +58,8 @@ static int max_width;
 static int numChars;
 
 #define MAX_WRITECONSOLE_SIZE 65535
+#define CMD_SUCCEEDED(res) ((res)==0)
+#define CMD_FAILED(res)    ((res)!=0)
 
 /*
  * Returns a buffer for reading from/writing to file
@@ -2369,6 +2371,7 @@ CMD_LIST *WCMD_process_commands(CMD_LIST *thisCmd, BOOL oneBracket,
                                 BOOL retrycall) {
 
     int bdepth = -1;
+    CMD_LIST *prevCmd = NULL;
 
     if (thisCmd && oneBracket) bdepth = thisCmd->bracketDepth;
 
@@ -2390,12 +2393,41 @@ CMD_LIST *WCMD_process_commands(CMD_LIST *thisCmd, BOOL oneBracket,
          about them and it will be handled in there)
          Also, skip over any batch labels (eg. :fred)          */
       if (thisCmd->command && thisCmd->command[0] != ':') {
-        WINE_TRACE("Executing command: '%s'\n", wine_dbgstr_w(thisCmd->command));
-        WCMD_execute (thisCmd->command, thisCmd->redirects, &thisCmd, retrycall);
+        /* Process the command chaining */
+        if ( (thisCmd->prevDelim == CMD_ONSUCCESS && CMD_FAILED(errorlevel)) ||
+             (thisCmd->prevDelim == CMD_ONFAILURE && CMD_SUCCEEDED(errorlevel)) ) {
+          if (prevCmd && prevCmd->bracketDepth < thisCmd->bracketDepth) {
+            /* Skipping the chain of commands in brackets */
+            int bd = thisCmd->bracketDepth;
+            do {
+              WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+              prevCmd = thisCmd;
+              thisCmd = thisCmd->nextcommand;
+            } while (thisCmd && bd <= thisCmd->bracketDepth);
+            continue;
+          } else if (thisCmd->prevDelim == CMD_ONFAILURE && CMD_SUCCEEDED(errorlevel)) {
+            /* Skipping all chaining commands after '||', i.e. '|| cmd2 && cmd3 || cmd4'*/
+            do {
+              WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+              prevCmd = thisCmd;
+              thisCmd = thisCmd->nextcommand;
+            } while (thisCmd && (thisCmd->prevDelim == CMD_ONSUCCESS || thisCmd->prevDelim == CMD_ONFAILURE));
+            continue;
+          } else {
+            /* Skipping the next command */
+            WINE_TRACE("Skipping command '%s'\n", wine_dbgstr_w(thisCmd->command));
+          }
+        } else {
+          WINE_TRACE("Executing command: '%s'\n", wine_dbgstr_w(thisCmd->command));
+          WCMD_execute (thisCmd->command, thisCmd->redirects, &thisCmd, retrycall);
+        }
       }
 
       /* Step on unless the command itself already stepped on */
-      if (thisCmd == origCmd) thisCmd = thisCmd->nextcommand;
+      if (thisCmd == origCmd) {
+        prevCmd = thisCmd;
+        thisCmd = thisCmd->nextcommand;
+      }
     }
     return NULL;
 }
