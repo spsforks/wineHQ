@@ -579,6 +579,7 @@ static UINT SHELL_FindExecutableByVerb(LPCWSTR lpVerb, LPWSTR key, LPWSTR classn
  *
  * Utility for code sharing between FindExecutable and ShellExecute
  * in:
+ *      lpPath the path to search for the file
  *      lpFile the name of a file
  *      lpVerb the operation on it (open)
  * out:
@@ -639,6 +640,7 @@ static UINT SHELL_FindExecutable(LPCWSTR lpPath, LPCWSTR lpFile, LPCWSTR lpVerb,
     {
         TRACE("PathResolveAW returned non-zero\n");
         lpFile = xlpFile;
+        lstrcpyW(lpResult, xlpFile);
         /* The file was found in lpPath or one of the directories in the system-wide search path */
     }
     else
@@ -696,7 +698,6 @@ static UINT SHELL_FindExecutable(LPCWSTR lpPath, LPCWSTR lpFile, LPCWSTR lpVerb,
 
                 if (wcsicmp(tok, &extension[1]) == 0) /* have to skip the leading "." */
                 {
-                    lstrcpyW(lpResult, xlpFile);
                     /* Need to perhaps check that the file has a path
                      * attached */
                     TRACE("found %s\n", debugstr_w(lpResult));
@@ -781,7 +782,7 @@ static UINT SHELL_FindExecutable(LPCWSTR lpPath, LPCWSTR lpFile, LPCWSTR lpVerb,
         }
     }
 
-    TRACE("returning %s\n", debugstr_w(lpResult));
+    TRACE("returning path %s, retval %d\n", debugstr_w(lpResult), retval);
     return retval;
 }
 
@@ -1884,6 +1885,19 @@ static BOOL SHELL_execute( LPSHELLEXECUTEINFOW sei, SHELL_ExecuteW32 execfunc )
         lstrcpyW(lpstrTmpFile, L"http://");
         lstrcatW(lpstrTmpFile, lpFile);
         retval = (UINT_PTR)ShellExecuteW(sei_tmp.hwnd, sei_tmp.lpVerb, lpstrTmpFile, NULL, NULL, 0);
+    }
+    else if (retval == SE_ERR_NOASSOC)
+    {
+        /* File found, but no association. And no other cases fit, this could be a
+           unix programs, try running it. */
+        UINT exec_retval;
+        TRACE("No association found, trying as Unix binary %s\n", debugstr_w(wcmd));
+        exec_retval = SHELL_quote_and_execute( wcmd, wszParameters, wszKeyname,
+                                               wszApplicationName, env, &sei_tmp,
+                                               sei, execfunc );
+        TRACE("Unix binary returned %u\n", exec_retval);
+        if (exec_retval > 32)
+            retval = exec_retval;
     }
 
 end:
