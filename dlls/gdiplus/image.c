@@ -5576,14 +5576,70 @@ GpStatus WINGDIPAPI GdipCreateBitmapFromHBITMAP(HBITMAP hbm, HPALETTE hpal, GpBi
  */
 GpStatus WINGDIPAPI GdipCreateEffect(const GUID guid, CGpEffect **effect)
 {
-    FIXME("(%s, %p): stub\n", debugstr_guid(&guid), effect);
+    CGpEffect *ef = NULL;
+    EffectType type;
 
-    if(!effect)
+    TRACE("(%s, %p)\n", debugstr_guid(&guid), effect);
+
+    if (!effect)
         return InvalidParameter;
 
-    *effect = NULL;
+    if (IsEqualGUID(&guid, &BlurEffectGuid))
+    {
+        type = BlurEffect;
+    }
+    else if (IsEqualGUID(&guid, &SharpenEffectGuid))
+    {
+        type = SharpenEffect;
+    }
+    else if (IsEqualGUID(&guid, &TintEffectGuid))
+    {
+        type = TintEffect;
+    }
+    else if (IsEqualGUID(&guid, &RedEyeCorrectionEffectGuid))
+    {
+        type = RedEyeCorrectionEffect;
+    }
+    else if (IsEqualGUID(&guid, &ColorMatrixEffectGuid))
+    {
+        type = ColorMatrixEffect;
+    }
+    else if (IsEqualGUID(&guid, &ColorLUTEffectGuid))
+    {
+        type = ColorLUTEffect;
+    }
+    else if (IsEqualGUID(&guid, &BrightnessContrastEffectGuid))
+    {
+        type = BrightnessContrastEffect;
+    }
+    else if (IsEqualGUID(&guid, &HueSaturationLightnessEffectGuid))
+    {
+        type = HueSaturationLightnessEffect;
+    }
+    else if (IsEqualGUID(&guid, &ColorBalanceEffectGuid))
+    {
+        type = ColorBalanceEffect;
+    }
+    else if (IsEqualGUID(&guid, &LevelsEffectGuid))
+    {
+        type = LevelsEffect;
+    }
+    else if (IsEqualGUID(&guid, &ColorCurveEffectGuid))
+    {
+        type = ColorCurveEffect;
+    }
+    else
+    {
+        *effect = NULL;
+        return Win32Error;
+    }
 
-    return NotImplemented;
+    ef = malloc(sizeof(CGpEffect));
+    ef->params = NULL;
+    ef->type = type;
+    *effect = ef;
+
+    return Ok;
 }
 
 /*****************************************************************************
@@ -5591,10 +5647,70 @@ GpStatus WINGDIPAPI GdipCreateEffect(const GUID guid, CGpEffect **effect)
  */
 GpStatus WINGDIPAPI GdipDeleteEffect(CGpEffect *effect)
 {
-    FIXME("(%p): stub\n", effect);
-    /* note: According to Jose Roca's GDI+ Docs, this is not implemented
-     * in Windows's gdiplus */
-    return NotImplemented;
+    TRACE("(%p)\n", effect);
+
+    free(effect->params);
+    free(effect);
+    return Ok;
+}
+
+/*****************************************************************************
+ * GdipGetEffectParameterSize [GDIPLUS.@]
+ */
+GpStatus WINGDIPAPI GdipGetEffectParameterSize(CGpEffect *effect, UINT *size)
+{
+    UINT sz = 0;
+    GpStatus status = Ok;
+
+    TRACE("(%p %p)\n", effect, size);
+
+    if (!effect || !size)
+         return InvalidParameter;
+
+    switch (effect->type)
+    {
+    case BlurEffect:
+        sz = sizeof(struct BlurParams);
+        break;
+    case SharpenEffect:
+        sz = sizeof(struct SharpenParams);
+        break;
+    case TintEffect:
+        sz = sizeof(struct TintParams);
+        break;
+    case RedEyeCorrectionEffect:
+        sz = sizeof(struct RedEyeCorrectionParams);
+        if (effect->params)
+            sz += (((struct RedEyeCorrectionParams *)effect->params)->numberOfAreas)*sizeof(RECT);
+        break;
+    case ColorMatrixEffect:
+        sz = sizeof(ColorMatrix);
+        break;
+    case ColorLUTEffect:
+        sz = sizeof(struct ColorLUTParams);
+        break;
+    case BrightnessContrastEffect:
+        sz = sizeof(struct BrightnessContrastParams);
+        break;
+    case HueSaturationLightnessEffect:
+        sz = sizeof(struct HueSaturationLightnessParams);
+        break;
+    case ColorBalanceEffect:
+        sz = sizeof(struct ColorBalanceParams);
+        break;
+    case LevelsEffect:
+        sz = sizeof(struct LevelsParams);
+        break;
+    case ColorCurveEffect:
+        sz = sizeof(struct ColorCurveParams);
+        break;
+    default:
+        status = InvalidParameter;
+        break;
+    }
+    *size = sz;
+
+    return status;
 }
 
 /*****************************************************************************
@@ -5603,14 +5719,39 @@ GpStatus WINGDIPAPI GdipDeleteEffect(CGpEffect *effect)
 GpStatus WINGDIPAPI GdipSetEffectParameters(CGpEffect *effect,
     const VOID *params, const UINT size)
 {
-    static int calls;
+    UINT paramsize = 0, num = 0;
 
     TRACE("(%p,%p,%u)\n", effect, params, size);
 
-    if(!(calls++))
-        FIXME("not implemented\n");
+    if (!effect || !params || !size)
+        return InvalidParameter;
 
-    return NotImplemented;
+    if (GdipGetEffectParameterSize(effect, &paramsize) != Ok)
+        return InvalidParameter;
+
+    if (effect->type == RedEyeCorrectionEffect)
+    {
+        if ((paramsize-size > 0) || (((size-paramsize)%sizeof(RECT)) != 0))
+            return InvalidParameter;
+    }
+    else
+    {
+        if (paramsize != size)
+            return InvalidParameter;
+    }
+
+    effect->params = realloc(effect->params, size);
+    if (effect->type == RedEyeCorrectionEffect)
+    {
+        num = (size-paramsize)/sizeof(RECT);
+        ((struct RedEyeCorrectionParams *)effect->params)->numberOfAreas = num;
+        ((struct RedEyeCorrectionParams *)effect->params)->areas = malloc(num*sizeof(RECT));
+        memcpy(((struct RedEyeCorrectionParams *)params)->areas, ((struct RedEyeCorrectionParams *)effect->params)->areas, num*sizeof(RECT));
+    }
+    else
+        memcpy(effect->params, params, size);
+
+    return Ok;
 }
 
 /*****************************************************************************
