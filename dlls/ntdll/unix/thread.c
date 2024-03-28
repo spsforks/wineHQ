@@ -1776,7 +1776,7 @@ void ntdll_set_exception_jmp_buf( jmp_buf jmp )
 }
 
 
-BOOL get_thread_times(int unix_pid, int unix_tid, LARGE_INTEGER *kernel_time, LARGE_INTEGER *user_time)
+BOOL get_thread_times( int unix_pid, unix_tid_t unix_tid, LARGE_INTEGER *kernel_time, LARGE_INTEGER *user_time )
 {
 #ifdef linux
     unsigned long clocks_per_sec = sysconf( _SC_CLK_TCK );
@@ -1789,7 +1789,7 @@ BOOL get_thread_times(int unix_pid, int unix_tid, LARGE_INTEGER *kernel_time, LA
     if (unix_tid == -1)
         snprintf( buf, sizeof(buf), "/proc/%u/stat", unix_pid );
     else
-        snprintf( buf, sizeof(buf), "/proc/%u/task/%u/stat", unix_pid, unix_tid );
+        snprintf( buf, sizeof(buf), "/proc/%u/task/%u/stat", unix_pid, (unsigned int)unix_tid );
     if (!(f = fopen( buf, "r" )))
     {
         WARN("Failed to open %s: %s\n", buf, strerror(errno));
@@ -1867,7 +1867,8 @@ static void set_native_thread_name( HANDLE handle, const UNICODE_STRING *name )
 #ifdef linux
     unsigned int status;
     char path[64], nameA[64];
-    int unix_pid, unix_tid, len, fd;
+    int unix_pid, len, fd;
+    unix_tid_t unix_tid;
 
     SERVER_START_REQ( get_thread_times )
     {
@@ -1892,7 +1893,7 @@ static void set_native_thread_name( HANDLE handle, const UNICODE_STRING *name )
     }
 
     len = ntdll_wcstoumbs( name->Buffer, name->Length / sizeof(WCHAR), nameA, sizeof(nameA), FALSE );
-    snprintf(path, sizeof(path), "/proc/%u/task/%u/comm", unix_pid, unix_tid);
+    snprintf( path, sizeof(path), "/proc/%u/task/%u/comm", unix_pid, (unsigned int)unix_tid );
     if ((fd = open( path, O_WRONLY )) != -1)
     {
         write( fd, nameA, len );
@@ -2045,7 +2046,8 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
     case ThreadTimes:
     {
         KERNEL_USER_TIMES kusrt;
-        int unix_pid, unix_tid;
+        int unix_pid;
+        unix_tid_t unix_tid;
 
         SERVER_START_REQ( get_thread_times )
         {

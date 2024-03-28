@@ -103,6 +103,21 @@ static void dump_uint64( const char *prefix, const unsigned __int64 *val )
         fprintf( stderr, "%s%08x", prefix, (unsigned int)*val );
 }
 
+static void dump_int64( const char *prefix, const __int64 *val )
+{
+    unsigned __int64 abs_val; 
+
+    fprintf( stderr, "%s", prefix );
+    if (*val < 0)
+    {
+        fprintf( stderr, "-" );
+        abs_val = (unsigned __int64)(*val ^ (__int64)-1) + 1;
+    } 
+    else
+        abs_val = (unsigned __int64)*val;
+    dump_uint64( "", &abs_val );
+}
+
 static void dump_uint128( const char *prefix, const unsigned __int64 val[2] )
 {
     unsigned __int64 low = val[0], high = val[1];
@@ -1193,8 +1208,8 @@ static void dump_varargs_process_info( const char *prefix, data_size_t size )
             if (size - pos < sizeof(*thread)) break;
             if (i) fputc( ',', stderr );
             dump_timeout( "{start_time=", &thread->start_time );
-            fprintf( stderr, ",tid=%04x,base_priority=%d,current_priority=%d,unix_tid=%d}",
-                     thread->tid, thread->base_priority, thread->current_priority, thread->unix_tid );
+            fprintf( stderr, ",tid=%04x,base_priority=%d,current_priority=%d,unix_tid=%lld}",
+                     thread->tid, thread->base_priority, thread->current_priority, (long long int)thread->unix_tid );
             pos += sizeof(*thread);
         }
         fprintf( stderr, "}}" );
@@ -1443,7 +1458,7 @@ static void dump_init_process_done_reply( const struct init_process_done_reply *
 static void dump_init_first_thread_request( const struct init_first_thread_request *req )
 {
     fprintf( stderr, " unix_pid=%d", req->unix_pid );
-    fprintf( stderr, ", unix_tid=%d", req->unix_tid );
+    dump_int64( ", unix_tid=", &req->unix_tid );
     fprintf( stderr, ", debug_level=%d", req->debug_level );
     fprintf( stderr, ", reply_fd=%d", req->reply_fd );
     fprintf( stderr, ", wait_fd=%d", req->wait_fd );
@@ -1461,7 +1476,7 @@ static void dump_init_first_thread_reply( const struct init_first_thread_reply *
 
 static void dump_init_thread_request( const struct init_thread_request *req )
 {
-    fprintf( stderr, " unix_tid=%d", req->unix_tid );
+    dump_int64( " unix_tid=", &req->unix_tid );
     fprintf( stderr, ", reply_fd=%d", req->reply_fd );
     fprintf( stderr, ", wait_fd=%d", req->wait_fd );
     dump_uint64( ", teb=", &req->teb );
@@ -1595,7 +1610,7 @@ static void dump_get_thread_times_reply( const struct get_thread_times_reply *re
     dump_timeout( " creation_time=", &req->creation_time );
     dump_timeout( ", exit_time=", &req->exit_time );
     fprintf( stderr, ", unix_pid=%d", req->unix_pid );
-    fprintf( stderr, ", unix_tid=%d", req->unix_tid );
+    dump_int64( ", unix_tid=", &req->unix_tid );
 }
 
 static void dump_set_thread_info_request( const struct set_thread_info_request *req )

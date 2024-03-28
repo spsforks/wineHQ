@@ -195,7 +195,7 @@ void get_thread_context( struct thread *thread, context_t *context, unsigned int
     }
 
     if (thread->unix_pid == -1 || !process_port ||
-        mach_port_extract_right( process_port, thread->unix_tid,
+        mach_port_extract_right( process_port, (mach_port_name_t)thread->unix_tid,
                                  MACH_MSG_TYPE_COPY_SEND, &port, &type ))
     {
         set_error( STATUS_ACCESS_DENIED );
@@ -282,7 +282,7 @@ void set_thread_context( struct thread *thread, const context_t *context, unsign
     }
 
     if (thread->unix_pid == -1 || !process_port ||
-        mach_port_extract_right( process_port, thread->unix_tid,
+        mach_port_extract_right( process_port, (mach_port_name_t)thread->unix_tid,
                                  MACH_MSG_TYPE_COPY_SEND, &port, &type ))
     {
         set_error( STATUS_ACCESS_DENIED );
@@ -369,7 +369,7 @@ int send_thread_signal( struct thread *thread, int sig )
         mach_msg_type_name_t type;
         mach_port_t port;
 
-        if (!mach_port_extract_right( process_port, thread->unix_tid,
+        if (!mach_port_extract_right( process_port, (mach_port_name_t)thread->unix_tid,
                                       MACH_MSG_TYPE_COPY_SEND, &port, &type ))
         {
             ret = __pthread_kill( port, sig );

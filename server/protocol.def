@@ -46,6 +46,7 @@ typedef unsigned __int64 file_pos_t;
 typedef unsigned __int64 client_ptr_t;
 typedef unsigned __int64 affinity_t;
 typedef client_ptr_t mod_handle_t;
+typedef __int64 unix_tid_t;
 
 struct request_header
 {
@@ -946,7 +947,7 @@ typedef struct
 /* Initialize the first thread of a new process */
 @REQ(init_first_thread)
     int          unix_pid;     /* Unix pid of new process */
-    int          unix_tid;     /* Unix tid of new thread */
+    unix_tid_t   unix_tid;     /* Unix tid of new thread */
     int          debug_level;  /* new debug level */
     int          reply_fd;     /* fd for reply pipe */
     int          wait_fd;      /* fd for blocking calls pipe */
@@ -962,7 +963,7 @@ typedef struct
 
 /* Initialize a new thread; called from the child after pthread_create() */
 @REQ(init_thread)
-    int          unix_tid;     /* Unix tid of new thread */
+    unix_tid_t   unix_tid;     /* Unix tid of new thread */
     int          reply_fd;     /* fd for reply pipe */
     int          wait_fd;      /* fd for blocking calls pipe */
     client_ptr_t teb;          /* TEB of new thread (in thread address space) */
@@ -1083,7 +1084,7 @@ typedef struct
     timeout_t    creation_time; /* thread creation time */
     timeout_t    exit_time;     /* thread exit time */
     int          unix_pid;      /* thread native pid */
-    int          unix_tid;      /* thread native pid */
+    unix_tid_t   unix_tid;      /* thread native pid */
 @END
 
 
@@ -1691,7 +1692,8 @@ struct thread_info
     thread_id_t     tid;
     int             base_priority;
     int             current_priority;
-    int             unix_tid;
+    int             __pad;
+    unix_tid_t      unix_tid;
     client_ptr_t    teb;
     client_ptr_t    entry_point;
 };

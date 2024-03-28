@@ -74,7 +74,7 @@ struct thread
     enum run_state         state;         /* running state */
     int                    exit_code;     /* thread exit code */
     int                    unix_pid;      /* Unix pid of client */
-    int                    unix_tid;      /* Unix tid of client */
+    unix_tid_t             unix_tid;      /* Unix tid of client */
     struct context        *context;       /* current context */
     client_ptr_t           suspend_cookie;/* wait cookie of suspending select */
     client_ptr_t           teb;           /* TEB address (in client address space) */
@@ -101,7 +101,7 @@ extern struct thread *create_thread( int fd, struct process *process,
                                      const struct security_descriptor *sd );
 extern struct thread *get_thread_from_id( thread_id_t id );
 extern struct thread *get_thread_from_handle( obj_handle_t handle, unsigned int access );
-extern struct thread *get_thread_from_tid( int tid );
+extern struct thread *get_thread_from_tid( unix_tid_t tid );
 extern struct thread *get_thread_from_pid( int pid );
 extern struct thread *get_wait_queue_thread( struct wait_queue_entry *entry );
 extern enum select_op get_wait_queue_select_op( struct wait_queue_entry *entry );

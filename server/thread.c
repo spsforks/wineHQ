@@ -458,8 +458,8 @@ static void dump_thread( struct object *obj, int verbose )
     struct thread *thread = (struct thread *)obj;
     assert( obj->ops == &thread_ops );
 
-    fprintf( stderr, "Thread id=%04x unix pid=%d unix tid=%d state=%d\n",
-             thread->id, thread->unix_pid, thread->unix_tid, thread->state );
+    fprintf( stderr, "Thread id=%04x unix pid=%d unix tid=%lld state=%d\n",
+             thread->id, thread->unix_pid, (long long int)thread->unix_tid, thread->state );
 }
 
 static int thread_signaled( struct object *obj, struct wait_queue_entry *entry )
@@ -541,7 +541,7 @@ struct thread *get_thread_from_handle( obj_handle_t handle, unsigned int access 
 }
 
 /* find a thread from a Unix tid */
-struct thread *get_thread_from_tid( int tid )
+struct thread *get_thread_from_tid( unix_tid_t tid )
 {
     struct thread *thread;
 
@@ -578,7 +578,7 @@ int set_thread_affinity( struct thread *thread, affinity_t affinity )
         for (i = 0, mask = 1; mask; i++, mask <<= 1)
             if (affinity & mask) CPU_SET( i, &set );
 
-        ret = sched_setaffinity( thread->unix_tid, sizeof(set), &set );
+        ret = sched_setaffinity( (int)thread->unix_tid, sizeof(set), &set );
     }
 #endif
     if (!ret) thread->affinity = affinity;
@@ -594,7 +594,7 @@ affinity_t get_thread_affinity( struct thread *thread )
         cpu_set_t set;
         unsigned int i;
 
-        if (!sched_getaffinity( thread->unix_tid, sizeof(set), &set ))
+        if (!sched_getaffinity( (int)thread->unix_tid, sizeof(set), &set ))
             for (i = 0; i < 8 * sizeof(mask); i++)
                 if (CPU_ISSET( i, &set )) mask |= (affinity_t)1 << i;
     }
