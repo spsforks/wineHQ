@@ -1712,6 +1712,13 @@ static void get_system_uuid( GUID *uuid )
     }
 }
 
+static size_t fixup_missing_information( const GUID *uuid, const char *divert, char *buffer, size_t buflen )
+{
+    const UINT32 *pu = (const UINT32 *)uuid;
+    int ret = snprintf(buffer, buflen, "%s%08x%08x%08x%08x", divert, pu[0], pu[1], pu[2], pu[3]);
+    return (ret >= buflen) ? buflen - 1 : ret;
+}
+
 static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
                                    ULONG *required_len )
 {
@@ -1773,6 +1780,17 @@ static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULON
         chassis_args.serial = chassis_serial;
         chassis_args.asset_tag_len = get_smbios_string("/sys/class/dmi/id/chassis_tag", S(chassis_asset_tag));
         chassis_args.asset_tag = chassis_asset_tag;
+
+        /* Some fields may not have been read
+         * (either, they are not filled by the BIOS, or some of the files above are only readable by root).
+         * Ensure that some fields are always filled in.
+         */
+        if (!board_args.serial_len)
+            board_args.serial_len   = fixup_missing_information( &system_args.uuid, "1", S(board_serial));
+        if (!chassis_args.serial_len)
+            chassis_args.serial_len = fixup_missing_information( &system_args.uuid, "2", S(chassis_serial));
+        if (!system_args.serial_len)
+            system_args.serial_len  = fixup_missing_information( &system_args.uuid, "3", S(system_serial));
 #undef S
 
         return create_smbios_tables( sfti, available_len, required_len,
