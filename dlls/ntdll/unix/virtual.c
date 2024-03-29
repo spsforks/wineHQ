@@ -152,8 +152,9 @@ static const BYTE VIRTUAL_Win32Flags[16] =
 static struct wine_rb_tree views_tree;
 static pthread_mutex_t virtual_mutex;
 
-static const UINT page_shift = 12;
-static const UINT_PTR page_mask = 0xfff;
+SIZE_T page_size;
+static UINT page_shift;
+static UINT_PTR page_mask;
 static const UINT_PTR granularity_mask = 0xffff;
 
 /* Note: these are Windows limits, you cannot change them. */
@@ -3273,6 +3274,13 @@ static void *alloc_virtual_heap( SIZE_T size )
     return anon_mmap_alloc( size, PROT_READ | PROT_WRITE );
 }
 
+static UINT get_page_shift(SIZE_T page_size)
+{
+    UINT ret = 0;
+    while (page_size >>= 1) ret++;
+    return ret;
+}
+
 /***********************************************************************
  *           virtual_init
  */
@@ -3283,6 +3291,10 @@ void virtual_init(void)
     size_t size;
     int i;
     pthread_mutexattr_t attr;
+
+    page_size = getpagesize();
+    page_shift = get_page_shift(page_size);
+    page_mask = page_size - 1;
 
     pthread_mutexattr_init( &attr );
     pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
