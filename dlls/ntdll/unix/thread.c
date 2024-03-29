@@ -1643,6 +1643,8 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     unsigned int ret;
     BOOL self;
 
+    if (handle == 0) handle = GetCurrentThread();
+
     SERVER_START_REQ( terminate_thread )
     {
         req->handle    = wine_server_obj_handle( handle );
