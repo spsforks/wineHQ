@@ -149,14 +149,104 @@ static const struct d2d_device_context_ops d2d_wic_render_target_ops =
     d2d_wic_render_target_present,
 };
 
+static HRESULT check_invalid_formats(const WICPixelFormatGUID *wic_format,
+        const D2D1_PIXEL_FORMAT *pixel_format)
+{
+    D2D1_PIXEL_FORMAT result_format, wic_pixel_format = {DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_UNKNOWN};
+    const WICPixelFormatGUID *result_wic_format = NULL;
+    unsigned int i;
+    BOOL found;
+
+    static const struct
+    {
+        const WICPixelFormatGUID *wic_format;
+        D2D1_PIXEL_FORMAT pixel_format;
+    }
+    wic_pixel_formats[] =
+    {
+        {&GUID_WICPixelFormat8bppAlpha, {DXGI_FORMAT_A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat8bppAlpha, {DXGI_FORMAT_A8_UNORM, D2D1_ALPHA_MODE_STRAIGHT}},
+        {&GUID_WICPixelFormat32bppBGR, {DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat32bppBGR, {DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat32bppPBGRA, {DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat32bppPBGRA, {DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat32bppRGB, {DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat32bppRGB, {DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat32bppPRGBA, {DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat32bppPRGBA, {DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat64bppRGB, {DXGI_FORMAT_R16G16B16A16_UNORM, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat64bppPRGBA, {DXGI_FORMAT_R16G16B16A16_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat128bppPRGBAFloat, {DXGI_FORMAT_R32G32B32A32_FLOAT, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat128bppRGBFloat, {DXGI_FORMAT_R32G32B32A32_FLOAT, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat64bppPRGBAHalf, {DXGI_FORMAT_R16G16B16A16_FLOAT, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat64bppRGBHalf, {DXGI_FORMAT_R16G16B16A16_FLOAT, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat32bppRGBA1010102, {DXGI_FORMAT_R10G10B10A2_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}},
+        {&GUID_WICPixelFormat8bppY, {DXGI_FORMAT_R8_UNORM, D2D1_ALPHA_MODE_IGNORE}},
+        {&GUID_WICPixelFormat16bppCbCr, {DXGI_FORMAT_R8G8_UNORM, D2D1_ALPHA_MODE_IGNORE}},
+    };
+
+    found = FALSE;
+    for (i = 0; i < ARRAY_SIZE(wic_pixel_formats); ++i)
+    {
+        if (IsEqualGUID(wic_format, wic_pixel_formats[i].wic_format))
+        {
+            wic_pixel_format = wic_pixel_formats[i].pixel_format;
+            found = TRUE;
+            break;
+        }
+    }
+
+    if (!found)
+        return D2DERR_UNSUPPORTED_PIXEL_FORMAT;
+
+    if (pixel_format->format == DXGI_FORMAT_UNKNOWN)
+        result_format.format = wic_pixel_format.format;
+    else
+        result_format.format = pixel_format->format;
+
+    if (pixel_format->alphaMode == D2D1_ALPHA_MODE_UNKNOWN)
+        result_format.alphaMode = wic_pixel_format.alphaMode;
+    else
+        result_format.alphaMode = pixel_format->alphaMode;
+
+    for (i = 0; i < ARRAY_SIZE(wic_pixel_formats); ++i)
+    {
+        if (result_format.format == wic_pixel_formats[i].pixel_format.format
+                && result_format.alphaMode == wic_pixel_formats[i].pixel_format.alphaMode)
+        {
+            result_wic_format = wic_pixel_formats[i].wic_format;
+            break;
+        }
+    }
+
+    if (!result_wic_format || !IsEqualGUID(result_wic_format, wic_format))
+        return E_INVALIDARG;
+
+    return S_OK;
+}
+
 HRESULT d2d_wic_render_target_init(struct d2d_wic_render_target *render_target, ID2D1Factory1 *factory,
         ID3D10Device1 *d3d_device, IWICBitmap *bitmap, const D2D1_RENDER_TARGET_PROPERTIES *desc)
 {
     D3D10_TEXTURE2D_DESC texture_desc;
+    WICPixelFormatGUID bitmap_format;
     ID3D10Texture2D *texture;
     IDXGIDevice *dxgi_device;
     ID2D1Device *device;
     HRESULT hr;
+
+    if (FAILED(hr = IWICBitmap_GetPixelFormat(bitmap, &bitmap_format)))
+    {
+        WARN("Failed to get bitmap format, hr %#lx.\n", hr);
+        return hr;
+    }
+
+    if (FAILED(hr = check_invalid_formats(&bitmap_format, &desc->pixelFormat)))
+    {
+        WARN("Invalid WIC bitmap format %s pixel format %#x alpha %u.\n",
+                debugstr_guid(&bitmap_format), desc->pixelFormat.format, desc->pixelFormat.alphaMode);
+        return hr;
+    }
 
     render_target->IUnknown_iface.lpVtbl = &d2d_wic_render_target_vtbl;
 
@@ -174,14 +264,6 @@ HRESULT d2d_wic_render_target_init(struct d2d_wic_render_target *render_target, 
     texture_desc.Format = desc->pixelFormat.format;
     if (texture_desc.Format == DXGI_FORMAT_UNKNOWN)
     {
-        WICPixelFormatGUID bitmap_format;
-
-        if (FAILED(hr = IWICBitmap_GetPixelFormat(bitmap, &bitmap_format)))
-        {
-            WARN("Failed to get bitmap format, hr %#lx.\n", hr);
-            return hr;
-        }
-
         if (IsEqualGUID(&bitmap_format, &GUID_WICPixelFormat32bppPBGRA)
                 || IsEqualGUID(&bitmap_format, &GUID_WICPixelFormat32bppBGR))
         {
