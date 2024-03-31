@@ -73,7 +73,7 @@ struct parser
 
     HANDLE read_thread;
 
-    BOOL (*init_gst)(struct parser *filter);
+    BOOL (*init_gst)(struct parser *filter, const AM_MEDIA_TYPE *mt);
     HRESULT (*source_query_accept)(struct parser_source *pin, const AM_MEDIA_TYPE *mt);
     HRESULT (*source_get_media_type)(struct parser_source *pin, unsigned int index, AM_MEDIA_TYPE *mt);
 };
@@ -1530,7 +1530,7 @@ static HRESULT parser_sink_connect(struct strmbase_sink *iface, IPin *peer, cons
     if (FAILED(hr = wg_parser_connect(filter->wg_parser, file_size)))
         goto err;
 
-    if (!filter->init_gst(filter))
+    if (!filter->init_gst(filter, pmt))
     {
         hr = E_FAIL;
         goto err;
@@ -1569,7 +1569,7 @@ static const struct strmbase_sink_ops sink_ops =
     .sink_disconnect = parser_sink_disconnect,
 };
 
-static BOOL decodebin_parser_filter_init_gst(struct parser *filter)
+static BOOL decodebin_parser_filter_init_gst(struct parser *filter, const AM_MEDIA_TYPE *mt)
 {
     wg_parser_t parser = filter->wg_parser;
     unsigned int i, stream_count;
@@ -2211,7 +2211,7 @@ static const struct strmbase_sink_ops wave_parser_sink_ops =
     .sink_disconnect = parser_sink_disconnect,
 };
 
-static BOOL wave_parser_filter_init_gst(struct parser *filter)
+static BOOL wave_parser_filter_init_gst(struct parser *filter, const AM_MEDIA_TYPE *mt)
 {
     if (!create_pin(filter, wg_parser_get_stream(filter->wg_parser, 0), L"output"))
         return FALSE;
@@ -2280,7 +2280,7 @@ static const struct strmbase_sink_ops avi_splitter_sink_ops =
     .sink_disconnect = parser_sink_disconnect,
 };
 
-static BOOL avi_splitter_filter_init_gst(struct parser *filter)
+static BOOL avi_splitter_filter_init_gst(struct parser *filter, const AM_MEDIA_TYPE *mt)
 {
     wg_parser_t parser = filter->wg_parser;
     uint32_t i, stream_count;
@@ -2363,9 +2363,51 @@ static const struct strmbase_sink_ops mpeg_splitter_sink_ops =
     .sink_disconnect = parser_sink_disconnect,
 };
 
-static BOOL mpeg_splitter_filter_init_gst(struct parser *filter)
+static BOOL mpeg_splitter_is_audio_stream_first(struct parser *filter, const AM_MEDIA_TYPE *mt)
+{
+    DWORD max_stream_count;
+    DWORD header_length;
+    BYTE buffer[2];
+    DWORD i;
+
+    if (!IsEqualGUID(&mt->majortype, &MEDIATYPE_Stream)
+            || !IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_MPEG1System))
+        return FALSE;
+
+    if (FAILED(IAsyncReader_SyncRead(filter->reader, 16, 2, buffer)))
+        return FALSE;
+
+    header_length = MAKEWORD(buffer[1], buffer[0]);
+    if (header_length < 6)
+        return FALSE;
+    max_stream_count = (header_length - 6) / 3;
+
+    for (i = 0; i < max_stream_count; ++i)
+    {
+        BYTE stream_id;
+
+        if (FAILED(IAsyncReader_SyncRead(filter->reader, 24 + i * 3, 1, &stream_id)))
+            return FALSE;
+
+        if (!(stream_id & 0x80))
+            break;
+
+        if (0xe0 <= stream_id && stream_id <= 0xef)
+            return FALSE;
+        if (0xc0 <= stream_id && stream_id <= 0xdf)
+            return TRUE;
+
+        WARN("Unknown stream type 0x%02x.\n", stream_id);
+    }
+
+    return FALSE;
+}
+
+static BOOL mpeg_splitter_filter_init_gst(struct parser *filter, const AM_MEDIA_TYPE *mt)
 {
     wg_parser_t parser = filter->wg_parser;
+    wg_parser_stream_t video_stream = 0;
+    wg_parser_stream_t audio_stream = 0;
     unsigned int i, stream_count;
     wg_parser_stream_t stream;
     struct wg_format fmt;
@@ -2377,15 +2419,30 @@ static BOOL mpeg_splitter_filter_init_gst(struct parser *filter)
         wg_parser_stream_get_preferred_format(stream, &fmt);
         if (fmt.major_type == WG_MAJOR_TYPE_VIDEO_MPEG1)
         {
-            if (!create_pin(filter, wg_parser_get_stream(parser, i), L"Video"))
-                return FALSE;
+            if (!video_stream)
+                video_stream = stream;
         }
         else if (fmt.major_type == WG_MAJOR_TYPE_AUDIO_MPEG1)
         {
-            if (!create_pin(filter, wg_parser_get_stream(parser, i), L"Audio"))
-                return FALSE;
+            if (!audio_stream)
+                audio_stream = stream;
         }
         else FIXME("unexpected format %u\n", fmt.major_type);
+    }
+
+    if (mpeg_splitter_is_audio_stream_first(filter, mt))
+    {
+        if (audio_stream && !create_pin(filter, audio_stream, L"Audio"))
+            return FALSE;
+        if (video_stream && !create_pin(filter, video_stream, L"Video"))
+            return FALSE;
+    }
+    else
+    {
+        if (video_stream && !create_pin(filter, video_stream, L"Video"))
+            return FALSE;
+        if (audio_stream && !create_pin(filter, audio_stream, L"Audio"))
+            return FALSE;
     }
 
     return TRUE;

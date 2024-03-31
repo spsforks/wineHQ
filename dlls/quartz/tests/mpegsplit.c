@@ -447,6 +447,88 @@ static void test_find_pin(void)
     ok(!ref, "Got outstanding refcount %ld.\n", ref);
     ret = DeleteFileW(filename);
     ok(ret, "Failed to delete file, error %lu.\n", GetLastError());
+
+    filename = load_resource(L"test.mpg");
+    filter = create_mpeg_splitter();
+    graph = connect_input(filter, filename);
+
+    hr = IBaseFilter_EnumPins(filter, &enum_pins);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Input", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Video", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Audio", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    IEnumPins_Release(enum_pins);
+    IFilterGraph2_Release(graph);
+    ref = IBaseFilter_Release(filter);
+    ok(!ref, "Got outstanding refcount %ld.\n", ref);
+    ret = DeleteFileW(filename);
+    ok(ret, "Failed to delete file, error %lu.\n", GetLastError());
+
+    filename = load_resource(L"test2.mpg");
+    filter = create_mpeg_splitter();
+    graph = connect_input(filter, filename);
+
+    hr = IBaseFilter_EnumPins(filter, &enum_pins);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Input", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Audio", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    hr = IEnumPins_Next(enum_pins, 1, &pin2, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IBaseFilter_FindPin(filter, L"Video", &pin);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ok(pin == pin2, "Expected pin %p, got %p.\n", pin2, pin);
+    IPin_Release(pin);
+    IPin_Release(pin2);
+
+    IEnumPins_Release(enum_pins);
+    IFilterGraph2_Release(graph);
+    ref = IBaseFilter_Release(filter);
+    ok(!ref, "Got outstanding refcount %ld.\n", ref);
+    ret = DeleteFileW(filename);
+    ok(ret, "Failed to delete file, error %lu.\n", GetLastError());
 }
 
 static void test_pin_info(void)
