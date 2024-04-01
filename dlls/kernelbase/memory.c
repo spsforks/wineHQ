@@ -1663,8 +1663,27 @@ BOOL WINAPI GetXStateFeaturesMask( CONTEXT *context, DWORD64 *feature_mask )
  */
 UINT WINAPI EnumSystemFirmwareTables( DWORD provider, void *buffer, DWORD size )
 {
-    FIXME( "(0x%08lx, %p, %ld)\n", provider, buffer, size );
-    return 0;
+    SYSTEM_FIRMWARE_TABLE_INFORMATION *info;
+    ULONG buffer_size = offsetof( SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer ) + size;
+
+    TRACE( "(0x%08lx, %p, %ld)\n", provider, buffer, size );
+
+    if (!(info = RtlAllocateHeap( GetProcessHeap(), 0, buffer_size )))
+    {
+        SetLastError( ERROR_OUTOFMEMORY );
+        return 0;
+    }
+
+    info->ProviderSignature = provider;
+    info->Action = SystemFirmwareTable_Enumerate;
+
+    set_ntstatus( NtQuerySystemInformation( SystemFirmwareTableInformation,
+                                            info, buffer_size, &buffer_size ));
+    buffer_size -= offsetof( SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer );
+    if (buffer_size <= size) memcpy( buffer, info->TableBuffer, buffer_size );
+
+    HeapFree( GetProcessHeap(), 0, info );
+    return buffer_size;
 }
 
 

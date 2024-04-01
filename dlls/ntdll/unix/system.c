@@ -1712,6 +1712,32 @@ static void get_system_uuid( GUID *uuid )
     }
 }
 
+static NTSTATUS enum_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
+                                    ULONG *required_len ) {
+    switch (sfti->ProviderSignature)
+    {
+    case RSMB:
+    {
+        char *buffer = (char*)sfti->TableBuffer;
+        *required_len = 4;
+        sfti->TableBufferLength = *required_len;
+        *required_len += FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+        if (available_len < *required_len)
+            return STATUS_BUFFER_TOO_SMALL;
+        memset(buffer, 0, 4);
+        return STATUS_SUCCESS;
+    }
+    case FIRM:
+    {
+        /* on UEFI systems this is expected result */
+        return STATUS_NOT_IMPLEMENTED;
+    }
+    default:
+        FIXME("info_class SYSTEM_FIRMWARE_TABLE_INFORMATION provider %08x\n", (int)sfti->ProviderSignature);
+        return STATUS_NOT_IMPLEMENTED;
+    }
+}
+
 static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
                                    ULONG *required_len )
 {
@@ -1976,6 +2002,13 @@ static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULON
 }
 
 #else
+
+static NTSTATUS enum_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
+                                    ULONG *required_len ) {
+    FIXME("info_class SYSTEM_FIRMWARE_TABLE_INFORMATION\n");
+    sfti->TableBufferLength = 0;
+    return STATUS_NOT_IMPLEMENTED;
+}
 
 static NTSTATUS get_firmware_info( SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti, ULONG available_len,
                                    ULONG *required_len )
@@ -3243,6 +3276,11 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
 
         switch (sfti->Action)
         {
+        case SystemFirmwareTable_Enumerate:
+        {
+            ret = enum_firmware_info(sfti, size, &len);
+            break;
+        }
         case SystemFirmwareTable_Get:
             ret = get_firmware_info(sfti, size, &len);
             break;
