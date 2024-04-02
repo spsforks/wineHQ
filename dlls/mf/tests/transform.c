@@ -1961,36 +1961,6 @@ static void test_sample_copier_output_processing(void)
     ok(ref == 0, "Release returned %ld\n", ref);
 }
 
-static IMFSample *create_sample(const BYTE *data, ULONG size)
-{
-    IMFMediaBuffer *media_buffer;
-    IMFSample *sample;
-    DWORD length;
-    BYTE *buffer;
-    HRESULT hr;
-    ULONG ret;
-
-    hr = MFCreateSample(&sample);
-    ok(hr == S_OK, "MFCreateSample returned %#lx\n", hr);
-    hr = MFCreateMemoryBuffer(size, &media_buffer);
-    ok(hr == S_OK, "MFCreateMemoryBuffer returned %#lx\n", hr);
-    hr = IMFMediaBuffer_Lock(media_buffer, &buffer, NULL, &length);
-    ok(hr == S_OK, "Lock returned %#lx\n", hr);
-    ok(length == 0, "got length %lu\n", length);
-    if (!data) memset(buffer, 0xcd, size);
-    else memcpy(buffer, data, size);
-    hr = IMFMediaBuffer_Unlock(media_buffer);
-    ok(hr == S_OK, "Unlock returned %#lx\n", hr);
-    hr = IMFMediaBuffer_SetCurrentLength(media_buffer, data ? size : 0);
-    ok(hr == S_OK, "SetCurrentLength returned %#lx\n", hr);
-    hr = IMFSample_AddBuffer(sample, media_buffer);
-    ok(hr == S_OK, "AddBuffer returned %#lx\n", hr);
-    ret = IMFMediaBuffer_Release(media_buffer);
-    ok(ret == 1, "Release returned %lu\n", ret);
-
-    return sample;
-}
-
 static void test_aac_encoder(void)
 {
     const GUID *const class_id = &CLSID_AACMFTEncoder;
