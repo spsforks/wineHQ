@@ -69,6 +69,7 @@ void WCMD_echo (const WCHAR *);
 void WCMD_endlocal (void);
 void WCMD_enter_paged_mode(const WCHAR *);
 void WCMD_exit (CMD_LIST **cmdList);
+WCHAR* WCMD_expand_envvar(WCHAR *start, WCHAR startchar);
 void WCMD_for (WCHAR *, CMD_LIST **cmdList);
 BOOL WCMD_get_fullpath(const WCHAR *, SIZE_T, WCHAR *, WCHAR **);
 void WCMD_give_help (const WCHAR *args);

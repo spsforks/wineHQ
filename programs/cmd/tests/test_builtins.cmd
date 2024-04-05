@@ -785,6 +785,11 @@ if %WINE_FOO% == foo (
     set WINE_FOO=bar
     if !WINE_FOO! == bar (echo bar) else echo foo
 )
+
+rem if expansion is delayed, spaces in the variable do not cause a syntax error
+set WINE_FOO=test kest
+if !WINE_FOO!=="" (echo empty) else echo not empty
+
 echo %ErrorLevel%
 setlocal DisableDelayedExpansion
 echo %ErrorLevel%
