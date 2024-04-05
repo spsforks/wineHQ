@@ -192,6 +192,7 @@ typedef struct {
 
     BOOL reported_result;
     BOOL reported_mime;
+    BOOL redirect_override_verb;
     DWORD pi;
 
     DWORD bscf;

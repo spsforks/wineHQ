@@ -100,6 +100,9 @@ DEFINE_EXPECT(QueryService_HttpSecurity);
 DEFINE_EXPECT(QueryService_IBindCallbackRedirect);
 DEFINE_EXPECT(QueryInterface_IWinInetInfo);
 DEFINE_EXPECT(QueryInterface_IWinInetHttpInfo);
+DEFINE_EXPECT(IWinInetHttpInfo_QueryInterface);
+DEFINE_EXPECT(IWinInetHttpInfo_QueryOption);
+DEFINE_EXPECT(IWinInetHttpInfo_QueryInfo);
 DEFINE_EXPECT(BeginningTransaction);
 DEFINE_EXPECT(GetRootSecurityId);
 DEFINE_EXPECT(OnResponse);
@@ -161,7 +164,7 @@ static void *expect_pv;
 static HANDLE event_complete, event_complete2, event_continue, event_continue_done;
 static BOOL binding_test;
 static PROTOCOLDATA protocoldata, *pdata, continue_protdata;
-static DWORD prot_read, filter_state, http_post_test, thread_id;
+static DWORD prot_read, filter_state, http_post_test, thread_id, http_status_code;
 static BOOL security_problem, test_async_req, impl_protex;
 static BOOL async_read_pending, mimefilter_test, direct_read, wait_for_switch, emulate_prot, short_read, test_abort;
 static BOOL empty_file, no_mime, bind_from_cache, file_with_hash, reuse_protocol_thread;
@@ -849,10 +852,10 @@ static HRESULT WINAPI ProtocolSink_ReportProgress(IInternetProtocolSink *iface, 
         if(szStatusText) {
             if(tested_protocol == BIND_TEST)
                 ok(!lstrcmpW(szStatusText, expect_wsz), "unexpected szStatusText %s\n", wine_dbgstr_w(szStatusText));
-            else if (http_post_test)
+            else if (http_post_test && !emulate_prot)
                 ok(lstrlenW(text_plain) <= lstrlenW(szStatusText) &&
                    !memcmp(szStatusText, text_plain, lstrlenW(text_plain)*sizeof(WCHAR)),
-                   "szStatusText != text/plain\n");
+                   "szStatusText = %s, should be text/plain\n", wine_dbgstr_w(szStatusText));
             else if(empty_file)
                 ok(!lstrcmpW(szStatusText, L"application/javascript"), "szStatusText = %s\n", wine_dbgstr_w(szStatusText));
             else if((pi & PI_MIMEVERIFICATION) && emulate_prot && !mimefilter_test
@@ -1796,6 +1799,11 @@ static void protocol_start(IInternetProtocolSink *pOIProtSink, IInternetBindInfo
     memcpy(&exp_bindinfo, &bindinfo, sizeof(bindinfo));
     if(test_redirect)
         exp_bindinfo.dwOptions = bindinfo_options;
+    if(http_post_test) {
+        exp_bindinfo.cbstgmedData = sizeof(post_data)-1;
+        exp_bindinfo.dwBindVerb = BINDVERB_POST;
+    }
+    exp_bindinfo.stgmedData.tymed = http_post_test;
     SET_EXPECT(GetBindInfo);
     if(redirect_on_continue && (bindinfo_options & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS))
         SET_EXPECT(QueryService_IBindCallbackRedirect);
@@ -1806,6 +1814,12 @@ static void protocol_start(IInternetProtocolSink *pOIProtSink, IInternetBindInfo
     CHECK_CALLED(GetBindInfo);
     ok(cbindf == (bindf|BINDF_FROMURLMON), "bindf = %lx, expected %lx\n",
        cbindf, (bindf|BINDF_FROMURLMON));
+    if (http_post_test == TYMED_HGLOBAL) {
+        exp_bindinfo.stgmedData = bindinfo.stgmedData;
+    } else if (http_post_test == TYMED_ISTREAM) {
+        exp_bindinfo.stgmedData.pstm = &Stream;
+    }
+    exp_bindinfo.stgmedData.tymed = http_post_test;
     ok(!memcmp(&exp_bindinfo, &bindinfo, sizeof(bindinfo)), "unexpected bindinfo\n");
     pReleaseBindInfo(&bindinfo);
 
@@ -1862,7 +1876,8 @@ static void protocol_start(IInternetProtocolSink *pOIProtSink, IInternetBindInfo
         CHECK_CALLED(BeginningTransaction);
         IHttpNegotiate_Release(http_negotiate);
         ok(hres == S_OK, "BeginningTransction failed: %08lx\n", hres);
-        ok(additional_headers == NULL, "additional_headers=%p\n", additional_headers);
+        if (!http_post_test)
+            ok(additional_headers == NULL, "additional_headers=%p, %s\n", additional_headers, wine_dbgstr_w(additional_headers));
 
         SET_EXPECT(QueryService_HttpNegotiate);
         hres = IServiceProvider_QueryService(service_provider, &IID_IHttpNegotiate2,
@@ -1998,9 +2013,12 @@ static HRESULT WINAPI ProtocolEmul_Continue(IInternetProtocolEx *iface,
         if(redirect_on_continue) {
             redirect_on_continue = FALSE;
             reuse_protocol_thread = TRUE;
+            http_status_code = HTTP_STATUS_REDIRECT;
+            http_post_test = TYMED_NULL; /* after redirection, POST should become GET. */
 
-            if(bindinfo_options & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS)
+            if(bindinfo_options & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS) {
                 SET_EXPECT(Redirect);
+            }
             SET_EXPECT(ReportProgress_REDIRECTING);
             SET_EXPECT(Terminate);
             SET_EXPECT(Protocol_destructor);
@@ -2009,10 +2027,13 @@ static HRESULT WINAPI ProtocolEmul_Continue(IInternetProtocolEx *iface,
             SET_EXPECT(ReportProgress_PROTOCOLCLASSID);
             SET_EXPECT(SetPriority);
             SET_EXPECT(Start);
+            SET_EXPECT(QueryInterface_IWinInetHttpInfo);
+            SET_EXPECT(IWinInetHttpInfo_QueryInfo);
             hres = IInternetProtocolSink_ReportResult(binding_sink, INET_E_REDIRECT_FAILED, ERROR_SUCCESS, redirect_urlW);
             ok(hres == S_OK, "ReportResult failed: %08lx\n", hres);
-            if(bindinfo_options & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS)
+            if(bindinfo_options & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS) {
                 CHECK_CALLED(Redirect);
+            }
             CHECK_CALLED(ReportProgress_REDIRECTING);
             CHECK_CALLED(Terminate);
             CHECK_CALLED(Protocol_destructor);
@@ -2021,6 +2042,9 @@ static HRESULT WINAPI ProtocolEmul_Continue(IInternetProtocolEx *iface,
             CHECK_CALLED(ReportProgress_PROTOCOLCLASSID);
             todo_wine CHECK_NOT_CALLED(SetPriority);
             CHECK_CALLED(Start);
+            todo_wine CHECK_NOT_CALLED(QueryInterface_IWinInetHttpInfo);
+            todo_wine CHECK_NOT_CALLED(IWinInetHttpInfo_QueryInfo);
+            http_status_code = HTTP_STATUS_OK;
 
             return S_OK;
         }
@@ -2261,6 +2285,57 @@ static const IInternetProtocolExVtbl ProtocolVtbl = {
     ProtocolEmul_StartEx
 };
 
+static HRESULT WINAPI WinInetHttpInfo_QueryInterface(IWinInetHttpInfo *iface, REFIID riid, void **ppv)
+{
+    CHECK_EXPECT(IWinInetHttpInfo_QueryInterface);
+    *ppv = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI WinInetHttpInfo_AddRef(IWinInetHttpInfo *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI WinInetHttpInfo_Release(IWinInetHttpInfo *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI WinInetHttpInfo_QueryOption(IWinInetHttpInfo *iface, DWORD dwOptions, void *pBuffer,
+                                                  DWORD *pcbBuffer)
+{
+    CHECK_EXPECT(IWinInetHttpInfo_QueryOption);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI WinInetHttpInfo_QueryInfo(IWinInetHttpInfo *iface, DWORD dwOption, LPVOID pBuffer,
+                                                DWORD *pcbBuf, DWORD *pdwFlags, DWORD *pdwReserved)
+{
+    CHECK_EXPECT(IWinInetHttpInfo_QueryInfo);
+    ok(dwOption == (HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER), "dwOption = %ld\n", dwOption);
+    if (dwOption == (HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER)) {
+        ok(pBuffer != NULL, "pBuffer == NULL\n");
+        ok(pcbBuf != NULL, "pcbBuf == NULL\n");
+        ok(pdwFlags == NULL, "pdwFlags != NULL\n");
+        ok(pdwReserved == NULL, "pdwReserved != NULL\n");
+        ok(*pcbBuf == sizeof(DWORD), "*pcbBuf = %ld\n", *pcbBuf);
+        *(DWORD*)pBuffer = http_status_code;
+    } else
+        return E_INVALIDARG;
+    return S_OK;
+}
+
+static const IWinInetHttpInfoVtbl WinInetHttpInfoVtbl = {
+    WinInetHttpInfo_QueryInterface,
+    WinInetHttpInfo_AddRef,
+    WinInetHttpInfo_Release,
+    WinInetHttpInfo_QueryOption,
+    WinInetHttpInfo_QueryInfo,
+};
+
+static IWinInetHttpInfo wininet_http_info = { &WinInetHttpInfoVtbl };
+
 static Protocol *impl_from_IUnknown(IUnknown *iface)
 {
     return CONTAINING_RECORD(iface, Protocol, IUnknown_inner);
@@ -2295,8 +2370,7 @@ static HRESULT WINAPI ProtocolUnk_QueryInterface(IUnknown *iface, REFIID riid, v
     }else if(IsEqualGUID(&IID_IWinInetHttpInfo, riid)) {
         if(winetest_debug > 1) trace("QI(IWinInetHttpInfo)\n");
         CHECK_EXPECT(QueryInterface_IWinInetHttpInfo);
-        *ppv = NULL;
-        return E_NOINTERFACE;
+        *ppv = &wininet_http_info;
     }else if(IsEqualGUID(&IID_undocumentedIE10, riid)) {
         if(winetest_debug > 1) trace("QI(%s)\n", wine_dbgstr_guid(riid));
         *ppv = NULL;
@@ -2774,6 +2848,7 @@ static void init_test(int prot, DWORD flags)
     security_problem = FALSE;
     reuse_protocol_thread = FALSE;
     memcpy(protocol_clsid, null_guid, sizeof(null_guid));
+    http_status_code = 200;
 
     bindinfo_options = 0;
     if(flags & TEST_DISABLEAUTOREDIRECT)
@@ -3969,7 +4044,10 @@ static void test_CreateBinding(void)
     if(!no_aggregation)
         SET_EXPECT(QueryInterface_IWinInetHttpInfo);
     hres = IInternetProtocol_QueryInterface(protocol, &IID_IWinInetHttpInfo, (void**)&http_info);
-    ok(hres == E_NOINTERFACE, "Could not get IWinInetInfo protocol: %08lx\n", hres);
+    if (!no_aggregation)
+        ok(hres == S_OK, "Could not get IWinInetHttpInfo: %08lx\n", hres);
+    else
+        ok(hres == E_NOINTERFACE, "Unexpected IWinInetHttpInfo: %08lx\n", hres);
     if(!no_aggregation)
         CHECK_CALLED(QueryInterface_IWinInetHttpInfo);
 
@@ -4081,7 +4159,7 @@ static void test_CreateBinding(void)
     IInternetSession_Release(session);
 }
 
-static void test_binding(int prot, DWORD grf_pi, DWORD test_flags)
+static void test_binding(int prot, DWORD grf_pi, DWORD test_flags, DWORD tymed)
 {
     IInternetProtocolEx *protocolex = NULL;
     IInternetProtocol *protocol;
@@ -4093,6 +4171,7 @@ static void test_binding(int prot, DWORD grf_pi, DWORD test_flags)
     pi = grf_pi;
 
     init_test(prot, test_flags|TEST_BINDING);
+    http_post_test = tymed;
 
     hres = pCoInternetGetSession(0, &session, 0);
     ok(hres == S_OK, "CoInternetGetSession failed: %08lx\n", hres);
@@ -4341,36 +4420,38 @@ START_TEST(protocol)
 
     bindf = BINDF_ASYNCHRONOUS | BINDF_ASYNCSTORAGE | BINDF_NOWRITECACHE | BINDF_PULLDATA;
     trace("Testing file binding (mime verification, emulate prot)...\n");
-    test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT);
+    test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT, TYMED_NULL);
     trace("Testing its binding (mime verification, emulate prot)...\n");
-    test_binding(ITS_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT);
+    test_binding(ITS_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot, short read, direct read)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_SHORT_READ|TEST_DIRECT_READ);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_SHORT_READ|TEST_DIRECT_READ, TYMED_NULL);
     trace("Testing http binding (mime verification, redirect, emulate prot)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_REDIRECT);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_REDIRECT, TYMED_NULL);
     trace("Testing http binding (mime verification, redirect, disable auto redirect, emulate prot)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_REDIRECT|TEST_DISABLEAUTOREDIRECT);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_REDIRECT|TEST_DISABLEAUTOREDIRECT, TYMED_NULL);
+    trace("Testing http binding (post, mime verification, redirect, disable auto redirect, emulate prot)...\n");
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_REDIRECT|TEST_DISABLEAUTOREDIRECT|TEST_POST, TYMED_HGLOBAL);
     trace("Testing file binding (mime verification, emulate prot, mime filter)...\n");
-    test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER);
+    test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot, mime filter)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot, mime filter, no mime)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER|TEST_NOMIME);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_FILTER|TEST_NOMIME, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot, direct read)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_DIRECT_READ);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_DIRECT_READ, TYMED_NULL);
     trace("Testing http binding (mime verification, emulate prot, abort)...\n");
-    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_ABORT);
+    test_binding(HTTP_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_ABORT, TYMED_NULL);
     trace("Testing its binding (mime verification, emulate prot, apartment thread)...\n");
-    test_binding(ITS_TEST, PI_MIMEVERIFICATION | PI_APARTMENTTHREADED, TEST_EMULATEPROT | TEST_RESULTFROMLOCK);
+    test_binding(ITS_TEST, PI_MIMEVERIFICATION | PI_APARTMENTTHREADED, TEST_EMULATEPROT | TEST_RESULTFROMLOCK, TYMED_NULL);
     if(pCreateUri) {
         trace("Testing file binding (use IUri, mime verification, emulate prot)...\n");
-        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_USEIURI);
+        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_USEIURI, TYMED_NULL);
         trace("Testing file binding (use IUri, impl StartEx, mime verification, emulate prot)...\n");
-        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_USEIURI|TEST_IMPLPROTEX);
+        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_USEIURI|TEST_IMPLPROTEX, TYMED_NULL);
         trace("Testing file binding (impl StartEx, mime verification, emulate prot)...\n");
-        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_IMPLPROTEX);
+        test_binding(FILE_TEST, PI_MIMEVERIFICATION, TEST_EMULATEPROT|TEST_IMPLPROTEX, TYMED_NULL);
     }
 
     CloseHandle(event_complete);

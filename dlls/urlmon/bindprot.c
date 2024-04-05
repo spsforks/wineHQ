@@ -18,6 +18,7 @@
 
 #include "urlmon_main.h"
 #include "wine/debug.h"
+#include "wininet.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(urlmon);
 
@@ -1016,6 +1017,7 @@ static HRESULT WINAPI ProtocolSinkHandler_ReportData(IInternetProtocolSink *ifac
 static HRESULT handle_redirect(BindProtocol *This, const WCHAR *url)
 {
     HRESULT hres;
+    IWinInetHttpInfo *http_info = NULL;
 
     if(This->redirect_callback) {
         VARIANT_BOOL cancel = VARIANT_FALSE;
@@ -1028,6 +1030,15 @@ static HRESULT handle_redirect(BindProtocol *This, const WCHAR *url)
         hres = IInternetProtocolSink_ReportProgress(This->protocol_sink, BINDSTATUS_REDIRECTING, url);
         if(FAILED(hres))
             return hres;
+    }
+
+    if (This->protocol_unk && IUnknown_QueryInterface(This->protocol_unk, &IID_IWinInetHttpInfo, (void **)&http_info) == S_OK) {
+        DWORD status_code = 0, size = sizeof(DWORD);
+        hres = IWinInetHttpInfo_QueryInfo(http_info, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
+            &status_code, &size, NULL, NULL);
+        if (hres == S_OK && status_code != HTTP_STATUS_REDIRECT_KEEP_VERB)
+            This->redirect_override_verb = TRUE;
+        IWinInetHttpInfo_Release(http_info);
     }
 
     IInternetProtocol_Terminate(This->protocol, 0); /* should this be done in StartEx? */
@@ -1102,6 +1113,9 @@ static HRESULT WINAPI BindInfo_GetBindInfo(IInternetBindInfo *iface,
         WARN("GetBindInfo failed: %08lx\n", hres);
         return hres;
     }
+
+    if (This->redirect_override_verb)
+        pbindinfo->dwBindVerb = BINDVERB_GET;
 
     if((pbindinfo->dwOptions & BINDINFO_OPTIONS_DISABLEAUTOREDIRECTS) && !This->redirect_callback) {
         IServiceProvider *service_provider;
