@@ -130,13 +130,6 @@ static struct wg_parser_stream *get_stream(wg_parser_stream_t stream)
     return (struct wg_parser_stream *)(ULONG_PTR)stream;
 }
 
-static bool format_is_compressed(struct wg_format *format)
-{
-    return format->major_type != WG_MAJOR_TYPE_UNKNOWN
-            && format->major_type != WG_MAJOR_TYPE_VIDEO
-            && format->major_type != WG_MAJOR_TYPE_AUDIO;
-}
-
 static NTSTATUS wg_parser_get_stream_count(void *args)
 {
     struct wg_parser_get_stream_count_params *params = args;
@@ -232,7 +225,7 @@ static NTSTATUS wg_parser_stream_get_codec_format(void *args)
     struct wg_parser_stream_get_codec_format_params *params = args;
     struct wg_parser_stream *stream = get_stream(params->stream);
 
-    *params->format = format_is_compressed(&stream->codec_format) ?
+    *params->format = wg_format_is_compressed(&stream->codec_format) ?
             stream->codec_format :
             stream->preferred_format;
     return S_OK;
@@ -509,7 +502,7 @@ static gboolean autoplug_continue_cb(GstElement * decodebin, GstPad *pad, GstCap
 
     wg_format_from_caps(&format, caps);
 
-    return !format_is_compressed(&format);
+    return !wg_format_is_compressed(&format);
 }
 
 static GstAutoplugSelectResult autoplug_select_cb(GstElement *bin, GstPad *pad,
@@ -981,7 +974,7 @@ static void pad_added_cb(GstElement *element, GstPad *pad, gpointer user)
     gst_caps_unref(caps);
 
     /* For compressed stream, create an extra decodebin to decode it. */
-    if (!parser->output_compressed && format_is_compressed(&stream->codec_format))
+    if (!parser->output_compressed && wg_format_is_compressed(&stream->codec_format))
     {
         if (!stream_decodebin_create(stream))
         {

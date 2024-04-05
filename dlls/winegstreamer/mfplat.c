@@ -559,24 +559,22 @@ IMFMediaType *mf_media_type_from_wg_format(const struct wg_format *format)
 {
     switch (format->major_type)
     {
-        case WG_MAJOR_TYPE_AUDIO_MPEG1:
-        case WG_MAJOR_TYPE_AUDIO_MPEG4:
-        case WG_MAJOR_TYPE_AUDIO_WMA:
-        case WG_MAJOR_TYPE_VIDEO_CINEPAK:
-        case WG_MAJOR_TYPE_VIDEO_H264:
-        case WG_MAJOR_TYPE_VIDEO_WMV:
-        case WG_MAJOR_TYPE_VIDEO_INDEO:
-        case WG_MAJOR_TYPE_VIDEO_MPEG1:
-            FIXME("Format %u not implemented!\n", format->major_type);
-            /* fallthrough */
-        case WG_MAJOR_TYPE_UNKNOWN:
-            return NULL;
+    case WG_MAJOR_TYPE_UNKNOWN:
+        return NULL;
 
-        case WG_MAJOR_TYPE_AUDIO:
+    case WG_MAJOR_TYPE_AUDIO:
+        if (!wg_format_is_compressed(format))
             return mf_media_type_from_wg_format_audio(format);
 
-        case WG_MAJOR_TYPE_VIDEO:
+        FIXME("Audio format %u not implemented!\n", format->u.audio.format);
+        return NULL;
+
+    case WG_MAJOR_TYPE_VIDEO:
+        if (!wg_format_is_compressed(format))
             return mf_media_type_from_wg_format_video(format);
+
+        FIXME("Video format %u not implemented!\n", format->u.video.format);
+        return NULL;
     }
 
     assert(0);
@@ -650,22 +648,23 @@ static void mf_media_type_to_wg_format_audio_mpeg4(IMFMediaType *type, const GUI
     raw_aac = IsEqualGUID(subtype, &MFAudioFormat_RAW_AAC);
     if (!raw_aac)
         codec_data_size -= min(codec_data_size, sizeof(HEAACWAVEINFO) - sizeof(WAVEFORMATEX));
-    if (codec_data_size > sizeof(format->u.audio_mpeg4.codec_data))
+    if (codec_data_size > sizeof(format->u.audio.codec_data))
     {
         FIXME("Codec data needs %u bytes.\n", codec_data_size);
         return;
     }
     if (raw_aac)
-        memcpy(format->u.audio_mpeg4.codec_data, (BYTE *)(&wfx->wfInfo.wfx + 1), codec_data_size);
+        memcpy(format->u.audio.codec_data, (BYTE *)(&wfx->wfInfo.wfx + 1), codec_data_size);
     else
-        memcpy(format->u.audio_mpeg4.codec_data, wfx->pbAudioSpecificConfig, codec_data_size);
+        memcpy(format->u.audio.codec_data, wfx->pbAudioSpecificConfig, codec_data_size);
 
-    format->major_type = WG_MAJOR_TYPE_AUDIO_MPEG4;
+    format->major_type = WG_MAJOR_TYPE_AUDIO;
+    format->u.audio.format = WG_AUDIO_FORMAT_MPEG4;
 
-    if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AAC_PAYLOAD_TYPE, &format->u.audio_mpeg4.payload_type)))
-        format->u.audio_mpeg4.payload_type = 0;
+    if (FAILED(IMFMediaType_GetUINT32(type, &MF_MT_AAC_PAYLOAD_TYPE, &format->u.audio.payload_type)))
+        format->u.audio.payload_type = 0;
 
-    format->u.audio_mpeg4.codec_data_len = codec_data_size;
+    format->u.audio.codec_data_len = codec_data_size;
 }
 
 static enum wg_video_format mf_video_format_to_wg(const GUID *subtype)
@@ -778,15 +777,16 @@ static void mf_media_type_to_wg_format_audio_wma(IMFMediaType *type, const GUID 
         return;
     }
 
-    format->major_type = WG_MAJOR_TYPE_AUDIO_WMA;
-    format->u.audio_wma.version = version;
-    format->u.audio_wma.bitrate = bytes_per_second * 8;
-    format->u.audio_wma.rate = rate;
-    format->u.audio_wma.depth = depth;
-    format->u.audio_wma.channels = channels;
-    format->u.audio_wma.block_align = block_align;
-    format->u.audio_wma.codec_data_len = codec_data_len;
-    memcpy(format->u.audio_wma.codec_data, codec_data, codec_data_len);
+    format->major_type = WG_MAJOR_TYPE_AUDIO;
+    format->u.audio.format = WG_AUDIO_FORMAT_WMA;
+    format->u.audio.version = version;
+    format->u.audio.bitrate = bytes_per_second * 8;
+    format->u.audio.rate = rate;
+    format->u.audio.depth = depth;
+    format->u.audio.channels = channels;
+    format->u.audio.block_align = block_align;
+    format->u.audio.codec_data_len = codec_data_len;
+    memcpy(format->u.audio.codec_data, codec_data, codec_data_len);
 }
 
 static void mf_media_type_to_wg_format_video_h264(IMFMediaType *type, struct wg_format *format)
@@ -796,37 +796,38 @@ static void mf_media_type_to_wg_format_video_h264(IMFMediaType *type, struct wg_
     BYTE *codec_data;
 
     memset(format, 0, sizeof(*format));
-    format->major_type = WG_MAJOR_TYPE_VIDEO_H264;
+    format->major_type = WG_MAJOR_TYPE_VIDEO;
+    format->u.video.format = WG_VIDEO_FORMAT_H264;
 
     if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size)))
     {
-        format->u.video_h264.width = frame_size >> 32;
-        format->u.video_h264.height = (UINT32)frame_size;
+        format->u.video.width = frame_size >> 32;
+        format->u.video.height = (UINT32)frame_size;
     }
 
     if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &frame_rate)) && (UINT32)frame_rate)
     {
-        format->u.video_h264.fps_n = frame_rate >> 32;
-        format->u.video_h264.fps_d = (UINT32)frame_rate;
+        format->u.video.fps_n = frame_rate >> 32;
+        format->u.video.fps_d = (UINT32)frame_rate;
     }
     else
     {
-        format->u.video_h264.fps_n = 1;
-        format->u.video_h264.fps_d = 1;
+        format->u.video.fps_n = 1;
+        format->u.video.fps_d = 1;
     }
 
     if (SUCCEEDED(IMFMediaType_GetUINT32(type, &MF_MT_MPEG2_PROFILE, &profile)))
-        format->u.video_h264.profile = profile;
+        format->u.video.profile = profile;
 
     if (SUCCEEDED(IMFMediaType_GetUINT32(type, &MF_MT_MPEG2_LEVEL, &level)))
-        format->u.video_h264.level = level;
+        format->u.video.level = level;
 
     if (SUCCEEDED(IMFMediaType_GetAllocatedBlob(type, &MF_MT_MPEG_SEQUENCE_HEADER, &codec_data, &codec_data_len)))
     {
-        if (codec_data_len <= sizeof(format->u.video_h264.codec_data))
+        if (codec_data_len <= sizeof(format->u.video.codec_data))
         {
-            format->u.video_h264.codec_data_len = codec_data_len;
-            memcpy(format->u.video_h264.codec_data, codec_data, codec_data_len);
+            format->u.video.codec_data_len = codec_data_len;
+            memcpy(format->u.video.codec_data, codec_data, codec_data_len);
         }
         else
         {
@@ -841,26 +842,27 @@ static void mf_media_type_to_wg_format_video_indeo(IMFMediaType *type, uint32_t 
     UINT64 frame_rate, frame_size;
 
     memset(format, 0, sizeof(*format));
-    format->major_type = WG_MAJOR_TYPE_VIDEO_INDEO;
+    format->major_type = WG_MAJOR_TYPE_VIDEO;
+    format->u.video.format = WG_VIDEO_FORMAT_INDEO;
 
     if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size)))
     {
-        format->u.video_indeo.width = frame_size >> 32;
-        format->u.video_indeo.height = (UINT32)frame_size;
+        format->u.video.width = frame_size >> 32;
+        format->u.video.height = (UINT32)frame_size;
     }
 
     if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &frame_rate)) && (UINT32)frame_rate)
     {
-        format->u.video_indeo.fps_n = frame_rate >> 32;
-        format->u.video_indeo.fps_d = (UINT32)frame_rate;
+        format->u.video.fps_n = frame_rate >> 32;
+        format->u.video.fps_d = (UINT32)frame_rate;
     }
     else
     {
-        format->u.video_indeo.fps_n = 1;
-        format->u.video_indeo.fps_d = 1;
+        format->u.video.fps_n = 1;
+        format->u.video.fps_d = 1;
     }
 
-    format->u.video_indeo.version = version;
+    format->u.video.version = version;
 }
 
 void mf_media_type_to_wg_format(IMFMediaType *type, struct wg_format *format)

@@ -48,6 +48,8 @@ extern bool push_event(GstPad *pad, GstEvent *event);
 
 /* wg_format.c */
 
+extern bool wg_format_is_uncompressed(const struct wg_format *format);
+extern bool wg_format_is_compressed(const struct wg_format *format);
 extern void wg_format_from_caps(struct wg_format *format, const GstCaps *caps);
 extern bool wg_format_compare(const struct wg_format *a, const struct wg_format *b);
 extern GstCaps *wg_format_to_caps(const struct wg_format *format);

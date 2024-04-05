@@ -596,7 +596,11 @@ HRESULT aac_decoder_create(REFIID riid, void **ret)
             .rate = 44100,
         },
     };
-    static const struct wg_format input_format = {.major_type = WG_MAJOR_TYPE_AUDIO_MPEG4};
+    static const struct wg_format input_format =
+    {
+        .major_type = WG_MAJOR_TYPE_AUDIO,
+        .u.audio.format = WG_AUDIO_FORMAT_MPEG4
+    };
     struct wg_transform_attrs attrs = {0};
     wg_transform_t transform;
     struct aac_decoder *decoder;
