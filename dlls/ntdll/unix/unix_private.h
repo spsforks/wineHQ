@@ -542,4 +542,17 @@ static inline NTSTATUS map_section( HANDLE mapping, void **ptr, SIZE_T *size, UL
                                0, NULL, size, ViewShare, 0, protect );
 }
 
+typedef struct
+{
+    ULONG64 len;
+    DWORD h[8];
+    UCHAR buf[64];
+} SHA256_CTX;
+
+#define SHA256_DIGEST_SIZE 32
+void sha256_init(SHA256_CTX *ctx);
+void sha256_update(SHA256_CTX *ctx, const UCHAR *buffer, ULONG len);
+void sha256_finalize(SHA256_CTX *ctx, UCHAR buffer[SHA256_DIGEST_SIZE]);
+void hmac_sha256(const void *key, size_t key_size, const void *input, size_t input_size, UCHAR res[SHA256_DIGEST_SIZE]);
+
 #endif /* __NTDLL_UNIX_PRIVATE_H */
