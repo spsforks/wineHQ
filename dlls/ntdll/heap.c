@@ -974,7 +974,6 @@ static void *allocate_region( struct heap *heap, ULONG flags, SIZE_T *region_siz
     if (heap && !(flags & HEAP_GROWABLE))
     {
         WARN( "Heap %p isn't growable, cannot allocate %#Ix bytes\n", heap, *region_size );
-        return NULL;
     }
 
     /* allocate the memory block */
