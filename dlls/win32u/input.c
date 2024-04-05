@@ -2533,6 +2533,16 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
 }
 
 /**********************************************************************
+ *       NtUserGetPointerDeviceRects    (win32u.@)
+ */
+BOOL WINAPI NtUserGetPointerDeviceRects( HANDLE device, RECT *pointer_display_rect, RECT *display_rect )
+{
+    FIXME( "device %p pointer_display_rect %p display_rect %p\n", device, pointer_display_rect, display_rect );
+    RtlSetLastWin32Error( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+
+/**********************************************************************
  *       NtUserGetPointerInfoList    (win32u.@)
  */
 BOOL WINAPI NtUserGetPointerInfoList( UINT32 id, POINTER_INPUT_TYPE type, UINT_PTR unk0, UINT_PTR unk1, SIZE_T size,
