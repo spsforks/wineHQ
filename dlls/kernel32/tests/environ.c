@@ -379,6 +379,54 @@ static void test_GetSetEnvironmentVariableAW(void)
     ok(lstrcmpW(bufW, valueW) == 0, "expected %s, got %s\n", debugstr_w(valueW), debugstr_w(bufW));
 }
 
+static void test_ExpandEnvironmentStringsW(void)
+{
+    const WCHAR *value = L"Long long value";
+    WCHAR buf[256];
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 0);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 1);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 2);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Lbcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, buf, 3);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Locdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef");
+    ExpandEnvironmentStringsW(value, buf, 15);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"Long long valucdefabcdefabcdefabcdefabcdefabcdef"), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef");
+    ExpandEnvironmentStringsW(value, buf, 16);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, value), "got %s\n", debugstr_w(buf));
+
+    SetLastError(0xdeadbeef);
+    wcscpy(buf, L"abcdef");
+    ExpandEnvironmentStringsW(value, NULL, 0);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+    ok(!wcscmp(buf, L"abcdef"), "got %s\n", debugstr_w(buf));
+}
+
 static void test_ExpandEnvironmentStringsA(void)
 {
     const char* value="Long long value";
@@ -393,8 +441,10 @@ static void test_ExpandEnvironmentStringsA(void)
        "ExpandEnvironmentStrings returned %ld\n", ret_size);
 
     /* Try to get the required buffer size 'the natural way' */
+    SetLastError(0xdeadbeef);
     strcpy(buf, "%EnvVar%");
     ret_size = ExpandEnvironmentStringsA(buf, NULL, 0);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
     ok(ret_size == strlen(value)+1 || /* win98 */
        ret_size == (strlen(value)+1)*2 || /* NT4 */
        ret_size == strlen(value)+2 || /* win2k, XP, win2k3 */
@@ -411,7 +461,9 @@ static void test_ExpandEnvironmentStringsA(void)
        ret_size, lstrlenA(value)+1);
 
     /* Try with a buffer that's too small */
+    SetLastError(0xdeadbeef);
     ret_size = ExpandEnvironmentStringsA(buf, buf1, 12);
+    ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
     /* v5.1.2600.2945 (XP SP2) returns len + 2 here! */
     ok(ret_size == strlen(value)+1 || ret_size == strlen(value)+2 ||
        ret_size == (strlen(value)+1)*2 /* NT4 */,
@@ -461,6 +513,32 @@ static void test_ExpandEnvironmentStringsA(void)
     SetEnvironmentVariableA("IndirectVar", NULL);
 
     SetEnvironmentVariableA("EnvVar", NULL);
+
+    if (GetACP() == 932) /* shift-jis */
+    {
+        const char* japanese_test = "\x88\xEA\x93\xF1\x8E\x4F\x8E\x6C\x8C\xDC\x98\x5A\x8E\xB5\x94\xAA\x8B\xE3"; /* Japanese Kanji for "one" to "nine", in shift-jis */
+        int japanese_len = strlen(japanese_test);
+
+        SetLastError(0xdeadbeef);
+        ret_size = ExpandEnvironmentStringsA(japanese_test, NULL, 0);
+        ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+        ok(ret_size >= japanese_len, "Needed at least %d, got %lu\n", japanese_len, ret_size);
+
+        SetLastError(0xdeadbeef);
+        ret_size = ExpandEnvironmentStringsA(japanese_test, buf, ret_size);
+        ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+        ok(ret_size >= japanese_len, "Needed at least %d, got %lu\n", japanese_len, ret_size);
+        ok(!strcmp(buf, japanese_test), "Got %s\n", debugstr_a(buf));
+
+        SetLastError(0xdeadbeef);
+        ret_size = ExpandEnvironmentStringsA(japanese_test, buf, japanese_len / 2); /* Buffer too small */
+        ok(GetLastError() == 0xdeadbeef, "got last error %ld\n", GetLastError());
+        ok(ret_size >= japanese_len, "Needed at least %d, got %lu\n", japanese_len, ret_size);
+    }
+    else
+    {
+        skip("Skipping japanese language tests\n");
+    }
 }
 
 static void test_GetComputerName(void)
@@ -780,6 +858,7 @@ START_TEST(environ)
     test_GetSetEnvironmentVariableA();
     test_GetSetEnvironmentVariableW();
     test_GetSetEnvironmentVariableAW();
+    test_ExpandEnvironmentStringsW();
     test_ExpandEnvironmentStringsA();
     test_GetComputerName();
     test_GetComputerNameExA();
