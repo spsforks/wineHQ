@@ -163,7 +163,7 @@ static HRESULT get_default_device_id(EDataFlow direction, AudioDeviceRole role, 
 
     static const WCHAR id_fmt_pre[] = L"\\\\?\\SWD#MMDEVAPI#";
     static const WCHAR id_fmt_hash[] = L"#";
-    static const size_t GUID_STR_LEN = 38; /* == strlen("{00000000-0000-0000-0000-000000000000}") */
+    static const size_t GUID_STR_LEN = ARRAY_SIZE(L"{12345678-1234-1234-1234-123456789abc}") - 1;
 
     *device_id_hstr = NULL;
 
