@@ -3906,14 +3906,32 @@ static void WINAPI ldr_notify_callback(ULONG reason, LDR_DLL_NOTIFICATION_DATA *
     }
 }
 
+static WCHAR* get_absolute_imagepath( WCHAR *path, DWORD size, DWORD offset )
+{
+    static const WCHAR separator[] = L"\\";
+    WCHAR buffer[MAX_PATH];
+    LPWSTR str;
+
+    GetWindowsDirectoryW(buffer, MAX_PATH);
+
+    str = HeapAlloc(GetProcessHeap(), 0,
+                    (size - offset + lstrlenW(buffer) + lstrlenW(separator)) * sizeof(WCHAR));
+    lstrcpyW(str, buffer);
+    lstrcatW(str, separator);
+    lstrcatW(str, path + offset);
+    HeapFree( GetProcessHeap(), 0, path );
+    return str;
+}
+
 /* load the .sys module for a device driver */
 static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyname )
 {
-    static const WCHAR driversW[] = {'\\','d','r','i','v','e','r','s','\\',0};
-    static const WCHAR systemrootW[] = {'\\','S','y','s','t','e','m','R','o','o','t','\\',0};
-    static const WCHAR postfixW[] = {'.','s','y','s',0};
-    static const WCHAR ntprefixW[] = {'\\','?','?','\\',0};
-    static const WCHAR ImagePathW[] = {'I','m','a','g','e','P','a','t','h',0};
+    static const WCHAR driversW[] = L"\\drivers\\";
+    static const WCHAR systemrootW[] = L"\\SystemRoot\\";
+    static const WCHAR system32W[] = L"System32";
+    static const WCHAR postfixW[] = L".sys";
+    static const WCHAR ntprefixW[] = L"\\??\\";
+    static const WCHAR ImagePathW[] = L"ImagePath";
     HKEY driver_hkey;
     HMODULE module;
     LPWSTR path = NULL, str;
@@ -3944,18 +3962,9 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
         }
 
         if (!wcsnicmp( path, systemrootW, 12 ))
-        {
-            WCHAR buffer[MAX_PATH];
-
-            GetWindowsDirectoryW(buffer, MAX_PATH);
-
-            str = HeapAlloc(GetProcessHeap(), 0, (size -11 + lstrlenW(buffer))
-                                                        * sizeof(WCHAR));
-            lstrcpyW(str, buffer);
-            lstrcatW(str, path + 11);
-            HeapFree( GetProcessHeap(), 0, path );
-            path = str;
-        }
+            str = path = get_absolute_imagepath( path, size, 12 );
+        else if (!wcsnicmp( path, system32W, 8 ))
+            str = path = get_absolute_imagepath( path, size, 0 );
         else if (!wcsncmp( path, ntprefixW, 4 ))
             str = path + 4;
         else
