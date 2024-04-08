@@ -125,7 +125,7 @@ static NTSTATUS RtlpAllocateSomeHandles(RTL_HANDLE_TABLE * HandleTable)
     }
     if (!HandleTable->NextFree)
     {
-        SIZE_T Offset, CommitSize = 4096; /* one page */
+        SIZE_T Offset, CommitSize = page_size;
         RTL_HANDLE * FreeHandle = NULL;
         PVOID NextAvailAddr = HandleTable->ReservedMemory;
 
