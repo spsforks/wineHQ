@@ -3356,6 +3356,35 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
     case SystemCpuSetInformation:  /* 175 */
         return NtQuerySystemInformationEx(class, NULL, 0, info, size, ret_size);
 
+    case SystemBootEnvironmentInformation:
+    {
+        PSYSTEM_BOOT_ENVIRONMENT_INFORMATION result;
+
+        len = sizeof(SYSTEM_BOOT_ENVIRONMENT_INFORMATION);
+        if (size >= sizeof(SYSTEM_BOOT_ENVIRONMENT_V1))
+        {
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else
+            {
+                result = (PSYSTEM_BOOT_ENVIRONMENT_INFORMATION)info;
+                get_system_uuid(&result->BootIdentifier);
+
+                if (access("/sys/firmware/efi", F_OK) == 0)
+                {
+                    result->FirmwareType = FirmwareTypeUefi;
+                } else
+                {
+                    result->FirmwareType = FirmwareTypeBios;
+                }
+
+                if (size >= len) result->BootFlags = 0;
+                else len = sizeof(SYSTEM_BOOT_ENVIRONMENT_V1);
+            }
+        }
+        else ret = STATUS_INFO_LENGTH_MISMATCH;
+        break;
+    }
+
     /* Wine extensions */
 
     case SystemWineVersionInformation:  /* 1000 */
