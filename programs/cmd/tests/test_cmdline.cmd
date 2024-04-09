@@ -239,7 +239,10 @@ echo @echo ` > "say`.bat"
 call say'
 echo @echo ~ > "say~.bat"
 call say~
-
+echo @echo start.bat > start.bat
+start.bat
+echo @echo for.bat > for.bat
+for.bat
 echo --------- Testing parameter passing  --------------
 echo @echo 1:%%1,2:%%2 > tell.bat
 call tell 1
@@ -278,7 +281,7 @@ call tell(1234)
 call tell(12(34)
 call tell(12;34)
 echo --------- Finished  --------------
-del tell.bat say*.* bazbaz*.bat
+del tell.bat say*.* bazbaz*.bat start.bat for.bat
 exit
 :setError
 exit /B %1

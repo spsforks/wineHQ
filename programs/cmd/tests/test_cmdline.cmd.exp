@@ -121,6 +121,8 @@ bar@space@
 0@space@
 '@space@
 ~@space@
+start.bat@space@
+for.bat@space@
 --------- Testing parameter passing  --------------
 1:1,2:@space@
 1:(1),2:@space@
