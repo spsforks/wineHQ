@@ -171,17 +171,6 @@ static VkResult check_queue_present(const VkPresentInfoKHR *present_info,
             int client_height = wayland_surface->window.client_rect.bottom -
                                 wayland_surface->window.client_rect.top;
 
-            wayland_surface_ensure_contents(wayland_surface);
-
-            /* Handle any processed configure request, to ensure the related
-             * surface state is applied by the compositor. */
-            if (wayland_surface->processing.serial &&
-                wayland_surface->processing.processed &&
-                wayland_surface_reconfigure(wayland_surface))
-            {
-                wl_surface_commit(wayland_surface->wl_surface);
-            }
-
             pthread_mutex_unlock(&wayland_surface->mutex);
 
             if (client_width == wine_vk_swapchain->extent.width &&
@@ -282,6 +271,17 @@ static VkResult wayland_vkCreateWin32SurfaceKHR(VkInstance instance,
         /* VK_KHR_win32_surface only allows out of host and device memory as errors. */
         res = VK_ERROR_OUT_OF_HOST_MEMORY;
         goto err;
+    }
+
+    wayland_surface_ensure_contents(wayland_surface);
+
+    /* Handle any processed configure request, to ensure the related
+     * surface state is applied by the compositor. */
+    if (wayland_surface->processing.serial &&
+        wayland_surface->processing.processed &&
+        wayland_surface_reconfigure(wayland_surface))
+    {
+        wl_surface_commit(wayland_surface->wl_surface);
     }
 
     wine_vk_surface->client = wayland_surface_get_client(wayland_surface);
