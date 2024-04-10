@@ -501,10 +501,6 @@ foreach my $type (sort keys %formats)
     my ($size, $align) = @{$formats{$type}};
     die "$type: invalid size $size for alignment $align" if $size % $align;
     push @request_lines, "C_ASSERT( sizeof($type) == $size );\n";
-    if ($align == 8) {
-        # Use alignment of long long (== 4 on i386 psABI)
-        $align = "TYPE_ALIGNMENT(long long)";
-    }
     push @request_lines, "C_ASSERT( TYPE_ALIGNMENT($type) == $align );\n";
 }
 push @request_lines, @asserts;

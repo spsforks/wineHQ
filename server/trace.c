@@ -95,7 +95,7 @@ static void dump_abstime( const char *prefix, const abstime_t *when )
     dump_timeout( prefix, &timeout );
 }
 
-static void dump_uint64( const char *prefix, const unsigned __int64 *val )
+static void dump_uint64( const char *prefix, const UINT64 *val )
 {
     if ((unsigned int)*val != *val)
         fprintf( stderr, "%s%x%08x", prefix, (unsigned int)(*val >> 32), (unsigned int)*val );
@@ -103,9 +103,9 @@ static void dump_uint64( const char *prefix, const unsigned __int64 *val )
         fprintf( stderr, "%s%08x", prefix, (unsigned int)*val );
 }
 
-static void dump_uint128( const char *prefix, const unsigned __int64 val[2] )
+static void dump_uint128( const char *prefix, const UINT64 val[2] )
 {
-    unsigned __int64 low = val[0], high = val[1];
+    UINT64 low = val[0], high = val[1];
 
     if ((unsigned int)high != high)
         fprintf( stderr, "%s%x%08x%08x%08x", prefix, (unsigned int)(high >> 32), (unsigned int)high,
@@ -119,7 +119,7 @@ static void dump_uint128( const char *prefix, const unsigned __int64 val[2] )
         fprintf( stderr, "%s%x", prefix, (unsigned int)low );
 }
 
-static void dump_uints64( const char *prefix, const unsigned __int64 *ptr, int len )
+static void dump_uints64( const char *prefix, const UINT64 *ptr, int len )
 {
     fprintf( stderr, "%s{", prefix );
     if (len-- > 0) dump_uint64( "", ptr++ );
@@ -503,7 +503,7 @@ static void dump_varargs_uints( const char *prefix, data_size_t size )
 
 static void dump_varargs_uints64( const char *prefix, data_size_t size )
 {
-    const unsigned __int64 *data = cur_data;
+    const UINT64 *data = cur_data;
 
     dump_uints64( prefix, data, size / sizeof(*data) );
     remove_data( size );
@@ -682,7 +682,7 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
                      ctx.fp.i386_regs.data_off, ctx.fp.i386_regs.data_sel, ctx.fp.i386_regs.cr0npx );
             for (i = 0; i < 8; i++)
             {
-                unsigned __int64 reg[2];
+                UINT64 reg[2];
                 memset( reg, 0, sizeof(reg) );
                 memcpy( reg, &ctx.fp.i386_regs.regs[10 * i], 10 );
                 fprintf( stderr, ",fp.reg%u=", i );
@@ -696,7 +696,7 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
             for (i = 0; i < 16; i++)
             {
                 fprintf( stderr, ",ymm%u=", i );
-                dump_uint128( "", (const unsigned __int64 *)&ctx.ymm.regs.ymm_high[i] );
+                dump_uint128( "", (const UINT64 *)&ctx.ymm.regs.ymm_high[i] );
             }
         break;
     case IMAGE_FILE_MACHINE_AMD64:
@@ -743,13 +743,13 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
             for (i = 0; i < 32; i++)
             {
                 fprintf( stderr, ",fp%u=", i );
-                dump_uint128( "", (const unsigned __int64 *)&ctx.fp.x86_64_regs.fpregs[i] );
+                dump_uint128( "", (const UINT64 *)&ctx.fp.x86_64_regs.fpregs[i] );
             }
         if (ctx.flags & SERVER_CTX_YMM_REGISTERS)
             for (i = 0; i < 16; i++)
             {
                 fprintf( stderr, ",ymm%u=", i );
-                dump_uint128( "", (const unsigned __int64 *)&ctx.ymm.regs.ymm_high[i] );
+                dump_uint128( "", (const UINT64 *)&ctx.ymm.regs.ymm_high[i] );
             }
         break;
     case IMAGE_FILE_MACHINE_ARMNT:
