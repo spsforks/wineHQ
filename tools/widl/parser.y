@@ -35,7 +35,6 @@
 #include "header.h"
 #include "typelib.h"
 #include "typegen.h"
-#include "expr.h"
 #include "typetree.h"
 
 struct _import_t
@@ -306,6 +305,7 @@ PARSER_LTYPE pop_import(void);
 %type <type_qualifier> type_qualifier m_type_qual_list
 %type <function_specifier> function_specifier
 %type <declspec> decl_spec unqualified_decl_spec decl_spec_no_type m_decl_spec_no_type
+%type <declspec> cast_decl_spec
 %type <type> inherit interface interfacedef
 %type <type> interfaceref
 %type <type> dispinterfaceref
@@ -558,13 +558,13 @@ arg:	  attributes decl_spec m_any_declarator	{ if ($2->stgclass != STG_NONE && $
 						}
 	;
 
-array:	  '[' expr ']'				{ $$ = $2;
-						  if (!$$->is_const || $$->cval <= 0)
-						      error_loc("array dimension is not a positive integer constant\n");
-						}
-	| '[' '*' ']'				{ $$ = make_expr(EXPR_VOID); }
-	| '[' ']'				{ $$ = make_expr(EXPR_VOID); }
-	;
+array:    '[' expr ']'                          { if (!$expr->is_const) error_loc( "array dimension is not constant\n" );
+                                                  if ($expr->cval <= 0) error_loc( "array dimension is not positive\n" );
+                                                  $$ = $expr;
+                                                }
+        | '[' '*' ']'                           { $$ = expr_void(); }
+        | '[' ']'                               { $$ = expr_void(); }
+        ;
 
 m_attributes
 	: %empty				{ $$ = NULL; }
@@ -596,27 +596,33 @@ contract_ver:
 	;
 
 contract_req
-	: decl_spec ',' contract_ver		{ if ($1->type->type_type != TYPE_APICONTRACT)
-						      error_loc("type %s is not an apicontract\n", $1->type->name);
-						  $$ = make_exprl(EXPR_NUM, $3);
-						  $$ = make_exprt(EXPR_GTREQL, declare_var(NULL, $1, make_declarator(NULL), 0), $$);
-						}
-	;
+        : decl_spec ',' contract_ver            {
+                                                  expr_t *contract = expr_int( $3, strmake( "%u", $3 ) );
+                                                  expr_t *decl = expr_decl( $decl_spec );
+                                                  if ($decl_spec->type->type_type != TYPE_APICONTRACT)
+                                                      error_loc( "type %s is not an apicontract\n", $decl_spec->type->name );
+                                                  $$ = expr_op( EXPR_GTREQL, decl, contract, NULL );
+                                                }
+        ;
 
 static_attr
-	: decl_spec ',' contract_req		{ if ($1->type->type_type != TYPE_INTERFACE)
-						      error_loc("type %s is not an interface\n", $1->type->name);
-						  $$ = make_exprt(EXPR_MEMBER, declare_var(NULL, $1, make_declarator(NULL), 0), $3);
-						}
-	;
+        : decl_spec ',' contract_req            {
+                                                  expr_t *decl = expr_decl( $decl_spec );
+                                                  if ($decl_spec->type->type_type != TYPE_INTERFACE)
+                                                      error_loc( "type %s is not an interface\n", $decl_spec->type->name );
+                                                  $$ = expr_op( EXPR_MEMBER, decl, $contract_req, NULL );
+                                                }
+        ;
 
 activatable_attr:
-	  decl_spec ',' contract_req		{ if ($1->type->type_type != TYPE_INTERFACE)
-						      error_loc("type %s is not an interface\n", $1->type->name);
-						  $$ = make_exprt(EXPR_MEMBER, declare_var(NULL, $1, make_declarator(NULL), 0), $3);
-						}
-	| contract_req				{ $$ = $1; } /* activatable on the default activation factory */
-	;
+          decl_spec ',' contract_req            {
+                                                  expr_t *decl = expr_decl( $decl_spec );
+                                                  if ($decl_spec->type->type_type != TYPE_INTERFACE)
+                                                      error_loc( "type %s is not an interface\n", $decl_spec->type->name );
+                                                  $$ = expr_op( EXPR_MEMBER, decl, $contract_req, NULL );
+                                                }
+        | contract_req                          { $$ = $contract_req; } /* activatable on the default activation factory */
+        ;
 
 access_attr
         : tPUBLIC                               { $$ = attr_int( @$, ATTR_PUBLIC, 0 ); }
@@ -625,15 +631,21 @@ access_attr
 
 composable_attr
         : decl_spec ',' access_attr ',' contract_req
-                                                { if ($1->type->type_type != TYPE_INTERFACE)
-                                                      error_loc( "type %s is not an interface\n", $1->type->name );
-                                                  $$ = make_exprt( EXPR_MEMBER, declare_var( append_attr( NULL, $3 ), $1, make_declarator( NULL ), 0 ), $5 );
+                                                {
+                                                  expr_t *decl = expr_decl( $decl_spec );
+                                                  if ($decl_spec->type->type_type != TYPE_INTERFACE)
+                                                      error_loc( "type %s is not an interface\n", $decl_spec->type->name );
+                                                  $$ = expr_op( EXPR_MEMBER, decl, $contract_req, NULL );
                                                 }
         ;
 
 deprecated_attr
         : aSTRING ',' aIDENTIFIER ',' contract_req
-                                                { $$ = make_expr3( EXPR_MEMBER, make_exprs( EXPR_STRLIT, $1 ), make_exprs( EXPR_IDENTIFIER, $3 ), $5 ); }
+                                                {
+                                                  expr_t *message = expr_str( EXPR_STRLIT, $aSTRING );
+                                                  expr_t *action = expr_str( EXPR_IDENTIFIER, $aIDENTIFIER );
+                                                  $$ = expr_op( EXPR_MEMBER, message, action, $contract_req );
+                                                }
         ;
 
 attribute
@@ -793,21 +805,21 @@ enums
 	| enum_list
 	;
 
-enum_list: enum					{ if (!$1->eval)
-						    $1->eval = make_exprl(EXPR_NUM, 0 /* default for first enum entry */);
-                                                  $$ = append_var( NULL, $1 );
-						}
-	| enum_list ',' enum			{ if (!$3->eval)
+enum_list: enum                                 {
+                                                  if (!$enum->eval) $enum->eval = expr_int( 0, "0" );
+                                                  $$ = append_var( NULL, $enum );
+                                                }
+        | enum_list[list] ',' enum              {
+                                                  if (!$enum->eval)
                                                   {
-                                                    var_t *last = LIST_ENTRY( list_tail($$), var_t, entry );
-                                                    enum expr_type type = EXPR_NUM;
-                                                    if (last->eval->type == EXPR_HEXNUM) type = EXPR_HEXNUM;
-                                                    if (last->eval->cval + 1 < 0) type = EXPR_HEXNUM;
-                                                    $3->eval = make_exprl(type, last->eval->cval + 1);
+                                                      expr_t *last = LIST_ENTRY( list_tail( $list ), var_t, entry )->eval;
+                                                      const char *fmt = last->cval + 1 < 0 ? "0x%x" : "%u";
+                                                      if (last->text && last->text[1] == 'x') fmt = "0x%x";
+                                                      $enum->eval = expr_int( last->cval + 1, strmake( fmt, last->cval + 1 ) );
                                                   }
-                                                  $$ = append_var( $1, $3 );
-						}
-	;
+                                                  $$ = append_var( $list, $enum );
+                                                }
+        ;
 
 enum_member: m_attributes ident 		{ $$ = $2;
 						  $$->attrs = check_enum_member_attrs($1);
@@ -831,54 +843,67 @@ m_exprs:  m_expr                                { $$ = append_expr( NULL, $1 ); 
 	;
 
 m_expr
-	: %empty				{ $$ = make_expr(EXPR_VOID); }
-	| expr
-	;
+        : %empty                                { $$ = expr_void(); }
+        | expr
+        ;
 
-expr:	  aNUM					{ $$ = make_exprl(EXPR_NUM, $1); }
-	| aHEXNUM				{ $$ = make_exprl(EXPR_HEXNUM, $1); }
-	| aDOUBLE				{ $$ = make_exprd(EXPR_DOUBLE, $1); }
-	| tFALSE				{ $$ = make_exprl(EXPR_TRUEFALSE, 0); }
-	| tNULL					{ $$ = make_exprl(EXPR_NUM, 0); }
-	| tTRUE					{ $$ = make_exprl(EXPR_TRUEFALSE, 1); }
-	| aSTRING				{ $$ = make_exprs(EXPR_STRLIT, $1); }
-	| aWSTRING				{ $$ = make_exprs(EXPR_WSTRLIT, $1); }
-	| aSQSTRING				{ $$ = make_exprs(EXPR_CHARCONST, $1); }
-	| aIDENTIFIER				{ $$ = make_exprs(EXPR_IDENTIFIER, $1); }
-	| expr '?' expr ':' expr		{ $$ = make_expr3(EXPR_COND, $1, $3, $5); }
-	| expr LOGICALOR expr			{ $$ = make_expr2(EXPR_LOGOR, $1, $3); }
-	| expr LOGICALAND expr			{ $$ = make_expr2(EXPR_LOGAND, $1, $3); }
-	| expr '|' expr				{ $$ = make_expr2(EXPR_OR , $1, $3); }
-	| expr '^' expr				{ $$ = make_expr2(EXPR_XOR, $1, $3); }
-	| expr '&' expr				{ $$ = make_expr2(EXPR_AND, $1, $3); }
-	| expr EQUALITY expr			{ $$ = make_expr2(EXPR_EQUALITY, $1, $3); }
-	| expr INEQUALITY expr			{ $$ = make_expr2(EXPR_INEQUALITY, $1, $3); }
-	| expr '>' expr				{ $$ = make_expr2(EXPR_GTR, $1, $3); }
-	| expr '<' expr				{ $$ = make_expr2(EXPR_LESS, $1, $3); }
-	| expr GREATEREQUAL expr		{ $$ = make_expr2(EXPR_GTREQL, $1, $3); }
-	| expr LESSEQUAL expr			{ $$ = make_expr2(EXPR_LESSEQL, $1, $3); }
-	| expr SHL expr				{ $$ = make_expr2(EXPR_SHL, $1, $3); }
-	| expr SHR expr				{ $$ = make_expr2(EXPR_SHR, $1, $3); }
-	| expr '+' expr				{ $$ = make_expr2(EXPR_ADD, $1, $3); }
-	| expr '-' expr				{ $$ = make_expr2(EXPR_SUB, $1, $3); }
-	| expr '%' expr				{ $$ = make_expr2(EXPR_MOD, $1, $3); }
-	| expr '*' expr				{ $$ = make_expr2(EXPR_MUL, $1, $3); }
-	| expr '/' expr				{ $$ = make_expr2(EXPR_DIV, $1, $3); }
-	| '!' expr				{ $$ = make_expr1(EXPR_LOGNOT, $2); }
-	| '~' expr				{ $$ = make_expr1(EXPR_NOT, $2); }
-	| '+' expr %prec POS			{ $$ = make_expr1(EXPR_POS, $2); }
-	| '-' expr %prec NEG			{ $$ = make_expr1(EXPR_NEG, $2); }
-	| '&' expr %prec ADDRESSOF		{ $$ = make_expr1(EXPR_ADDRESSOF, $2); }
-	| '*' expr %prec PPTR			{ $$ = make_expr1(EXPR_PPTR, $2); }
-	| expr MEMBERPTR aIDENTIFIER		{ $$ = make_expr2(EXPR_MEMBER, make_expr1(EXPR_PPTR, $1), make_exprs(EXPR_IDENTIFIER, $3)); }
-	| expr '.' aIDENTIFIER			{ $$ = make_expr2(EXPR_MEMBER, $1, make_exprs(EXPR_IDENTIFIER, $3)); }
-	| '(' unqualified_decl_spec m_abstract_declarator ')' expr %prec CAST
-						{ $$ = make_exprt(EXPR_CAST, declare_var(NULL, $2, $3, 0), $5); free($2); free($3); }
-	| tSIZEOF '(' unqualified_decl_spec m_abstract_declarator ')'
-						{ $$ = make_exprt(EXPR_SIZEOF, declare_var(NULL, $3, $4, 0), NULL); free($3); free($4); }
-	| expr '[' expr ']'			{ $$ = make_expr2(EXPR_ARRAY, $1, $3); }
-	| '(' expr ')'				{ $$ = $2; }
-	;
+expr:     aNUM                                  { $$ = expr_int( $aNUM, strmake( "%u", $aNUM ) ); }
+        | aHEXNUM                               { $$ = expr_int( $aHEXNUM, strmake( "0x%x", $aHEXNUM ) ); }
+        | aDOUBLE                               { $$ = expr_double( $aDOUBLE ); }
+        | tFALSE                                { $$ = expr_int( 0, "FALSE" ); }
+        | tNULL                                 { $$ = expr_int( 0, "NULL" ); }
+        | tTRUE                                 { $$ = expr_int( 1, "TRUE" ); }
+        | aSTRING                               { $$ = expr_str( EXPR_STRLIT, $aSTRING ); }
+        | aWSTRING                              { $$ = expr_str( EXPR_WSTRLIT, $aWSTRING ); }
+        | aSQSTRING                             { $$ = expr_str( EXPR_CHARCONST, $aSQSTRING ); }
+        | aIDENTIFIER                           { $$ = expr_str( EXPR_IDENTIFIER, $aIDENTIFIER ); }
+        | expr[cond] '?' expr[true] ':' expr[false]
+                                                { $$ = expr_op( EXPR_COND, $cond, $true, $false ); }
+        | expr[op1] LOGICALOR expr[op2]         { $$ = expr_op( EXPR_LOGOR, $op1, $op2, NULL ); }
+        | expr[op1] LOGICALAND expr[op2]        { $$ = expr_op( EXPR_LOGAND, $op1, $op2, NULL ); }
+        | expr[op1] '|' expr[op2]               { $$ = expr_op( EXPR_OR , $op1, $op2, NULL ); }
+        | expr[op1] '^' expr[op2]               { $$ = expr_op( EXPR_XOR, $op1, $op2, NULL ); }
+        | expr[op1] '&' expr[op2]               { $$ = expr_op( EXPR_AND, $op1, $op2, NULL ); }
+        | expr[op1] EQUALITY expr[op2]          { $$ = expr_op( EXPR_EQUALITY, $op1, $op2, NULL ); }
+        | expr[op1] INEQUALITY expr[op2]        { $$ = expr_op( EXPR_INEQUALITY, $op1, $op2, NULL ); }
+        | expr[op1] '>' expr[op2]               { $$ = expr_op( EXPR_GTR, $op1, $op2, NULL ); }
+        | expr[op1] '<' expr[op2]               { $$ = expr_op( EXPR_LESS, $op1, $op2, NULL ); }
+        | expr[op1] GREATEREQUAL expr[op2]      { $$ = expr_op( EXPR_GTREQL, $op1, $op2, NULL ); }
+        | expr[op1] LESSEQUAL expr[op2]         { $$ = expr_op( EXPR_LESSEQL, $op1, $op2, NULL ); }
+        | expr[op1] SHL expr[op2]               { $$ = expr_op( EXPR_SHL, $op1, $op2, NULL ); }
+        | expr[op1] SHR expr[op2]               { $$ = expr_op( EXPR_SHR, $op1, $op2, NULL ); }
+        | expr[op1] '+' expr[op2]               { $$ = expr_op( EXPR_ADD, $op1, $op2, NULL ); }
+        | expr[op1] '-' expr[op2]               { $$ = expr_op( EXPR_SUB, $op1, $op2, NULL ); }
+        | expr[op1] '%' expr[op2]               { $$ = expr_op( EXPR_MOD, $op1, $op2, NULL ); }
+        | expr[op1] '*' expr[op2]               { $$ = expr_op( EXPR_MUL, $op1, $op2, NULL ); }
+        | expr[op1] '/' expr[op2]               { $$ = expr_op( EXPR_DIV, $op1, $op2, NULL ); }
+        | '!' expr[op]                          { $$ = expr_op( EXPR_LOGNOT, $op, NULL, NULL ); }
+        | '~' expr[op]                          { $$ = expr_op( EXPR_NOT, $op, NULL, NULL ); }
+        | '+' expr[op] %prec POS                { $$ = expr_op( EXPR_POS, $op, NULL, NULL ); }
+        | '-' expr[op] %prec NEG                { $$ = expr_op( EXPR_NEG, $op, NULL, NULL ); }
+        | '&' expr[op] %prec ADDRESSOF          { $$ = expr_op( EXPR_ADDRESSOF, $op, NULL, NULL ); }
+        | '*' expr[op] %prec PPTR               { $$ = expr_op( EXPR_PPTR, $op, NULL, NULL ); }
+        | expr[obj] MEMBERPTR aIDENTIFIER       {
+                                                  expr_t *member = expr_str( EXPR_IDENTIFIER, $aIDENTIFIER );
+                                                  expr_t *deref = expr_op( EXPR_PPTR, $obj, NULL, NULL );
+                                                  $$ = expr_op( EXPR_MEMBER, deref, member, NULL );
+                                                }
+        | expr[obj] '.' aIDENTIFIER             {
+                                                  expr_t *member = expr_str( EXPR_IDENTIFIER, $aIDENTIFIER );
+                                                  $$ = expr_op( EXPR_MEMBER, $obj, member, NULL );
+                                                }
+        | '(' cast_decl_spec ')' expr[value] %prec CAST
+                                                {
+                                                  expr_t *decl = expr_decl( $cast_decl_spec );
+                                                  $$ = expr_op( EXPR_CAST, decl, $value, NULL );
+                                                }
+        | tSIZEOF '(' cast_decl_spec ')'        {
+                                                  expr_t *decl = expr_decl( $cast_decl_spec );
+                                                  $$ = expr_op( EXPR_SIZEOF, decl, NULL, NULL );
+                                                }
+        | expr[array] '[' expr[index] ']'       { $$ = expr_op( EXPR_ARRAY, $array, $index, NULL ); }
+        | '(' expr ')'                          { $$ = $2; }
+        ;
 
 expr_list_int_const: expr_int_const		{ $$ = append_expr( NULL, $1 ); }
 	| expr_list_int_const ',' expr_int_const	{ $$ = append_expr( $1, $3 ); }
@@ -1191,6 +1216,13 @@ unqualified_decl_spec: unqualified_type m_decl_spec_no_type
 	| decl_spec_no_type unqualified_type m_decl_spec_no_type
 						{ $$ = make_decl_spec($2, $1, $3, STG_NONE, 0, 0); }
 	;
+
+cast_decl_spec: unqualified_decl_spec m_abstract_declarator
+                                                {
+                                                  append_chain_type( $m_abstract_declarator, $unqualified_decl_spec->type, $unqualified_decl_spec->qualifier );
+                                                  $$ = make_decl_spec( $m_abstract_declarator->type, $unqualified_decl_spec, NULL, STG_NONE, 0, 0 );
+                                                }
+        ;
 
 m_decl_spec_no_type
 	: %empty				{ $$ = NULL; }

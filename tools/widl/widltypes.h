@@ -189,8 +189,8 @@ enum attr_type
 enum expr_type
 {
     EXPR_VOID,
-    EXPR_NUM,
-    EXPR_HEXNUM,
+    EXPR_DECL,
+    EXPR_INT,
     EXPR_DOUBLE,
     EXPR_IDENTIFIER,
     EXPR_NEG,
@@ -207,7 +207,6 @@ enum expr_type
     EXPR_AND,
     EXPR_OR,
     EXPR_COND,
-    EXPR_TRUEFALSE,
     EXPR_ADDRESSOF,
     EXPR_MEMBER,
     EXPR_ARRAY,
@@ -350,19 +349,18 @@ struct _attr_t {
 
 struct _expr_t {
   enum expr_type type;
-  const expr_t *ref;
   union {
     int lval;
     double dval;
     const char *sval;
-    const expr_t *ext;
-    decl_spec_t tref;
+    decl_spec_t *decl;
+    const expr_t *args[3];
   } u;
-  const expr_t *ext2;
   int is_const;
   int cval;
   /* parser-internal */
   struct list entry;
+  const char *text;
 };
 
 struct _attr_custdata_t {
