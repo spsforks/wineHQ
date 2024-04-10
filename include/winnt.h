@@ -406,7 +406,7 @@ extern "C" {
 #elif defined(__GNUC__)
 # define TYPE_ALIGNMENT(t) __alignof__(t)
 #else
-# define TYPE_ALIGNMENT(t) FIELD_OFFSET(struct { char x; t test; }, test)
+# define TYPE_ALIGNMENT(t) offsetof(struct { char x; t test; }, test)
 #endif
 
 #ifdef _WIN64
