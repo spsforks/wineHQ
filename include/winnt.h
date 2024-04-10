@@ -401,10 +401,29 @@ extern "C" {
 #define MEMORY_ALLOCATION_ALIGNMENT 8
 #endif
 
-#if defined(_MSC_VER) && (_MSC_VER >= 1300) && defined(__cplusplus)
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+# if (defined(__clang__) && (__clang_major__ < 8)) || ((__GNUC__ == 4) && (__GNUC_MINOR__ < 9) && !defined(__clang__))
+/*
+ * _Alignof() is noncompliant on GCC <4.9 as well as Clang <8.0: it returns the
+ * "preferred" alignment (on-stack alignment for automatic variables) which may
+ * be bigger than the standard minimum alignment (pointer alignment).
+ *
+ * | Target Arch | Type Name |      _Alignof()     | Standard  |
+ * | / platform  | (C ABI)   | GCC <4.8 | GCC 4.9+ | alignment |
+ * |-------------|-----------|----------|----------|-----------|
+ * | i386 / SysV | long long |        8 |        4 |         4 |
+ * | i386 / SysV | double    |        8 |        4 |         4 |
+ *
+ * See also:
+ * - GCC bug 52023 (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=52023)
+ * - LLVM issue #26921 (https://github.com/llvm/llvm-project/issues/26921)
+ */
+#  define TYPE_ALIGNMENT(t) offsetof(struct { char x; t test; }, test)
+# else
+#  define TYPE_ALIGNMENT(t) _Alignof(t)
+# endif
+#elif defined(_MSC_VER) && (_MSC_VER >= 1300) && defined(__cplusplus)
 # define TYPE_ALIGNMENT(t) __alignof(t)
-#elif defined(__GNUC__)
-# define TYPE_ALIGNMENT(t) __alignof__(t)
 #else
 # define TYPE_ALIGNMENT(t) offsetof(struct { char x; t test; }, test)
 #endif
