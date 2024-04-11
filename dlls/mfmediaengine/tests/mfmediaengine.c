@@ -2666,6 +2666,49 @@ done:
     IMFByteStream_Release(stream);
 }
 
+static void test_audio_only(void)
+{
+    struct media_engine_notify *notify;
+    IMFMediaEngine *media_engine;
+    IMFAttributes *attributes;
+    LONGLONG timestamp;
+    ULONG refcount;
+    HRESULT hr;
+
+    notify = create_callback();
+
+    hr = MFCreateAttributes(&attributes, 2);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFAttributes_SetUnknown(attributes, &MF_MEDIA_ENGINE_CALLBACK, (IUnknown *)&notify->IMFMediaEngineNotify_iface);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFAttributes_SetUINT32(attributes, &MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, DXGI_FORMAT_UNKNOWN);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineClassFactory_CreateInstance(factory, MF_MEDIA_ENGINE_AUDIOONLY, attributes, &media_engine);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_OnVideoStreamTick(media_engine, NULL);
+    ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_OnVideoStreamTick(media_engine, &timestamp);
+    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_Shutdown(media_engine);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    IMFAttributes_Release(attributes);
+
+    /* IMFMediaEngineEx_Shutdown can release media_engine in parallel. A small sleep allows this test to pass more
+     * often than not. But given its a matter of timing, this test is marked flaky */
+    Sleep(10);
+    refcount = IMFMediaEngine_Release(media_engine);
+    flaky
+    ok(!refcount, "Unexpected refcount %lu.\n", refcount);
+
+    IMFMediaEngineNotify_Release(&notify->IMFMediaEngineNotify_iface);
+}
+
 START_TEST(mfmediaengine)
 {
     HRESULT hr;
@@ -2702,6 +2745,7 @@ START_TEST(mfmediaengine)
     test_GetSeekable();
     test_media_extension();
     test_SetCurrentTime();
+    test_audio_only();
 
     IMFMediaEngineClassFactory_Release(factory);
 
