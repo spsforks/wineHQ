@@ -127,6 +127,22 @@ struct read_frame_params
     void                        *data;
 };
 
+struct get_frame_rates_size_params
+{
+    video_capture_device_t       device;
+    unsigned int                 index;
+    SIZE                         *dimensions;
+    LONG                         *list_size;
+};
+
+struct get_frame_avg_time_params
+{
+    video_capture_device_t       device;
+    unsigned int                 index;
+    LONG                         list_size;
+    LONGLONG                     *frame_rate;
+};
+
 enum unix_funcs
 {
     unix_create,
@@ -141,6 +157,8 @@ enum unix_funcs
     unix_get_prop,
     unix_set_prop,
     unix_read_frame,
+    unix_get_frame_rates_size,
+    unix_get_frame_avg_time,
     unix_funcs_count
 };
 

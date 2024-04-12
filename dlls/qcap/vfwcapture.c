@@ -420,7 +420,7 @@ static HRESULT WINAPI AMStreamConfig_GetStreamCaps(IAMStreamConfig *iface,
     TRACE("filter %p, index %d, pmt %p, vscc %p.\n", filter, index, pmt, vscc);
 
     V4L_CALL( get_caps_count, &count_params );
-    if (index > count)
+    if (index >= count)
         return S_FALSE;
 
     if (!(mt = CoTaskMemAlloc(sizeof(AM_MEDIA_TYPE))))
@@ -851,12 +851,51 @@ static HRESULT WINAPI video_control_GetMaxAvailableFrameRate(IAMVideoControl *if
 static HRESULT WINAPI video_control_GetFrameRateList(IAMVideoControl *iface, IPin *pin, LONG index,
         SIZE dimensions, LONG *list_size, LONGLONG **frame_rate)
 {
+    LONG size;
+    LONGLONG *rate;
+    int count;
+    HRESULT hr;
+    struct get_caps_count_params count_params;
+    struct get_frame_rates_size_params size_params;
+    struct get_frame_avg_time_params rate_params;
     struct vfw_capture *filter = impl_from_IAMVideoControl(iface);
 
-    FIXME("filter %p, pin %p, index %ld, dimensions (%ldx%ld), list size %p, frame rate %p, stub.\n",
+    TRACE("filter %p, pin %p, index %ld, dimensions (%ldx%ld), list size %p, frame rate: %p\n",
             filter, pin, index, dimensions.cx, dimensions.cy, list_size, frame_rate);
 
-    return E_NOTIMPL;
+    if(!list_size)  return S_FALSE;
+    count_params.device = filter->device;
+    count_params.count = &count;
+    V4L_CALL( get_caps_count, &count_params );
+    if (index >= count)
+        return S_FALSE;
+
+    size_params.device = filter->device;
+    size_params.index = index;
+    size_params.dimensions = &dimensions;
+    size_params.list_size = &size;
+    V4L_CALL( get_frame_rates_size, &size_params );
+    if(size < 0)
+        return E_FAIL;
+
+    *list_size=size;
+    if(!frame_rate) return S_OK;
+
+    if (!(rate = CoTaskMemAlloc(sizeof(LONGLONG)*size)))
+        return E_OUTOFMEMORY;
+
+    rate_params.device = filter->device;
+    rate_params.index = index;
+    rate_params.list_size = size;
+    rate_params.frame_rate = rate;
+    if ((hr = V4L_CALL( get_frame_avg_time, &rate_params )) != S_OK)
+    {
+        CoTaskMemFree(rate);
+        return hr;
+    }
+
+    *frame_rate=rate;
+    return S_OK;
 }
 
 static const IAMVideoControlVtbl IAMVideoControl_VTable =
