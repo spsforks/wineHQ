@@ -115,6 +115,7 @@ static void test_open_class_key(void)
 {
     static const char guidstr[] = "{6a55b5a4-3f65-11db-b704-0011955c2bdb}";
     HKEY root_key, class_key;
+    DWORD size;
     LONG res;
 
     SetLastError(0xdeadbeef);
@@ -134,6 +135,11 @@ static void test_open_class_key(void)
     class_key = SetupDiOpenClassRegKeyExA(&guid, KEY_ALL_ACCESS, DIOCR_INSTALLER, NULL, NULL);
     ok(class_key != INVALID_HANDLE_VALUE, "Failed to open class key, error %#lx.\n", GetLastError());
     RegCloseKey(class_key);
+
+    size = 123;
+    res = SetupDiGetClassDescriptionA(&guid, NULL, 0, &size);
+    ok(!res, "Expected failure.\n");
+    ok(size == 123, "Expected 123, got %ld.\n", size);
 
     RegDeleteKeyA(root_key, guidstr);
     RegCloseKey(root_key);
