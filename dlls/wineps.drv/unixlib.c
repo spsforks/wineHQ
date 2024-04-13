@@ -1323,7 +1323,7 @@ static BOOL get_text_metrics(PHYSDEV dev, TEXTMETRICW *metrics)
     return TRUE;
 }
 
-static BOOL get_text_extent_ex_point(PHYSDEV dev, const WCHAR *str, int count, int *dx)
+static BOOL get_text_extent_ex_point(PHYSDEV dev, const WCHAR *str, int count, int *dx, int *maxdx)
 {
     PSDRV_PDEVICE *pdev = get_psdrv_dev(dev);
     int             i;
@@ -1332,7 +1332,7 @@ static BOOL get_text_extent_ex_point(PHYSDEV dev, const WCHAR *str, int count, i
     if (!pdev->builtin)
     {
         dev = GET_NEXT_PHYSDEV(dev, pGetTextExtentExPoint);
-        return dev->funcs->pGetTextExtentExPoint(dev, str, count, dx);
+        return dev->funcs->pGetTextExtentExPoint(dev, str, count, dx, maxdx);
     }
 
     TRACE("%s %i\n", debugstr_wn(str, count), count);
@@ -1341,6 +1341,7 @@ static BOOL get_text_extent_ex_point(PHYSDEV dev, const WCHAR *str, int count, i
     {
         width += uv_metrics(str[i], pdev->font)->width;
         dx[i] = width * pdev->scale;
+        maxdx[i] = dx[i]; /* TODO */
     }
     return TRUE;
 }
