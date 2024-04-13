@@ -436,6 +436,12 @@ HRESULT WINAPI GetRealProcAddress(LPCSTR procname, void **ppv)
     return CLR_E_SHIM_RUNTIMEEXPORT;
 }
 
+HANDLE WINAPI GetProcessExecutableHeap(void)
+{
+    FIXME("semi-stub\n");
+    return GetProcessHeap();
+}
+
 HRESULT WINAPI GetFileVersion(LPCWSTR szFilename, LPWSTR szBuffer, DWORD cchBuffer, DWORD *dwLength)
 {
     TRACE("(%s, %p, %ld, %p)\n", debugstr_w(szFilename), szBuffer, cchBuffer, dwLength);

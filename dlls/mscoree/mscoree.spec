@@ -57,7 +57,7 @@
 @ stub GetMetaDataPublicInterfaceFromInternal
 @ stub GetPermissionRequests
 @ stub GetPrivateContextsPerfCounters
-@ stub GetProcessExecutableHeap
+@ stdcall GetProcessExecutableHeap()
 @ stdcall GetRealProcAddress(str ptr)
 @ stdcall GetRequestedRuntimeInfo(wstr wstr wstr long long ptr long ptr ptr long ptr)
 @ stdcall GetRequestedRuntimeVersion(wstr ptr long ptr)
