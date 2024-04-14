@@ -18070,6 +18070,76 @@ done:
     IDirect3D9_Release(d3d);
 }
 
+static void test_get_front_buffer_data_windowed_positioning(void)
+{
+    IDirect3DSurface9 *readback = NULL;
+    IDirect3DDevice9 *device = NULL;
+    D3DRECT rect_to_clear;
+    unsigned int color;
+    IDirect3D9 *d3d;
+    POINT point;
+    HWND window;
+    RECT rect;
+    HRESULT hr;
+
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create D3D object.\n");
+
+    SetRect(&rect, 64, 64, 640 + 64, 480 + 64);
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, FALSE);
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, 0, 0, 0, 0);
+
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 4096, 4096, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &readback, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+
+    hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_RGBA(0, 0, 0, 255), 0, 0);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    rect_to_clear.x1 = 16;
+    rect_to_clear.x2 = 24;
+    rect_to_clear.y1 = 16;
+    rect_to_clear.y2 = 24;
+    hr = IDirect3DDevice9_Clear(device, 1, &rect_to_clear, D3DCLEAR_TARGET, D3DCOLOR_RGBA(128, 128, 128, 128), 0, 0);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+
+    /* This appears necessary because of the initial window animations. */
+    Sleep(250);
+
+    point.x = 16;
+    point.y = 16;
+    ClientToScreen(window, &point);
+    hr = IDirect3DDevice9_GetFrontBufferData(device, 0, readback);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+
+    color = getPixelColorFromSurface(readback, point.x, point.y);
+    ok(color_match(color, D3DCOLOR_RGBA(128, 128, 128, 255), 1),
+        "Application window is not correctly positioned in GetFrontBufferData result. Expected colour 0x%08lx, got 0x%08x.\n", D3DCOLOR_RGBA(128, 128, 128, 255), color);
+
+    color = getPixelColorFromSurface(readback, point.x + 16, point.y + 16);
+    ok(color_match(color, D3DCOLOR_RGBA(0, 0, 0, 255), 1),
+        "Application window is not correctly positioned in GetFrontBufferData result. Expected colour 0x%08lx, got 0x%08x.\n", D3DCOLOR_RGBA(0, 0, 0, 255), color);
+
+    color = getPixelColorFromSurface(readback, 0, 0);
+    ok(!color_match(color, D3DCOLOR_RGBA(128, 128, 128, 255), 1),
+        "Application window is not correctly positioned in GetFrontBufferData result. Expected colour other than 0x%08x\n", color);
+
+done:
+    if (readback)
+        IDirect3DSurface9_Release(readback);
+    if (device)
+        IDirect3DDevice9_Release(device);
+    DestroyWindow(window);
+    IDirect3D9_Release(d3d);
+}
+
 static void multisampled_depth_buffer_test(void)
 {
     IDirect3DDevice9 *device = 0;
@@ -28479,4 +28549,5 @@ START_TEST(visual)
     test_mipmap_upload();
     test_swapchain_buffer_swapping();
     test_get_front_buffer_data_alpha();
+    test_get_front_buffer_data_windowed_positioning();
 }
