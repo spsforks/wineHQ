@@ -17996,6 +17996,80 @@ done:
     IDirect3D9_Release(d3d);
 }
 
+static void test_get_front_buffer_data_alpha(void)
+{
+    D3DPRESENT_PARAMETERS present_parameters = {0};
+    IDirect3DSurface9 *readback = NULL;
+    IDirect3DDevice9 *device = NULL;
+    IDirect3DSwapChain9 *swapchain;
+    unsigned int color;
+    IDirect3D9 *d3d;
+    HWND window;
+    HRESULT hr;
+
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create D3D object.\n");
+    window = create_window();
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice9_GetSwapChain(device, 0, &swapchain);
+    ok(hr == D3D_OK, "Failed to get the implicit swapchain, hr %#lx.\n", hr);
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &present_parameters);
+    ok(hr == D3D_OK, "Failed to get present parameters, hr %#lx.\n", hr);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
+    if (!SUCCEEDED(hr))
+    {
+        skip("Failed to create D3D device.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 4096, 4096, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &readback, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+
+    hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_RGBA(128, 128, 128, 128), 0, 0);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDirect3DDevice9_GetFrontBufferData(device, 0, readback);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    /* Pick a pixel at an offset to avoid hitting the window border in windowed mode */
+    color = getPixelColorFromSurface(readback, 64, 64);
+    todo_wine ok((color & 0xFF000000) == 0xFF000000, "Alpha of GetFrontBufferData is supposed to always be 255 in windowed mode.\n");
+
+    present_parameters.Windowed = false;
+    hr = IDirect3DDevice9_Reset(device, &present_parameters);
+    if (!SUCCEEDED(hr))
+    {
+        skip("Failed to switch to fullscreen.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_RGBA(128, 128, 128, 128), 0, 0);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDirect3DDevice9_GetFrontBufferData(device, 0, readback);
+    ok(hr == D3D_OK, "Got unexpected hr %#lx.\n", hr);
+    /* Pick a pixel at an offset to avoid hitting the window border in windowed mode */
+    color = getPixelColorFromSurface(readback, 64, 64);
+    todo_wine ok((color & 0xFF000000) == 0, "Alpha of GetFrontBufferData is supposed to always be 0 in fullscreen mode.\n");
+
+done:
+    if (readback)
+        IDirect3DSurface9_Release(readback);
+    if (device)
+        IDirect3DDevice9_Release(device);
+    DestroyWindow(window);
+    IDirect3D9_Release(d3d);
+}
+
 static void multisampled_depth_buffer_test(void)
 {
     IDirect3DDevice9 *device = 0;
@@ -28404,4 +28478,5 @@ START_TEST(visual)
     test_managed_generate_mipmap();
     test_mipmap_upload();
     test_swapchain_buffer_swapping();
+    test_get_front_buffer_data_alpha();
 }
