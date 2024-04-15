@@ -909,6 +909,36 @@ static NTSTATUS walk_node_dependencies( LDR_DDAG_NODE *node, void *context,
     return status;
 }
 
+/**********************************************************************
+ *	    find_module_dependency
+ */
+static WINE_MODREF* find_dependency_module( LDR_DDAG_NODE *node, LPCWSTR name )
+{
+    SINGLE_LIST_ENTRY *entry;
+    LDR_DEPENDENCY *dep;
+    LDR_DATA_TABLE_ENTRY *mod;
+    UNICODE_STRING name_str;
+
+    if (node && (entry = node->Dependencies.Tail))
+    {
+        RtlInitUnicodeString( &name_str, name );
+
+        do
+        {
+            dep = CONTAINING_RECORD( entry, LDR_DEPENDENCY, dependency_to_entry );
+            mod = CONTAINING_RECORD( dep->dependency_to->Modules.Flink, LDR_DATA_TABLE_ENTRY, NodeModuleLink );
+
+            if (RtlEqualUnicodeString( &name_str, &mod->BaseDllName, TRUE )) {
+                return CONTAINING_RECORD( mod, WINE_MODREF, ldr );
+            }
+            
+            entry = entry->Next;
+        } while (entry != node->Dependencies.Tail);
+    }
+
+    return NULL;
+}
+
 /*************************************************************************
  *		find_forwarded_export
  *
@@ -919,7 +949,7 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
 {
     const IMAGE_EXPORT_DIRECTORY *exports;
     DWORD exp_size;
-    WINE_MODREF *wm;
+    WINE_MODREF *wm, *imp;
     WCHAR mod_name[256];
     const char *end = strrchr(forward, '.');
     FARPROC proc = NULL;
@@ -927,29 +957,34 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
     if (!end) return NULL;
     if (build_import_name( mod_name, forward, end - forward )) return NULL;
 
-    if (!(wm = find_basename_module( mod_name )))
+    imp = get_modref( module );
+
+    if (!(wm = find_dependency_module( imp->ldr.DdagNode, mod_name )))
     {
-        WINE_MODREF *imp = get_modref( module );
-        TRACE( "delay loading %s for '%s'\n", debugstr_w(mod_name), forward );
-        if (load_dll( load_path, mod_name, 0, &wm, imp->system ) == STATUS_SUCCESS &&
-            !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
+        if (!(wm = find_basename_module( mod_name )))
         {
-            if (!imports_fixup_done && current_modref)
+            TRACE( "delay loading %s for '%s'\n", debugstr_w(mod_name), forward );
+            if (load_dll( load_path, mod_name, 0, &wm, imp->system ) == STATUS_SUCCESS &&
+                !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
             {
-                add_module_dependency( current_modref->ldr.DdagNode, wm->ldr.DdagNode );
+                if (process_attach( wm->ldr.DdagNode, NULL ) != STATUS_SUCCESS) {
+                    LdrUnloadDll( wm->ldr.DllBase );
+                    wm = NULL;
+                } else {
+                    add_module_dependency( imp->ldr.DdagNode, wm->ldr.DdagNode );
+                }
             }
-            else if (process_attach( wm->ldr.DdagNode, NULL ) != STATUS_SUCCESS)
+
+            if (!wm)
             {
-                LdrUnloadDll( wm->ldr.DllBase );
-                wm = NULL;
+                ERR( "module not found for forward '%s' used by %s\n",
+                    forward, debugstr_w(imp->ldr.FullDllName.Buffer) );
+                return NULL;
             }
         }
-
-        if (!wm)
-        {
-            ERR( "module not found for forward '%s' used by %s\n",
-                 forward, debugstr_w(imp->ldr.FullDllName.Buffer) );
-            return NULL;
+        else if (wm->ldr.LoadCount > 0)  {
+            wm->ldr.LoadCount++;
+            add_module_dependency( imp->ldr.DdagNode, wm->ldr.DdagNode );
         }
     }
     if ((exports = RtlImageDirectoryEntryToData( wm->ldr.DllBase, TRUE,
