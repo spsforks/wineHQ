@@ -39,6 +39,9 @@
 #ifdef HAVE_SYS_SYSINFO_H
 # include <sys/sysinfo.h>
 #endif
+#ifdef HAVE_SYS_SYSCALL_H
+# include <sys/syscall.h>
+#endif
 #ifdef HAVE_SYS_SYSCTL_H
 # include <sys/sysctl.h>
 #endif
@@ -62,6 +65,9 @@
 #if defined(__APPLE__)
 # include <mach/mach_init.h>
 # include <mach/mach_vm.h>
+# include <mach/task.h>
+# include <mach/thread_state.h>
+# include <mach/vm_map.h>
 #endif
 
 #include "ntstatus.h"
@@ -218,6 +224,19 @@ struct range_entry
 
 static struct range_entry *free_ranges;
 static struct range_entry *free_ranges_end;
+
+#ifdef __APPLE__
+static kern_return_t (*p_thread_get_register_pointer_values)( thread_t, uintptr_t*, size_t*, uintptr_t* );
+static pthread_once_t tgrpvs_init_once = PTHREAD_ONCE_INIT;
+#endif
+
+#if defined(__linux__) && defined(__NR_membarrier)
+static BOOL membarrier_exp_available;
+static pthread_once_t membarrier_init_once = PTHREAD_ONCE_INIT;
+#endif
+
+static void *dummy_page;
+static pthread_mutex_t dummy_page_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 static inline BOOL is_beyond_limit( const void *addr, size_t size, const void *limit )
@@ -6080,14 +6099,153 @@ NTSTATUS WINAPI NtFlushInstructionCache( HANDLE handle, const void *addr, SIZE_T
 }
 
 
+#ifdef __APPLE__
+
+static void tgrpvs_init( void )
+{
+    p_thread_get_register_pointer_values = dlsym( RTLD_DEFAULT, "thread_get_register_pointer_values" );
+}
+
+static BOOL try_mach_tgrpvs( void )
+{
+    /* Taken from https://github.com/dotnet/runtime/blob/7be37908e5a1cbb83b1062768c1649827eeaceaa/src/coreclr/pal/src/thread/process.cpp#L2799 */
+    mach_msg_type_number_t count, i = 0;
+    thread_act_array_t threads;
+    BOOL success = TRUE;
+    kern_return_t kret;
+
+    pthread_once(&tgrpvs_init_once, tgrpvs_init);
+    if (!p_thread_get_register_pointer_values)
+        return FALSE;
+
+    /* Get references to all threads of this process */
+    kret = task_threads( mach_task_self(), &threads, &count );
+    if (kret)
+        return FALSE;
+
+    /* Iterate through the threads in the list */
+    while (i < count)
+    {
+        uintptr_t reg_values[128];
+        size_t reg_count = ARRAY_SIZE( reg_values );
+        uintptr_t sp;
+
+        /* Request the thread's register pointer values to force the thread to go through a memory barrier */
+        kret = p_thread_get_register_pointer_values( threads[i], &sp, &reg_count, reg_values );
+        /* This function always fails when querying Rosetta's exception handling thread, so we only treat
+           KERN_INSUFFICIENT_BUFFER_SIZE as an error, like .NET core does. */
+        if (kret == KERN_INSUFFICIENT_BUFFER_SIZE)
+            success = FALSE;
+
+        /* Deallocate thread reference once we're done with it */
+        mach_port_deallocate( mach_task_self(), threads[i++] );
+    }
+
+    /* Deallocate thread list */
+    vm_deallocate( mach_task_self(), (vm_address_t)threads, count * sizeof(threads[0]) );
+    return success;
+}
+
+#else /* defined(__APPLE__) */
+
+static BOOL try_mach_tgrpvs( void ) { return 0; }
+
+#endif /* defined(__APPLE__) */
+
+
+#if defined(__linux__) && defined(__NR_membarrier)
+
+#define MEMBARRIER_CMD_QUERY                        0x00
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED            0x08
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED   0x10
+
+static int membarrier( int cmd, unsigned int flags, int cpu_id )
+{
+    return syscall( __NR_membarrier, cmd, flags, cpu_id );
+}
+
+static void membarrier_init( void )
+{
+    static const int exp_required_cmds =
+        MEMBARRIER_CMD_PRIVATE_EXPEDITED | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED;
+    int available_cmds = membarrier( MEMBARRIER_CMD_QUERY, 0, 0 );
+    if (available_cmds == -1)
+        return;
+    if ((available_cmds & exp_required_cmds) == exp_required_cmds)
+        membarrier_exp_available = !membarrier( MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED, 0, 0 );
+}
+
+static BOOL try_exp_membarrier( void )
+{
+    pthread_once(&membarrier_init_once, membarrier_init);
+    if (!membarrier_exp_available)
+        return FALSE;
+    return !membarrier( MEMBARRIER_CMD_PRIVATE_EXPEDITED, 0, 0 );
+}
+
+#else /* defined(__linux__) && defined(__NR_membarrier) */
+
+static BOOL try_exp_membarrier( void ) { return 0; }
+
+#endif /* defined(__linux__) && defined(__NR_membarrier) */
+
+
+static BOOL try_mprotect( void )
+{
+#if !defined(__i386__) && !defined(__x86_64__)
+    static int once = 0;
+#endif
+    BOOL success = FALSE;
+    char *mem;
+
+    pthread_mutex_lock(&dummy_page_mutex);
+    mem = dummy_page;
+    if (!mem)
+    {
+        /* Allocate one page of memory that we can call mprotect() on */
+        mem = anon_mmap_alloc( page_size, PROT_READ | PROT_WRITE );
+        if (mem == MAP_FAILED)
+            goto failed;
+        /* Lock page into memory so that it is not unmapped between the calls to mprotect() below */
+        if (mlock( mem, page_size ))
+            goto failed;
+        dummy_page = mem;
+    }
+    /* Make dummy page writable */
+    success = !mprotect( mem, page_size, PROT_READ | PROT_WRITE );
+    if (!success)
+        goto failed;
+    /* Make the page dirty to prevent the kernel from skipping the global TLB flush */
+    InterlockedIncrement((volatile LONG*)mem);
+    /* Change the page protection to PROT_NONE to force the kernel to send an IPI to all threads of this process,
+       which has the side effect of executing a memory barrier in those threads */
+    success = !mprotect( mem, page_size, PROT_NONE );
+#if !defined(__i386__) && !defined(__x86_64__)
+    /* Some ARMv8 processors can broadcast TLB invalidations using the TLBI instruction,
+       the madvise trick does not work on those. Print a fixme on all non-x86 architectures. */
+    if (success && !once++)
+        FIXME( "memory barrier may not work on this platform\n" );
+#endif
+failed:
+    pthread_mutex_unlock(&dummy_page_mutex);
+    return success;
+}
+
+
 /**********************************************************************
  *           NtFlushProcessWriteBuffers  (NTDLL.@)
  */
 NTSTATUS WINAPI NtFlushProcessWriteBuffers(void)
 {
     static int once = 0;
-    if (!once++) FIXME( "stub\n" );
-    return STATUS_SUCCESS;
+    if (try_mach_tgrpvs())
+        return STATUS_SUCCESS;
+    if (try_exp_membarrier())
+        return STATUS_SUCCESS;
+    if (try_mprotect())
+        return STATUS_SUCCESS;
+    if (!once++) FIXME( "no implementation available on this platform\n" );
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 
