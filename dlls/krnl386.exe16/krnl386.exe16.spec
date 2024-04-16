@@ -744,6 +744,9 @@
 2000 pascal -register __wine_call_int_handler(word) __wine_call_int_handler16
 @ stdcall -arch=win32 __wine_call_int_handler16(long ptr)
 
+# Hardware interrupt simulation
+@ cdecl -arch=win32 __wine_wow_interrupt16(long long long ptr ptr)
+
 # VxDs
 @ cdecl -arch=win32 -private __wine_vxd_open(wstr long ptr)
 @ cdecl -arch=win32 -private __wine_vxd_get_proc(long)
