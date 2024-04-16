@@ -153,6 +153,8 @@ static struct list monitors = LIST_INIT(monitors);
 static INT64 last_query_display_time;
 static pthread_mutex_t display_lock = PTHREAD_MUTEX_INITIALIZER;
 
+BOOL enable_mediacenter = FALSE;
+BOOL enable_tabletpc = FALSE;
 BOOL enable_thunk_lock = FALSE;
 
 #define VIRTUAL_HMONITOR ((HMONITOR)(UINT_PTR)(0x10000 + 1))
@@ -4771,6 +4773,10 @@ void sysparams_init(void)
         grab_pointer = IS_OPTION_TRUE( buffer[0] );
     if (!get_config_key( hkey, appkey, "GrabFullscreen", buffer, sizeof(buffer) ))
         grab_fullscreen = IS_OPTION_TRUE( buffer[0] );
+    if (!get_config_key( hkey, appkey, "TabletPC", buffer, sizeof(buffer) ))
+        enable_tabletpc = IS_OPTION_TRUE( buffer[0] );
+    if (!get_config_key( hkey, appkey, "MediaCenter", buffer, sizeof(buffer) ))
+        enable_mediacenter = IS_OPTION_TRUE( buffer[0] );
 
 #undef IS_OPTION_TRUE
 }
@@ -5935,7 +5941,7 @@ int get_system_metrics( int index )
         return 1;
     case SM_TABLETPC:
     case SM_MEDIACENTER:
-        return 0;
+        return (index == SM_TABLETPC) ? enable_tabletpc : enable_mediacenter;
     case SM_CMETRICS:
         return SM_CMETRICS;
     default:
