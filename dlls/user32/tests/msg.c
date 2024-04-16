@@ -29,6 +29,7 @@
 #include "winbase.h"
 #include "wingdi.h"
 #include "winuser.h"
+#include "winreg.h"
 #include "winnls.h"
 #include "dbt.h"
 #include "commctrl.h"
@@ -170,6 +171,29 @@ struct recvd_message {
     const char *descr;     /* description for trace output */
     char output[512];      /* trace output */
 };
+
+static WCHAR display_driver[MAX_PATH];
+
+static void check_display_driver(void)
+{
+    UINT guid_atom;
+    HKEY hkey;
+    WCHAR key[sizeof("System\\CurrentControlSet\\Control\\Video\\{}\\0000") + 40];
+    DWORD size = ARRAY_SIZE(display_driver);
+
+    guid_atom = HandleToULong(GetPropW(GetDesktopWindow(), L"__wine_display_device_guid"));
+    if (!guid_atom) return;
+    wcscpy( key, L"System\\CurrentControlSet\\Control\\Video\\{" );
+    if (!GlobalGetAtomNameW(guid_atom, key + wcslen(key), 40)) return;
+    wcscat( key, L"}\\0000" );
+
+    if (!RegOpenKeyExW(HKEY_LOCAL_MACHINE, key, 0, KEY_READ, &hkey))
+    {
+        RegQueryValueExW(hkey, L"GraphicsDriver", NULL, NULL, (BYTE *)display_driver, &size);
+
+        RegCloseKey(hkey);
+    }
+}
 
 /* Empty message sequence */
 static const struct message WmEmptySeq[] =
@@ -17718,7 +17742,8 @@ static DWORD CALLBACK post_rbuttonup_msg( void *arg )
     DWORD ret;
 
     ret = WaitForSingleObject( data->wndproc_finished, 500 );
-    todo_wine ok( ret == WAIT_OBJECT_0, "WaitForSingleObject returned %lx\n", ret );
+    todo_wine_if(!wcscmp(display_driver, L"winemac.drv") || !wcscmp(display_driver, L"winex11.drv"))
+    ok( ret == WAIT_OBJECT_0, "WaitForSingleObject returned %lx\n", ret );
     if( ret == WAIT_OBJECT_0 ) return 0;
 
     PostMessageA( data->hwnd, WM_RBUTTONUP, 0, 0 );
@@ -20452,6 +20477,8 @@ START_TEST(msg)
     InitializeCriticalSection( &sequence_cs );
     init_procs();
     ImmDisableIME(0);
+
+    check_display_driver();
 
     register_classes();
 
