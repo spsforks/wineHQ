@@ -2434,7 +2434,7 @@ static void test_file_link_information(FILE_INFORMATION_CLASS class)
     ok(handle != INVALID_HANDLE_VALUE, "FindFirstFileW: failed, error %ld\n", GetLastError());
     if (handle != INVALID_HANDLE_VALUE)
     {
-        todo_wine ok(!lstrcmpW(wcsrchr(newpath, '\\') + 1, find_data.cFileName),
+        ok(!lstrcmpW(wcsrchr(newpath, '\\') + 1, find_data.cFileName),
            "Link did not change casing on existing target file: got %s\n", wine_dbgstr_w(find_data.cFileName));
     }
 
@@ -3028,7 +3028,7 @@ static void test_file_link_information(FILE_INFORMATION_CLASS class)
     ok(handle != INVALID_HANDLE_VALUE, "FindFirstFileW: failed, error %ld\n", GetLastError());
     if (handle != INVALID_HANDLE_VALUE)
     {
-        todo_wine ok(!lstrcmpW(wcsrchr(oldpath, '\\') + 1, find_data.cFileName),
+        ok(!lstrcmpW(wcsrchr(oldpath, '\\') + 1, find_data.cFileName),
            "Link did not change casing on same file: got %s\n", wine_dbgstr_w(find_data.cFileName));
     }
 

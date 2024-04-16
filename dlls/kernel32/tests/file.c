@@ -2082,7 +2082,7 @@ static void test_MoveFileA(void)
     ok(hfile != INVALID_HANDLE_VALUE, "FindFirstFileA: failed, error %ld\n", GetLastError());
     if (hfile != INVALID_HANDLE_VALUE)
     {
-        todo_wine ok(!lstrcmpA(strrchr(tempdir, '\\') + 1, find_data.cFileName),
+        ok(!lstrcmpA(strrchr(tempdir, '\\') + 1, find_data.cFileName),
            "MoveFile failed to change casing on same file: got %s\n", find_data.cFileName);
     }
     CloseHandle(hfile);
@@ -2127,7 +2127,7 @@ static void test_MoveFileA(void)
     ok(hfile != INVALID_HANDLE_VALUE, "FindFirstFileA: failed, error %ld\n", GetLastError());
     if (hfile != INVALID_HANDLE_VALUE)
     {
-        todo_wine ok(!lstrcmpA(strrchr(tempdir, '\\') + 1, find_data.cFileName),
+        ok(!lstrcmpA(strrchr(tempdir, '\\') + 1, find_data.cFileName),
            "MoveFile failed to change casing on same directory: got %s\n", find_data.cFileName);
     }
     CloseHandle(hfile);
