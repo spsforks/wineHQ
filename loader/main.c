@@ -20,6 +20,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -176,6 +177,11 @@ static void *load_ntdll( char *argv0 )
 int main( int argc, char *argv[] )
 {
     void *handle;
+
+    assert( argc > 0 );
+    assert( argv );
+    assert( argv[0] );
+    assert( environ );
 
     if ((handle = load_ntdll( argv[0] )))
     {
