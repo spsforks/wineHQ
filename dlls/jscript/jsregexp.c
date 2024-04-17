@@ -576,6 +576,11 @@ static const builtin_info_t RegExp_info = {
     RegExp_props,
     RegExp_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     NULL,
     NULL,
     NULL,
@@ -597,6 +602,11 @@ static const builtin_info_t RegExpInst_info = {
     RegExpInst_props,
     RegExp_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     NULL,
     NULL,
     NULL,
@@ -966,7 +976,12 @@ static const builtin_info_t RegExpConstr_info = {
     ARRAY_SIZE(RegExpConstr_props),
     RegExpConstr_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 HRESULT create_regexp_constr(script_ctx_t *ctx, jsdisp_t *object_prototype, jsdisp_t **ret)

@@ -406,7 +406,12 @@ static const builtin_info_t Map_prototype_info = {
     ARRAY_SIZE(Map_prototype_props),
     Map_prototype_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_info_t Map_info = {
@@ -416,6 +421,11 @@ static const builtin_info_t Map_info = {
     Map_props,
     Map_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     NULL,
     NULL,
     NULL,
@@ -565,7 +575,12 @@ static const builtin_info_t Set_prototype_info = {
     ARRAY_SIZE(Set_prototype_props),
     Set_prototype_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_info_t Set_info = {
@@ -575,6 +590,11 @@ static const builtin_info_t Set_info = {
     Map_props,
     Map_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     NULL,
     NULL,
     NULL,
@@ -862,7 +882,12 @@ static const builtin_info_t WeakMap_prototype_info = {
     ARRAY_SIZE(WeakMap_prototype_props),
     WeakMap_prototype_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_info_t WeakMap_info = {
@@ -872,6 +897,11 @@ static const builtin_info_t WeakMap_info = {
     NULL,
     WeakMap_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     NULL,
     NULL,
     NULL,

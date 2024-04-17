@@ -1574,7 +1574,12 @@ static const builtin_info_t String_info = {
     ARRAY_SIZE(String_props),
     String_props,
     String_destructor,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_prop_t StringInst_props[] = {
@@ -1588,6 +1593,11 @@ static const builtin_info_t StringInst_info = {
     StringInst_props,
     String_destructor,
     NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
     String_idx_length,
     String_idx_get
 };
@@ -1708,7 +1718,12 @@ static const builtin_info_t StringConstr_info = {
     ARRAY_SIZE(StringConstr_props),
     StringConstr_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 HRESULT create_string_constr(script_ctx_t *ctx, jsdisp_t *object_prototype, jsdisp_t **ret)

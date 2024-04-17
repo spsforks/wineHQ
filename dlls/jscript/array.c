@@ -1645,7 +1645,12 @@ static const builtin_info_t Array_info = {
     ARRAY_SIZE(Array_props),
     Array_props,
     Array_destructor,
-    Array_on_put
+    Array_on_put,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_prop_t ArrayInst_props[] = {
@@ -1658,7 +1663,12 @@ static const builtin_info_t ArrayInst_info = {
     ARRAY_SIZE(ArrayInst_props),
     ArrayInst_props,
     Array_destructor,
-    Array_on_put
+    Array_on_put,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 /* ECMA-262 5.1 Edition    15.4.3.2 */
@@ -1766,7 +1776,12 @@ static const builtin_info_t ArrayConstr_info = {
     ARRAY_SIZE(ArrayConstr_props),
     ArrayConstr_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 HRESULT create_array_constr(script_ctx_t *ctx, jsdisp_t *object_prototype, jsdisp_t **ret)

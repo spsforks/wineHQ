@@ -470,7 +470,12 @@ static const builtin_info_t Object_info = {
     ARRAY_SIZE(Object_props),
     Object_props,
     Object_destructor,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_info_t ObjectInst_info = {
@@ -478,7 +483,12 @@ static const builtin_info_t ObjectInst_info = {
     NULL,
     0, NULL,
     Object_destructor,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static void release_property_descriptor(property_desc_t *desc)
@@ -1074,7 +1084,12 @@ static const builtin_info_t ObjectConstr_info = {
     ARRAY_SIZE(ObjectConstr_props),
     ObjectConstr_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static HRESULT ObjectConstr_value(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,

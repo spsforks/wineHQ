@@ -124,7 +124,12 @@ static const builtin_info_t Bool_info = {
     ARRAY_SIZE(Bool_props),
     Bool_props,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static const builtin_info_t BoolInst_info = {
@@ -132,7 +137,12 @@ static const builtin_info_t BoolInst_info = {
     Bool_value,
     0, NULL,
     NULL,
-    NULL
+    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_name,
 };
 
 static HRESULT BoolConstr_value(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
