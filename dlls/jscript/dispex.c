@@ -567,57 +567,6 @@ static HRESULT prop_put(jsdisp_t *This, dispex_prop_t *prop, jsval_t val)
     return S_OK;
 }
 
-static HRESULT invoke_prop_func(jsdisp_t *This, IDispatch *jsthis, dispex_prop_t *prop, WORD flags,
-        unsigned argc, jsval_t *argv, jsval_t *r, IServiceProvider *caller)
-{
-    HRESULT hres;
-
-    switch(prop->type) {
-    case PROP_BUILTIN:
-        return JS_E_FUNCTION_EXPECTED;
-    case PROP_PROTREF:
-        return invoke_prop_func(This->prototype, jsthis ? jsthis : (IDispatch *)&This->IDispatchEx_iface,
-                                This->prototype->props+prop->u.ref, flags, argc, argv, r, caller);
-    case PROP_JSVAL: {
-        if(!is_object_instance(prop->u.val)) {
-            FIXME("invoke %s\n", debugstr_jsval(prop->u.val));
-            return E_FAIL;
-        }
-
-        TRACE("call %s %p\n", debugstr_w(prop->name), get_object(prop->u.val));
-
-        return disp_call_value_with_caller(This->ctx, get_object(prop->u.val),
-                jsval_disp(jsthis ? jsthis : (IDispatch*)&This->IDispatchEx_iface),
-                flags, argc, argv, r, caller);
-    }
-    case PROP_ACCESSOR:
-    case PROP_IDX: {
-        jsval_t val;
-
-        hres = prop_get(This, jsthis ? jsthis : (IDispatch *)&This->IDispatchEx_iface, prop, &val);
-        if(FAILED(hres))
-            return hres;
-
-        if(is_object_instance(val)) {
-            hres = disp_call_value_with_caller(This->ctx, get_object(val),
-                    jsval_disp(jsthis ? jsthis : (IDispatch*)&This->IDispatchEx_iface),
-                    flags, argc, argv, r, caller);
-        }else {
-            FIXME("invoke %s\n", debugstr_jsval(val));
-            hres = E_NOTIMPL;
-        }
-
-        jsval_release(val);
-        return hres;
-    }
-    case PROP_DELETED:
-        assert(0);
-        break;
-    }
-
-    return E_FAIL;
-}
-
 HRESULT builtin_set_const(script_ctx_t *ctx, jsdisp_t *jsthis, jsval_t value)
 {
     TRACE("%p %s\n", jsthis, debugstr_jsval(value));
@@ -637,7 +586,53 @@ HRESULT dispex_prop_put(jsdisp_t *jsdisp, DISPID id, jsval_t val)
 HRESULT dispex_prop_invoke(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, WORD flags,
                                   unsigned argc, jsval_t *argv, jsval_t *r, IServiceProvider *caller)
 {
-    return invoke_prop_func(jsdisp, jsthis, &jsdisp->props[prop_id_to_idx(id)], flags, argc, argv, r, caller);
+    dispex_prop_t *prop = &jsdisp->props[prop_id_to_idx(id)];
+    HRESULT hres;
+
+    switch(prop->type) {
+    case PROP_BUILTIN:
+        return JS_E_FUNCTION_EXPECTED;
+    case PROP_PROTREF:
+        return jsdisp->prototype->builtin_info->prop_invoke(jsdisp->prototype, jsthis ? jsthis : (IDispatch*)&jsdisp->IDispatchEx_iface,
+                                                            prop->u.ref + 1, flags, argc, argv, r, caller);
+    case PROP_JSVAL: {
+        if(!is_object_instance(prop->u.val)) {
+            FIXME("invoke %s\n", debugstr_jsval(prop->u.val));
+            return E_FAIL;
+        }
+
+        TRACE("call %s %p\n", debugstr_w(prop->name), get_object(prop->u.val));
+
+        return disp_call_value_with_caller(jsdisp->ctx, get_object(prop->u.val),
+                jsval_disp(jsthis ? jsthis : (IDispatch*)&jsdisp->IDispatchEx_iface),
+                flags, argc, argv, r, caller);
+    }
+    case PROP_ACCESSOR:
+    case PROP_IDX: {
+        jsval_t val;
+
+        hres = dispex_prop_get(jsdisp, jsthis ? jsthis : (IDispatch*)&jsdisp->IDispatchEx_iface, id, &val);
+        if(FAILED(hres))
+            return hres;
+
+        if(is_object_instance(val)) {
+            hres = disp_call_value_with_caller(jsdisp->ctx, get_object(val),
+                    jsval_disp(jsthis ? jsthis : (IDispatch*)&jsdisp->IDispatchEx_iface),
+                    flags, argc, argv, r, caller);
+        }else {
+            FIXME("invoke %s\n", debugstr_jsval(val));
+            hres = E_NOTIMPL;
+        }
+
+        jsval_release(val);
+        return hres;
+    }
+    case PROP_DELETED:
+        assert(0);
+        break;
+    }
+
+    return E_FAIL;
 }
 
 HRESULT dispex_prop_delete(jsdisp_t *jsdisp, DISPID id, BOOL *ret)
