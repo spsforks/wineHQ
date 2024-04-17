@@ -838,11 +838,29 @@ static HRESULT fill_props(jsdisp_t *obj)
     return S_OK;
 }
 
+static HRESULT fill_protref(jsdisp_t *This, unsigned hash, const WCHAR *name, DWORD ref)
+{
+    HRESULT hres;
+    DISPID id;
+
+    hres = find_prop_name(This, hash, name, FALSE, &id);
+    if(hres != S_FALSE)
+        return hres;
+    if(is_dispex_prop_id(id)) {
+        dispex_prop_t *p = &This->props[prop_id_to_idx(id)];
+        p->type = PROP_PROTREF;
+        p->flags = 0;
+        p->u.ref = ref;
+    }else if(!alloc_protref(This, name, ref)) {
+        return E_OUTOFMEMORY;
+    }
+    return S_OK;
+}
+
 static HRESULT fill_protrefs(jsdisp_t *This)
 {
     dispex_prop_t *iter;
     HRESULT hres;
-    DISPID id;
 
     hres = fill_props(This);
     if(FAILED(hres))
@@ -856,19 +874,9 @@ static HRESULT fill_protrefs(jsdisp_t *This)
         return hres;
 
     for(iter = This->prototype->props; iter < This->prototype->props+This->prototype->prop_cnt; iter++) {
-        hres = find_prop_name(This, iter->hash, iter->name, FALSE, &id);
-        if(FAILED(hres))
+        hres = fill_protref(This, iter->hash, iter->name, iter - This->prototype->props);
+        if(hres != S_OK)
             return hres;
-        if(hres != S_OK) {
-            if(is_dispex_prop_id(id)) {
-                dispex_prop_t *p = &This->props[prop_id_to_idx(id)];
-                p->type = PROP_PROTREF;
-                p->flags = 0;
-                p->u.ref = iter - This->prototype->props;
-            }else if(!alloc_protref(This, iter->name, iter - This->prototype->props)) {
-                return E_OUTOFMEMORY;
-            }
-        }
     }
 
     return S_OK;
