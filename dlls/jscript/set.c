@@ -411,7 +411,9 @@ static const builtin_info_t Map_prototype_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t Map_info = {
@@ -425,7 +427,9 @@ static const builtin_info_t Map_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     NULL,
     NULL,
@@ -580,7 +584,9 @@ static const builtin_info_t Set_prototype_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t Set_info = {
@@ -594,7 +600,9 @@ static const builtin_info_t Set_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     NULL,
     NULL,
@@ -887,7 +895,9 @@ static const builtin_info_t WeakMap_prototype_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t WeakMap_info = {
@@ -901,7 +911,9 @@ static const builtin_info_t WeakMap_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     NULL,
     NULL,

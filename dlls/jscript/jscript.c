@@ -132,7 +132,9 @@ HRESULT create_named_item_script_obj(script_ctx_t *ctx, named_item_t *item)
         dispex_prop_put,
         dispex_prop_invoke,
         dispex_prop_delete,
+        dispex_prop_get_desc,
         dispex_prop_get_name,
+        dispex_prop_define,
     };
 
     return create_dispex(ctx, &disp_info, NULL, &item->script_obj);

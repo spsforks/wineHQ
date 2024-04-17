@@ -149,7 +149,9 @@ static const builtin_info_t Error_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t ErrorInst_info = {
@@ -163,7 +165,9 @@ static const builtin_info_t ErrorInst_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static HRESULT alloc_error(script_ctx_t *ctx, jsdisp_t *prototype,

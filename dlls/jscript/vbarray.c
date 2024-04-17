@@ -257,7 +257,9 @@ static const builtin_info_t VBArray_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static HRESULT alloc_vbarray(script_ctx_t *ctx, jsdisp_t *object_prototype, VBArrayInstance **ret)

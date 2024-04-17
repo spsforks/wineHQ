@@ -131,7 +131,9 @@ static const builtin_info_t ArrayBuffer_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_prop_t ArrayBufferInst_props[] = {
@@ -149,7 +151,9 @@ static const builtin_info_t ArrayBufferInst_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static HRESULT create_arraybuf(script_ctx_t *ctx, DWORD size, ArrayBufferInstance **ret)
@@ -234,7 +238,9 @@ static const builtin_info_t ArrayBufferConstr_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static inline DataViewInstance *dataview_this(jsval_t vthis)
@@ -635,7 +641,9 @@ static const builtin_info_t DataView_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     NULL,
     NULL,
@@ -653,7 +661,9 @@ static const builtin_info_t DataViewInst_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     NULL,
     NULL,
@@ -736,7 +746,9 @@ static const builtin_info_t DataViewConstr_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 HRESULT init_arraybuf_constructors(script_ctx_t *ctx)

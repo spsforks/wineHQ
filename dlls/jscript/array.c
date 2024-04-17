@@ -1650,7 +1650,9 @@ static const builtin_info_t Array_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_prop_t ArrayInst_props[] = {
@@ -1668,7 +1670,9 @@ static const builtin_info_t ArrayInst_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 /* ECMA-262 5.1 Edition    15.4.3.2 */
@@ -1781,7 +1785,9 @@ static const builtin_info_t ArrayConstr_info = {
     dispex_prop_put,
     dispex_prop_invoke,
     dispex_prop_delete,
+    dispex_prop_get_desc,
     dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 HRESULT create_array_constr(script_ctx_t *ctx, jsdisp_t *object_prototype, jsdisp_t **ret)
