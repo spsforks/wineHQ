@@ -910,7 +910,6 @@ static const builtin_info_t JSGlobal_info = {
     ARRAY_SIZE(JSGlobal_props),
     JSGlobal_props,
     NULL,
-    NULL,
     dispex_prop_get,
     dispex_prop_put,
     dispex_prop_invoke,

@@ -550,7 +550,6 @@ static const builtin_info_t scope_info = {
     0,
     NULL,
     scope_destructor,
-    NULL,
     dispex_prop_get,
     dispex_prop_put,
     dispex_prop_invoke,

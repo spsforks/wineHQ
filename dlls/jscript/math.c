@@ -496,7 +496,6 @@ static const builtin_info_t Math_info = {
     ARRAY_SIZE(Math_props),
     Math_props,
     NULL,
-    NULL,
     dispex_prop_get,
     dispex_prop_put,
     dispex_prop_invoke,

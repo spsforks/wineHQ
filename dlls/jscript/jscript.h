@@ -137,6 +137,7 @@ HRESULT dispex_prop_delete(jsdisp_t*,DISPID,BOOL*);
 HRESULT dispex_prop_get_desc(jsdisp_t*,DISPID,BOOL,property_desc_t*);
 void *dispex_prop_get_name(jsdisp_t*,DISPID,BOOL);
 HRESULT dispex_prop_define(jsdisp_t*,DISPID,const property_desc_t*);
+const WCHAR *dispex_prop_get_static_name(jsdisp_t*,DISPID);
 
 struct thread_data {
     LONG ref;
@@ -191,7 +192,6 @@ typedef struct {
     DWORD props_cnt;
     const builtin_prop_t *props;
     void (*destructor)(jsdisp_t*);
-    void (*on_put)(jsdisp_t*,const WCHAR*);
     HRESULT (*prop_get)(jsdisp_t*,IDispatch*,DISPID,jsval_t*);
     HRESULT (*prop_put)(jsdisp_t*,DISPID,jsval_t);
     HRESULT (*prop_invoke)(jsdisp_t*,IDispatch*,DISPID,WORD,unsigned,jsval_t*,jsval_t*,IServiceProvider*);

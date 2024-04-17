@@ -569,9 +569,6 @@ HRESULT dispex_prop_put(jsdisp_t *jsdisp, DISPID id, jsval_t val)
     if(FAILED(hres))
         return hres;
 
-    if(jsdisp->builtin_info->on_put)
-        jsdisp->builtin_info->on_put(jsdisp, prop->name);
-
     return S_OK;
 }
 
@@ -814,6 +811,11 @@ HRESULT dispex_prop_define(jsdisp_t *jsdisp, DISPID id, const property_desc_t *d
 
     prop->flags = (prop->flags & ~desc->mask) | (desc->flags & desc->mask);
     return S_OK;
+}
+
+const WCHAR *dispex_prop_get_static_name(jsdisp_t *jsdisp, DISPID id)
+{
+    return jsdisp->props[prop_id_to_idx(id)].name;
 }
 
 static HRESULT fill_props(jsdisp_t *obj)
@@ -2383,7 +2385,6 @@ static const builtin_info_t dispex_info = {
     JSCLASS_NONE,
     NULL,
     0, NULL,
-    NULL,
     NULL,
     dispex_prop_get,
     dispex_prop_put,

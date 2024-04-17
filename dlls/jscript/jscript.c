@@ -127,7 +127,6 @@ HRESULT create_named_item_script_obj(script_ctx_t *ctx, named_item_t *item)
         NULL,
         0, NULL,
         NULL,
-        NULL,
         dispex_prop_get,
         dispex_prop_put,
         dispex_prop_invoke,

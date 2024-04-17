@@ -953,7 +953,6 @@ static const builtin_info_t JSON_info = {
     ARRAY_SIZE(JSON_props),
     JSON_props,
     NULL,
-    NULL,
     dispex_prop_get,
     dispex_prop_put,
     dispex_prop_invoke,

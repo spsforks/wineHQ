@@ -252,7 +252,6 @@ static const builtin_info_t VBArray_info = {
     ARRAY_SIZE(VBArray_props),
     VBArray_props,
     VBArray_destructor,
-    NULL,
     dispex_prop_get,
     dispex_prop_put,
     dispex_prop_invoke,
