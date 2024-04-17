@@ -27,6 +27,7 @@
 
 #include "wine/exception.h"
 #include "wine/debug.h"
+#include "wine/asm.h"
 #include "cppexcept.h"
 #include "msvcrt.h"
 
@@ -522,13 +523,28 @@ static void CALLBACK cxx_catch_cleanup(BOOL normal, void *c)
     FlsSetValue(fls_index, (void*)(DWORD_PTR)ctx->unwind_state);
 }
 
+typedef void* (__cdecl *handler_function)(ULONG64, ULONG64);
+void* __cdecl catch_block_wrapper(handler_function handler, ULONG64 frame);
+__ASM_GLOBAL_FUNC( catch_block_wrapper,
+                   "subq $0x28,%rsp\n\t"
+                   __ASM_CFI(".cfi_adjust_cfa_offset 0x28\n\t")
+                   __ASM_SEH(".seh_stackalloc 0x28\n\t")
+                   __ASM_SEH(".seh_endprologue\n\t")
+                   "movq %rcx, 0x0(%rsp)\n\t"
+                   "movl $0x100, 0x8(%rsp)\n\t"
+                   "movq %rdx, 0x10(%rsp)\n\t"  /* pass frame on stack in addition to register */
+                   "callq *%rcx\n\t"            /* call catch(catch, frame) */
+                   "addq $0x28,%rsp\n\t"
+                   __ASM_CFI(".cfi_adjust_cfa_offset -0x28\n\t")
+                   "ret")
+
 static void* WINAPI call_catch_block4(EXCEPTION_RECORD *rec)
 {
     ULONG64 frame = rec->ExceptionInformation[1];
     EXCEPTION_RECORD *prev_rec = (void*)rec->ExceptionInformation[4];
     EXCEPTION_RECORD *untrans_rec = (void*)rec->ExceptionInformation[6];
     CONTEXT *context = (void*)rec->ExceptionInformation[7];
-    void* (__cdecl *handler)(ULONG64 unk, ULONG64 rbp) = (void*)rec->ExceptionInformation[5];
+    handler_function handler = (handler_function)rec->ExceptionInformation[5];
     EXCEPTION_POINTERS ep = { prev_rec, context };
     cxx_catch_ctx ctx;
     void *ret_addr = NULL;
@@ -545,7 +561,7 @@ static void* WINAPI call_catch_block4(EXCEPTION_RECORD *rec)
     {
         __TRY
         {
-            ret_addr = handler(0, frame);
+            ret_addr = catch_block_wrapper(handler, frame);
         }
         __EXCEPT_CTX(cxx_rethrow_filter, &ctx)
         {
