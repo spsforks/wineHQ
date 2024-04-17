@@ -545,6 +545,7 @@ static const struct wined3d_gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_PRO_V620,       "Radeon Pro V620",                  DRIVER_AMD_RX,          32768},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_PRO_V620_VF,    "Radeon Pro V620 VF",               DRIVER_AMD_RX,          32768},
     {HW_VENDOR_AMD,        CARD_AMD_VANGOGH,               "AMD VANGOGH",                      DRIVER_AMD_RX,           4096},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_VEGA_7_RENOIR,  "AMD Radeon Vega 7 Renoir",         DRIVER_AMD_RX,           4096},
     {HW_VENDOR_AMD,        CARD_AMD_RAPHAEL,               "AMD Radeon(TM) Graphics",          DRIVER_AMD_RX,           4096},
 
     /* Red Hat */
