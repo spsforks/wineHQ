@@ -1,7 +1,8 @@
 MODULE    = msvcm90.dll
-PARENTSRC = ../msvcm80
+PARENTSRC = ../msvcp90
 
 EXTRADLLFLAGS = -Wb,--prefer-native
 
 SOURCES = \
+	ios.c \
 	msvcm_main.c
