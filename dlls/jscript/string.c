@@ -1502,6 +1502,48 @@ static void String_destructor(jsdisp_t *dispex)
     free(This);
 }
 
+static HRESULT String_prop_get(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, jsval_t *r)
+{
+    StringInstance *string = string_from_jsdisp(jsdisp);
+    DWORD idx = indexed_prop_id_to_idx(id);
+    jsstr_t *ret;
+
+    if(is_dispex_prop_id(id))
+        return dispex_prop_get(&string->dispex, jsthis, id, r);
+
+    ret = jsstr_substr(string->str, idx, 1);
+    if(!ret)
+        return E_OUTOFMEMORY;
+
+    TRACE("%p[%lu] = %s\n", string, idx, debugstr_jsstr(ret));
+
+    *r = jsval_string(ret);
+    return S_OK;
+}
+
+static HRESULT String_prop_put(jsdisp_t *jsdisp, DISPID id, jsval_t val)
+{
+    if(is_dispex_prop_id(id))
+        return dispex_prop_put(jsdisp, id, val);
+    return S_OK;
+}
+
+static HRESULT String_prop_get_desc(jsdisp_t *jsdisp, DISPID id, BOOL flags_only, property_desc_t *desc)
+{
+    if(is_dispex_prop_id(id))
+        return dispex_prop_get_desc(jsdisp, id, flags_only, desc);
+
+    if(!flags_only) {
+        HRESULT hres = String_prop_get(jsdisp, to_disp(jsdisp), id, &desc->value);
+        if(FAILED(hres))
+            return hres;
+    }
+
+    desc->explicit_value = TRUE;
+    desc->flags = PROPF_ENUMERABLE;
+    return S_OK;
+}
+
 static unsigned String_idx_length(jsdisp_t *jsdisp)
 {
     StringInstance *string = string_from_jsdisp(jsdisp);
@@ -1514,21 +1556,6 @@ static unsigned String_idx_length(jsdisp_t *jsdisp)
      * implement it here, but in the way IE9 and spec work.
      */
     return string->dispex.ctx->version < 2 ? 0 : jsstr_length(string->str);
-}
-
-static HRESULT String_idx_get(jsdisp_t *jsdisp, unsigned idx, jsval_t *r)
-{
-    StringInstance *string = string_from_jsdisp(jsdisp);
-    jsstr_t *ret;
-
-    ret = jsstr_substr(string->str, idx, 1);
-    if(!ret)
-        return E_OUTOFMEMORY;
-
-    TRACE("%p[%u] = %s\n", string, idx, debugstr_jsstr(ret));
-
-    *r = jsval_string(ret);
-    return S_OK;
 }
 
 static const builtin_prop_t String_props[] = {
@@ -1593,15 +1620,14 @@ static const builtin_info_t StringInst_info = {
     ARRAY_SIZE(StringInst_props),
     StringInst_props,
     String_destructor,
-    dispex_prop_get,
-    dispex_prop_put,
-    dispex_prop_invoke,
-    dispex_prop_delete,
-    dispex_prop_get_desc,
-    dispex_prop_get_name,
-    dispex_prop_define,
+    String_prop_get,
+    String_prop_put,
+    indexed_prop_invoke,
+    indexed_prop_delete,
+    String_prop_get_desc,
+    indexed_prop_get_name,
+    indexed_prop_define,
     String_idx_length,
-    String_idx_get
 };
 
 /* ECMA-262 3rd Edition    15.5.3.2 */

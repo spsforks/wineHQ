@@ -429,8 +429,6 @@ static const builtin_info_t Map_info = {
     dispex_prop_get_name,
     dispex_prop_define,
     NULL,
-    NULL,
-    NULL,
     Map_gc_traverse
 };
 
@@ -599,8 +597,6 @@ static const builtin_info_t Set_info = {
     dispex_prop_get_desc,
     dispex_prop_get_name,
     dispex_prop_define,
-    NULL,
-    NULL,
     NULL,
     Map_gc_traverse
 };
@@ -908,8 +904,6 @@ static const builtin_info_t WeakMap_info = {
     dispex_prop_get_desc,
     dispex_prop_get_name,
     dispex_prop_define,
-    NULL,
-    NULL,
     NULL,
     WeakMap_gc_traverse
 };

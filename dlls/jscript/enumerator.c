@@ -210,8 +210,6 @@ static const builtin_info_t EnumeratorInst_info = {
     dispex_prop_get_name,
     dispex_prop_define,
     NULL,
-    NULL,
-    NULL,
     Enumerator_gc_traverse
 };
 

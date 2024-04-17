@@ -583,8 +583,6 @@ static const builtin_info_t RegExp_info = {
     dispex_prop_get_name,
     dispex_prop_define,
     NULL,
-    NULL,
-    NULL,
     RegExp_gc_traverse
 };
 
@@ -609,8 +607,6 @@ static const builtin_info_t RegExpInst_info = {
     dispex_prop_get_desc,
     dispex_prop_get_name,
     dispex_prop_define,
-    NULL,
-    NULL,
     NULL,
     RegExp_gc_traverse
 };

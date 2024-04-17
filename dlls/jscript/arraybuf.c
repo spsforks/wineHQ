@@ -641,8 +641,6 @@ static const builtin_info_t DataView_info = {
     dispex_prop_get_name,
     dispex_prop_define,
     NULL,
-    NULL,
-    NULL,
     DataView_gc_traverse
 };
 
@@ -659,8 +657,6 @@ static const builtin_info_t DataViewInst_info = {
     dispex_prop_get_desc,
     dispex_prop_get_name,
     dispex_prop_define,
-    NULL,
-    NULL,
     NULL,
     DataView_gc_traverse
 };
