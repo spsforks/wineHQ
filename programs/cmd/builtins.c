@@ -1485,7 +1485,7 @@ void WCMD_echo (const WCHAR *args)
   const WCHAR *origcommand = args;
   WCHAR *trimmed;
 
-  if (   args[0]==' ' || args[0]=='\t' || args[0]=='.'
+  if (   args[0]==' ' || args[0]=='\t' || args[0]=='.' || args[0]=='+'
       || args[0]==':' || args[0]==';'  || args[0]=='/')
     args++;
 

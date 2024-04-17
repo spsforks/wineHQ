@@ -240,6 +240,55 @@ call say'
 echo @echo ~ > "say~.bat"
 call say~
 
+echo --------- Testing batch with keywords filename --------------
+echo @echo start > start.bat
+echo start.bat > test.bat
+call test.bat
+
+echo @echo for > for.bat
+echo for.bat > test.bat
+call test.bat
+
+echo @echo more > more.bat
+echo more.bat > test.bat
+call test.bat
+
+echo @echo . > echo.bat
+echo echo.bat bar > test.bat
+call test.bat
+del echo.bat
+echo.bat
+
+echo @echo . > .bat
+echo .bat > test.bat
+call test.bat
+
+echo @echo echo+ > echo+.bat
+echo echo+.bat > test.bat
+call test.bat
+echo echo+ bar> test.bat
+call test.bat
+del echo+.bat
+call test.bat
+
+echo @echo echo_ > echo_.bat
+echo echo_.bat > test.bat
+call test.bat
+echo echo_ bar > test.bat
+call test.bat
+
+echo @echo + > +.bat
+echo +.bat > test.bat
+call test.bat
+echo + > test.bat
+call test.bat
+
+echo @echo _ > _.bat
+echo _.bat > test.bat
+call test.bat
+echo _ > test.bat
+call test.bat
+
 echo --------- Testing parameter passing  --------------
 echo @echo 1:%%1,2:%%2 > tell.bat
 call tell 1
@@ -278,7 +327,7 @@ call tell(1234)
 call tell(12(34)
 call tell(12;34)
 echo --------- Finished  --------------
-del tell.bat say*.* bazbaz*.bat
+del tell.bat say*.* bazbaz*.bat start.bat test.bat for.bat more.bat echo.bat .bat echo+.bat echo_.bat +.bat _.bat
 exit
 :setError
 exit /B %1

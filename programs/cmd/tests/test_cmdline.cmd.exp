@@ -121,6 +121,22 @@ bar@space@
 0@space@
 '@space@
 ~@space@
+--------- Testing batch with keywords filename --------------
+start@space@
+for@space@
+more@space@
+.@space@
+bat@space@
+.@space@
+echo+@space@
+echo+@space@
+@space@bar@space@
+echo_@space@
+echo_@space@
++@space@
++@space@
+_@space@
+_@space@
 --------- Testing parameter passing  --------------
 1:1,2:@space@
 1:(1),2:@space@
