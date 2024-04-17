@@ -457,49 +457,6 @@ static HRESULT convert_params(script_ctx_t *ctx, const DISPPARAMS *dp, jsval_t *
     return S_OK;
 }
 
-static HRESULT prop_get(jsdisp_t *This, IDispatch *jsthis, dispex_prop_t *prop, jsval_t *r)
-{
-    jsdisp_t *prop_obj = This;
-    HRESULT hres;
-
-    while(prop->type == PROP_PROTREF) {
-        prop_obj = prop_obj->prototype;
-        prop = prop_obj->props + prop->u.ref;
-    }
-
-    switch(prop->type) {
-    case PROP_BUILTIN:
-        hres = prop->u.p->getter(This->ctx, prop_obj, r);
-        break;
-    case PROP_JSVAL:
-        hres = jsval_copy(prop->u.val, r);
-        break;
-    case PROP_ACCESSOR:
-        if(prop->u.accessor.getter) {
-            hres = jsdisp_call_value(prop->u.accessor.getter, jsval_disp(jsthis),
-                                     DISPATCH_METHOD, 0, NULL, r);
-        }else {
-            *r = jsval_undefined();
-            hres = S_OK;
-        }
-        break;
-    case PROP_IDX:
-        hres = prop_obj->builtin_info->idx_get(prop_obj, prop->u.idx, r);
-        break;
-    default:
-        ERR("type %d\n", prop->type);
-        return E_FAIL;
-    }
-
-    if(FAILED(hres)) {
-        TRACE("fail %08lx\n", hres);
-        return hres;
-    }
-
-    TRACE("%p.%s ret %s\n", This, debugstr_w(prop->name), debugstr_jsval(*r));
-    return hres;
-}
-
 static HRESULT prop_put(jsdisp_t *This, dispex_prop_t *prop, jsval_t val)
 {
     HRESULT hres;
@@ -575,7 +532,46 @@ HRESULT builtin_set_const(script_ctx_t *ctx, jsdisp_t *jsthis, jsval_t value)
 
 HRESULT dispex_prop_get(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, jsval_t *r)
 {
-    return prop_get(jsdisp, jsthis, &jsdisp->props[prop_id_to_idx(id)], r);
+    dispex_prop_t *prop = &jsdisp->props[prop_id_to_idx(id)];
+    jsdisp_t *prop_obj = jsdisp;
+    HRESULT hres;
+
+    while(prop->type == PROP_PROTREF) {
+        prop_obj = prop_obj->prototype;
+        prop = prop_obj->props + prop->u.ref;
+    }
+
+    switch(prop->type) {
+    case PROP_BUILTIN:
+        hres = prop->u.p->getter(jsdisp->ctx, prop_obj, r);
+        break;
+    case PROP_JSVAL:
+        hres = jsval_copy(prop->u.val, r);
+        break;
+    case PROP_ACCESSOR:
+        if(prop->u.accessor.getter) {
+            hres = jsdisp_call_value(prop->u.accessor.getter, jsval_disp(jsthis),
+                                     DISPATCH_METHOD, 0, NULL, r);
+        }else {
+            *r = jsval_undefined();
+            hres = S_OK;
+        }
+        break;
+    case PROP_IDX:
+        hres = prop_obj->builtin_info->idx_get(prop_obj, prop->u.idx, r);
+        break;
+    default:
+        ERR("type %d\n", prop->type);
+        return E_FAIL;
+    }
+
+    if(FAILED(hres)) {
+        TRACE("fail %08lx\n", hres);
+        return hres;
+    }
+
+    TRACE("%p.%s ret %s\n", jsdisp, debugstr_w(prop->name), debugstr_jsval(*r));
+    return hres;
 }
 
 HRESULT dispex_prop_put(jsdisp_t *jsdisp, DISPID id, jsval_t val)
