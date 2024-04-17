@@ -618,32 +618,6 @@ static HRESULT invoke_prop_func(jsdisp_t *This, IDispatch *jsthis, dispex_prop_t
     return E_FAIL;
 }
 
-static HRESULT delete_prop(dispex_prop_t *prop, BOOL *ret)
-{
-    if(prop->type == PROP_PROTREF) {
-        *ret = TRUE;
-        return S_OK;
-    }
-
-    if(!(prop->flags & PROPF_CONFIGURABLE)) {
-        *ret = FALSE;
-        return S_OK;
-    }
-
-    *ret = TRUE;
-
-    if(prop->type == PROP_JSVAL)
-        jsval_release(prop->u.val);
-    if(prop->type == PROP_ACCESSOR) {
-        if(prop->u.accessor.getter)
-            jsdisp_release(prop->u.accessor.getter);
-        if(prop->u.accessor.setter)
-            jsdisp_release(prop->u.accessor.setter);
-    }
-    prop->type = PROP_DELETED;
-    return S_OK;
-}
-
 HRESULT builtin_set_const(script_ctx_t *ctx, jsdisp_t *jsthis, jsval_t value)
 {
     TRACE("%p %s\n", jsthis, debugstr_jsval(value));
@@ -668,7 +642,30 @@ HRESULT dispex_prop_invoke(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, WORD 
 
 HRESULT dispex_prop_delete(jsdisp_t *jsdisp, DISPID id, BOOL *ret)
 {
-    return delete_prop(&jsdisp->props[prop_id_to_idx(id)], ret);
+    dispex_prop_t *prop = &jsdisp->props[prop_id_to_idx(id)];
+
+    if(prop->type == PROP_PROTREF) {
+        *ret = TRUE;
+        return S_OK;
+    }
+
+    if(!(prop->flags & PROPF_CONFIGURABLE)) {
+        *ret = FALSE;
+        return S_OK;
+    }
+
+    *ret = TRUE;
+
+    if(prop->type == PROP_JSVAL)
+        jsval_release(prop->u.val);
+    if(prop->type == PROP_ACCESSOR) {
+        if(prop->u.accessor.getter)
+            jsdisp_release(prop->u.accessor.getter);
+        if(prop->u.accessor.setter)
+            jsdisp_release(prop->u.accessor.setter);
+    }
+    prop->type = PROP_DELETED;
+    return S_OK;
 }
 
 HRESULT dispex_prop_get_desc(jsdisp_t *jsdisp, DISPID id, BOOL flags_only, property_desc_t *desc)
