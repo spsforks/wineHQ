@@ -1296,6 +1296,7 @@ void WCMD_execute (const WCHAR *command, const WCHAR *redirects,
                                 STD_OUTPUT_HANDLE,
                                 STD_ERROR_HANDLE};
     BOOL prev_echo_mode, piped = FALSE;
+    BOOL called = FALSE;
 
     WINE_TRACE("command on entry:%s (%p)\n",
                wine_dbgstr_w(command), cmdList);
@@ -1321,8 +1322,17 @@ void WCMD_execute (const WCHAR *command, const WCHAR *redirects,
     }
     for (i=0; i<=WCMD_EXIT; i++) {
       if (CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE | SORT_STRINGSORT,
-        whichcmd, count, inbuilt[i], -1) == CSTR_EQUAL) break;
+        whichcmd, count, inbuilt[i], -1) == CSTR_EQUAL) {
+        called = TRUE;
+        break;
+      }
     }
+
+    while (!retrycall && (IsCharAlphaNumericW(whichcmd[count]) || wcschr(L".+_", whichcmd[count]))) {
+      count++;
+      i = WCMD_EXIT + 1;
+    }
+
     cmd_index = i;
     parms_start = WCMD_skip_leading_spaces (&whichcmd[count]);
 
@@ -1640,7 +1650,7 @@ void WCMD_execute (const WCHAR *command, const WCHAR *redirects,
         /* else: drop through */
       default:
         prev_echo_mode = echo_mode;
-        WCMD_run_program (whichcmd, FALSE);
+        WCMD_run_program (whichcmd, called);
         echo_mode = prev_echo_mode;
     }
     free(cmd);
