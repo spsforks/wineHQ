@@ -457,73 +457,6 @@ static HRESULT convert_params(script_ctx_t *ctx, const DISPPARAMS *dp, jsval_t *
     return S_OK;
 }
 
-static HRESULT prop_put(jsdisp_t *This, dispex_prop_t *prop, jsval_t val)
-{
-    HRESULT hres;
-
-    if(prop->type == PROP_PROTREF) {
-        dispex_prop_t *prop_iter = prop;
-        jsdisp_t *prototype_iter = This;
-
-        do {
-            prototype_iter = prototype_iter->prototype;
-            prop_iter = prototype_iter->props + prop_iter->u.ref;
-        } while(prop_iter->type == PROP_PROTREF);
-
-        if(prop_iter->type == PROP_ACCESSOR)
-            prop = prop_iter;
-    }
-
-    switch(prop->type) {
-    case PROP_BUILTIN:
-        if(!prop->u.p->setter) {
-            TRACE("getter with no setter\n");
-            return S_OK;
-        }
-        return prop->u.p->setter(This->ctx, This, val);
-    case PROP_PROTREF:
-    case PROP_DELETED:
-        if(!This->extensible)
-            return S_OK;
-        prop->type = PROP_JSVAL;
-        prop->flags = PROPF_ENUMERABLE | PROPF_CONFIGURABLE | PROPF_WRITABLE;
-        prop->u.val = jsval_undefined();
-        break;
-    case PROP_JSVAL:
-        if(!(prop->flags & PROPF_WRITABLE))
-            return S_OK;
-
-        jsval_release(prop->u.val);
-        break;
-    case PROP_ACCESSOR:
-        if(!prop->u.accessor.setter) {
-            TRACE("no setter\n");
-            return S_OK;
-        }
-        return jsdisp_call_value(prop->u.accessor.setter, jsval_obj(This), DISPATCH_METHOD, 1, &val, NULL);
-    case PROP_IDX:
-        if(!This->builtin_info->idx_put) {
-            TRACE("no put_idx\n");
-            return S_OK;
-        }
-        return This->builtin_info->idx_put(This, prop->u.idx, val);
-    default:
-        ERR("type %d\n", prop->type);
-        return E_FAIL;
-    }
-
-    TRACE("%p.%s = %s\n", This, debugstr_w(prop->name), debugstr_jsval(val));
-
-    hres = jsval_copy(val, &prop->u.val);
-    if(FAILED(hres))
-        return hres;
-
-    if(This->builtin_info->on_put)
-        This->builtin_info->on_put(This, prop->name);
-
-    return S_OK;
-}
-
 HRESULT builtin_set_const(script_ctx_t *ctx, jsdisp_t *jsthis, jsval_t value)
 {
     TRACE("%p %s\n", jsthis, debugstr_jsval(value));
@@ -576,7 +509,70 @@ HRESULT dispex_prop_get(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, jsval_t 
 
 HRESULT dispex_prop_put(jsdisp_t *jsdisp, DISPID id, jsval_t val)
 {
-    return prop_put(jsdisp, &jsdisp->props[prop_id_to_idx(id)], val);
+    dispex_prop_t *prop = &jsdisp->props[prop_id_to_idx(id)];
+    HRESULT hres;
+
+    if(prop->type == PROP_PROTREF) {
+        dispex_prop_t *prop_iter = prop;
+        jsdisp_t *prototype_iter = jsdisp;
+
+        do {
+            prototype_iter = prototype_iter->prototype;
+            prop_iter = prototype_iter->props + prop_iter->u.ref;
+        } while(prop_iter->type == PROP_PROTREF);
+
+        if(prop_iter->type == PROP_ACCESSOR)
+            prop = prop_iter;
+    }
+
+    switch(prop->type) {
+    case PROP_BUILTIN:
+        if(!prop->u.p->setter) {
+            TRACE("getter with no setter\n");
+            return S_OK;
+        }
+        return prop->u.p->setter(jsdisp->ctx, jsdisp, val);
+    case PROP_PROTREF:
+    case PROP_DELETED:
+        if(!jsdisp->extensible)
+            return S_OK;
+        prop->type = PROP_JSVAL;
+        prop->flags = PROPF_ENUMERABLE | PROPF_CONFIGURABLE | PROPF_WRITABLE;
+        prop->u.val = jsval_undefined();
+        break;
+    case PROP_JSVAL:
+        if(!(prop->flags & PROPF_WRITABLE))
+            return S_OK;
+
+        jsval_release(prop->u.val);
+        break;
+    case PROP_ACCESSOR:
+        if(!prop->u.accessor.setter) {
+            TRACE("no setter\n");
+            return S_OK;
+        }
+        return jsdisp_call_value(prop->u.accessor.setter, jsval_obj(jsdisp), DISPATCH_METHOD, 1, &val, NULL);
+    case PROP_IDX:
+        if(!jsdisp->builtin_info->idx_put) {
+            TRACE("no put_idx\n");
+            return S_OK;
+        }
+        return jsdisp->builtin_info->idx_put(jsdisp, prop->u.idx, val);
+    default:
+        ERR("type %d\n", prop->type);
+        return E_FAIL;
+    }
+
+    TRACE("%p.%s = %s\n", jsdisp, debugstr_w(prop->name), debugstr_jsval(val));
+
+    hres = jsval_copy(val, &prop->u.val);
+    if(FAILED(hres))
+        return hres;
+
+    if(jsdisp->builtin_info->on_put)
+        jsdisp->builtin_info->on_put(jsdisp, prop->name);
+
+    return S_OK;
 }
 
 HRESULT dispex_prop_invoke(jsdisp_t *jsdisp, IDispatch *jsthis, DISPID id, WORD flags,
