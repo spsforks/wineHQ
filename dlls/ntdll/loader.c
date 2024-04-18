@@ -885,6 +885,21 @@ static void remove_single_list_entry( LDRP_CSLIST *list, SINGLE_LIST_ENTRY *entr
     entry->Next = NULL;
 }
 
+static LDR_DEPENDENCY *find_module_dependency( LDR_DDAG_NODE *from, LDR_DDAG_NODE *to )
+{
+    SINGLE_LIST_ENTRY *entry, *mark = from->Dependencies.Tail;
+
+    if (!mark) return NULL;
+
+    for (entry = mark->Next; entry != mark; entry = entry->Next)
+    {
+        LDR_DEPENDENCY *dep = CONTAINING_RECORD( entry, LDR_DEPENDENCY, dependency_to_entry );
+        if (dep->dependency_from == from && dep->dependency_to == to) return dep;
+    }
+
+    return NULL;
+}
+
 /**********************************************************************
  *	    add_module_dependency_after
  */
@@ -892,6 +907,15 @@ static BOOL add_module_dependency_after( LDR_DDAG_NODE *from, LDR_DDAG_NODE *to,
                                          SINGLE_LIST_ENTRY *dep_after )
 {
     LDR_DEPENDENCY *dep;
+
+    if ((dep = find_module_dependency( from, to )))
+    {
+        /* Dependency already exists; consume the module reference stolen from the caller */
+        LDR_DATA_TABLE_ENTRY *mod = CONTAINING_RECORD( to->Modules.Flink, LDR_DATA_TABLE_ENTRY, NodeModuleLink );
+        WINE_MODREF *wm = CONTAINING_RECORD( mod, WINE_MODREF, ldr );
+        LdrUnloadDll( wm->ldr.DllBase );
+        return TRUE;
+    }
 
     if (!(dep = RtlAllocateHeap( GetProcessHeap(), 0, sizeof(*dep) ))) return FALSE;
 
