@@ -788,7 +788,7 @@ static WCHAR *WCMD_expand_envvar(WCHAR *start, WCHAR startchar)
  * rather than at parse time, i.e. delayed expansion and for loops need to be
  * processed
  */
-static void handleExpansion(WCHAR *cmd, BOOL atExecute, BOOL delayed) {
+void handleExpansion(WCHAR *cmd, BOOL atExecute, BOOL delayed) {
 
   /* For commands in a context (batch program):                  */
   /*   Expand environment variables in a batch file %{0-9} first */
@@ -807,10 +807,10 @@ static void handleExpansion(WCHAR *cmd, BOOL atExecute, BOOL delayed) {
   WCHAR *normalp;
 
   /* Display the FOR variables in effect */
-  for (i=0;i<52;i++) {
+  for (i=0;i<MAX_FOR_VARIABLES;i++) {
     if (forloopcontext.variable[i]) {
       WINE_TRACE("FOR variable context: %c = '%s'\n",
-                 i<26?i+'a':(i-26)+'A',
+                 get_FOR_var_name(i),
                  wine_dbgstr_w(forloopcontext.variable[i]));
     }
   }
@@ -859,9 +859,10 @@ static void handleExpansion(WCHAR *cmd, BOOL atExecute, BOOL delayed) {
         WCMD_strsubstW(p, p+2, NULL, 0);
 
     } else {
-      int forvaridx = FOR_VAR_IDX(*(p+1));
+      int forvaridx = get_FOR_var_index(*(p+1));
       if (startchar == '%' && forvaridx != -1 && forloopcontext.variable[forvaridx]) {
         /* Replace the 2 characters, % and for variable character */
+        WINE_TRACE("FOR variable substitute %%%c with '%s'\n", *(p+1), wine_dbgstr_w(forloopcontext.variable[forvaridx]));
         WCMD_strsubstW(p, p + 2, forloopcontext.variable[forvaridx], -1);
       } else if (!atExecute || startchar == '!') {
         p = WCMD_expand_envvar(p, startchar);

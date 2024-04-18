@@ -1660,6 +1660,20 @@ for %%i in (test) do (
     )
     echo d4
 )
+
+echo --- for loop with rare var names
+set "WINE_ARGS= -foo=bar -x=y"
+:test_for_loop_params_parse
+for /F "tokens=1,* delims= " %%a in ("%WINE_ARGS%") do (
+    for /F "tokens=1,2 delims==" %%1 in ("%%a") do (
+        echo inner argument {%%1, %%2}
+    )
+    set "WINE_ARGS=%%b"
+    goto :test_for_loop_params_parse
+)
+set "WINE_ARGS="
+
+
 echo --- set /a
 goto :testseta
 

@@ -1078,6 +1078,9 @@ d3
 a4
 c4
 d4
+--- for loop with rare var names
+inner argument {-foo, bar}
+inner argument {-x, y}
 --- set /a
 ------ individual operations
 WINE_foo correctly 3
