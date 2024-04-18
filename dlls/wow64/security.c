@@ -522,6 +522,7 @@ NTSTATUS WINAPI wow64_NtSetInformationToken( UINT *args )
     switch (class)
     {
     case TokenSessionId:   /* ULONG */
+    case TokenIntegrityLevel:
         return NtSetInformationToken( handle, class, ptr, len );
 
     case TokenDefaultDacl:   /* TOKEN_DEFAULT_DACL */
