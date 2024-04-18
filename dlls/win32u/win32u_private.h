@@ -194,6 +194,24 @@ extern void user_check_not_lock(void);
 extern BOOL get_vulkan_uuid_from_luid( const LUID *luid, GUID *uuid );
 
 /* winstation.c */
+
+struct shared_session;
+
+struct object_lock
+{
+    UINT64 id;
+    UINT64 seq;
+    struct shared_session *session; /* only valid when locked */
+};
+
+/* Get shared session objects data pointer, must be called in a loop while STATUS_PENDING
+ * is returned, lock must be zero initialized.
+ *
+ * The data read from the objects may be transient and no logic should be executed based
+ * on it, within the loop, or after, unless the function has returned STATUS_SUCCESS.
+ */
+extern NTSTATUS get_shared_desktop( struct object_lock *lock, const desktop_shm_t **desktop_shm );
+
 extern BOOL is_virtual_desktop(void);
 
 /* window.c */

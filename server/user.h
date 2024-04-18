@@ -56,11 +56,8 @@ struct winstation
 
 struct global_cursor
 {
-    int                  x;                /* cursor position */
-    int                  y;
     rectangle_t          clip;             /* cursor clip rectangle */
     unsigned int         clip_flags;       /* last cursor clip flags */
-    unsigned int         last_change;      /* time of last position change */
     user_handle_t        win;              /* window that contains the cursor */
 };
 
@@ -82,6 +79,7 @@ struct desktop
     unsigned int         users;            /* processes and threads using this desktop */
     struct global_cursor cursor;           /* global cursor information */
     unsigned char        keystate[256];    /* asynchronous key state */
+    int                  session_index;    /* desktop index in session shared memory */
 };
 
 /* user handles functions */
