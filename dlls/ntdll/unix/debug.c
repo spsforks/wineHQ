@@ -81,12 +81,15 @@ static int append_output( struct debug_info *info, const char *str, size_t len )
 {
     if (len >= sizeof(info->output) - info->out_pos)
     {
-       fprintf( stderr, "wine_dbg_output: debugstr buffer overflow (contents: '%s')\n", info->output );
-       info->out_pos = 0;
-       abort();
+       fprintf( stderr, "wine_dbg_output: string to be output exceeds the debugstr buffer and to be truncated !!!\n");
+       len = sizeof(info->output) - info->out_pos - 1;
+       info->output[sizeof(info->output) - 1] = 0;
     }
-    memcpy( info->output + info->out_pos, str, len );
-    info->out_pos += len;
+    if(len)
+    {
+        memcpy( info->output + info->out_pos, str, len );
+        info->out_pos += len;
+    }
     return len;
 }
 
