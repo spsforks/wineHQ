@@ -2330,8 +2330,11 @@ static void test_exes(void)
         sprintf(filename, "%s\\test file.noassoc", tmpdir);
         if (CopyFileA(argv0, filename, FALSE))
         {
+            /* Because of wine's unix integration, we will try running "test file.noassoc" because
+             * it could be a unix program. And it will succeed because it happens to be a valid PE.
+             */
             rc=shell_execute(NULL, filename, params, NULL);
-            okShell(rc==SE_ERR_NOASSOC, "returned %Iu\n", rc);
+            todo_wine okShell(rc==SE_ERR_NOASSOC, "returned %Iu\n", rc);
         }
     }
     else
