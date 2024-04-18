@@ -151,8 +151,8 @@ struct device
 
 static void device_dump( struct object *obj, int verbose );
 static void device_destroy( struct object *obj );
-static struct object *device_open_file( struct object *obj, unsigned int access,
-                                        unsigned int sharing, unsigned int options );
+static struct object *device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                        unsigned int access, unsigned int sharing, unsigned int options );
 static struct list *device_get_kernel_obj_list( struct object *obj );
 
 static const struct object_ops device_ops =
@@ -420,12 +420,18 @@ static void add_irp_to_queue( struct device_manager *manager, struct irp_call *i
     if (list_head( &manager->requests ) == &irp->mgr_entry) wake_up( &manager->obj, 0 );  /* first one */
 }
 
-static struct object *device_open_file( struct object *obj, unsigned int access,
-                                        unsigned int sharing, unsigned int options )
+static struct object *device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                        unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct device *device = (struct device *)obj;
     struct device_file *file;
     struct unicode_str nt_name;
+
+    if (subpath->len) /* TODO: handle non-empty filenames (filesystem device) */
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if (!(file = alloc_object( &device_file_ops ))) return NULL;
 

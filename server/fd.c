@@ -2769,14 +2769,15 @@ DECL_HANDLER(open_file_object)
 {
     struct unicode_str name = get_req_unicode_str();
     struct object *obj, *result, *root = NULL;
+    struct unicode_str name_left;
 
     if (req->rootdir && !(root = get_handle_obj( current->process, req->rootdir, 0, NULL ))) return;
 
-    obj = open_named_object( root, NULL, &name, req->attributes );
+    obj = lookup_named_object( root, &name, req->attributes, &name_left );
     if (root) release_object( root );
     if (!obj) return;
 
-    if ((result = obj->ops->open_file( obj, req->access, req->sharing, req->options )))
+    if ((result = obj->ops->open_file( obj, &name_left, req->access, req->sharing, req->options )))
     {
         reply->handle = alloc_handle( current->process, result, req->access, req->attributes );
         release_object( result );

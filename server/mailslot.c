@@ -62,8 +62,8 @@ static void mailslot_dump( struct object*, int );
 static struct fd *mailslot_get_fd( struct object * );
 static unsigned int mailslot_map_access( struct object *obj, unsigned int access );
 static int mailslot_link_name( struct object *obj, struct object_name *name, struct object *parent );
-static struct object *mailslot_open_file( struct object *obj, unsigned int access,
-                                          unsigned int sharing, unsigned int options );
+static struct object *mailslot_open_file( struct object *obj, const struct unicode_str *subpath,
+                                          unsigned int access, unsigned int sharing, unsigned int options );
 static void mailslot_destroy( struct object * );
 
 static const struct object_ops mailslot_ops =
@@ -184,8 +184,8 @@ struct mailslot_device_file
 static void mailslot_device_dump( struct object *obj, int verbose );
 static struct object *mailslot_device_lookup_name( struct object *obj, struct unicode_str *name,
                                                    unsigned int attr, struct object *root );
-static struct object *mailslot_device_open_file( struct object *obj, unsigned int access,
-                                                 unsigned int sharing, unsigned int options );
+static struct object *mailslot_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                 unsigned int access, unsigned int sharing, unsigned int options );
 static void mailslot_device_destroy( struct object *obj );
 
 static const struct object_ops mailslot_device_ops =
@@ -313,12 +313,18 @@ static int mailslot_link_name( struct object *obj, struct object_name *name, str
     return 1;
 }
 
-static struct object *mailslot_open_file( struct object *obj, unsigned int access,
-                                          unsigned int sharing, unsigned int options )
+static struct object *mailslot_open_file( struct object *obj, const struct unicode_str *subpath,
+                                          unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct mailslot *mailslot = (struct mailslot *)obj;
     struct mail_writer *writer;
     int unix_fd;
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if (!(sharing & FILE_SHARE_READ))
     {
@@ -399,10 +405,16 @@ static struct object *mailslot_device_lookup_name( struct object *obj, struct un
     return found;
 }
 
-static struct object *mailslot_device_open_file( struct object *obj, unsigned int access,
-                                                 unsigned int sharing, unsigned int options )
+static struct object *mailslot_device_open_file( struct object *obj, const struct unicode_str *subpath,
+                                                 unsigned int access, unsigned int sharing, unsigned int options )
 {
     struct mailslot_device_file *file;
+
+    if (subpath->len)
+    {
+        set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+        return NULL;
+    }
 
     if (!(file = alloc_object( &mailslot_device_file_ops ))) return NULL;
     file->device = (struct mailslot_device *)grab_object( obj );
