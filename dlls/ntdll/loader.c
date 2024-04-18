@@ -180,8 +180,15 @@ static RTL_BITMAP tls_bitmap;
 static RTL_BITMAP tls_expansion_bitmap;
 
 static WINE_MODREF *cached_modref;
-static WINE_MODREF *current_modref;
 static WINE_MODREF *last_failed_modref;
+
+struct importer
+{
+    struct importer *prev;
+    WINE_MODREF *modref;
+};
+
+static struct importer *current_importer;
 
 static LDR_DDAG_NODE *node_ntdll, *node_kernel32;
 
@@ -533,6 +540,20 @@ static ULONG_PTR allocate_stub( const char *dll, const char *name )
 static inline ULONG_PTR allocate_stub( const char *dll, const char *name ) { return 0xdeadbeef; }
 #endif  /* __i386__ */
 
+/* The loader_section must be locked while calling this function. */
+static void push_importer( struct importer *importer, WINE_MODREF *modref )
+{
+    importer->modref = modref;
+    importer->prev = current_importer;
+    current_importer = importer;
+}
+
+/* The loader_section must be locked while calling this function. */
+static void pop_importer( struct importer *importer )
+{
+    current_importer = importer->prev;
+}
+
 /* call ldr notifications */
 static void call_ldr_notifications( ULONG reason, LDR_DATA_TABLE_ENTRY *module )
 {
@@ -750,7 +771,7 @@ static NTSTATUS build_import_name( WCHAR buffer[256], const char *import, int le
 {
     const API_SET_NAMESPACE *map = NtCurrentTeb()->Peb->ApiSetMap;
     const API_SET_NAMESPACE_ENTRY *entry;
-    const WCHAR *host = current_modref ? current_modref->ldr.BaseDllName.Buffer : NULL;
+    const WCHAR *host = current_importer ? current_importer->modref->ldr.BaseDllName.Buffer : NULL;
     UNICODE_STRING str;
 
     while (len && import[len-1] == ' ') len--;  /* remove trailing spaces */
@@ -934,9 +955,9 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
         if (load_dll( load_path, mod_name, 0, &wm, imp->system ) == STATUS_SUCCESS &&
             !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
         {
-            if (!imports_fixup_done && current_modref)
+            if (!imports_fixup_done && current_importer)
             {
-                add_module_dependency( current_modref->ldr.DdagNode, wm->ldr.DdagNode );
+                add_module_dependency( current_importer->modref->ldr.DdagNode, wm->ldr.DdagNode );
             }
             else if (process_attach( wm->ldr.DdagNode, NULL ) != STATUS_SUCCESS)
             {
@@ -1004,12 +1025,12 @@ static FARPROC find_ordinal_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY
 
     if (TRACE_ON(snoop))
     {
-        const WCHAR *user = current_modref ? current_modref->ldr.BaseDllName.Buffer : NULL;
+        const WCHAR *user = current_importer ? current_importer->modref->ldr.BaseDllName.Buffer : NULL;
         proc = SNOOP_GetProcAddress( module, exports, exp_size, proc, ordinal, user );
     }
     if (TRACE_ON(relay))
     {
-        const WCHAR *user = current_modref ? current_modref->ldr.BaseDllName.Buffer : NULL;
+        const WCHAR *user = current_importer ? current_importer->modref->ldr.BaseDllName.Buffer : NULL;
         proc = RELAY_GetProcAddress( module, exports, exp_size, proc, ordinal, user );
     }
     return proc;
@@ -1102,7 +1123,8 @@ void * WINAPI RtlFindExportedRoutineByName( HMODULE module, const char *name )
  */
 static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LPCWSTR load_path, WINE_MODREF **pwm )
 {
-    BOOL system = current_modref->system || (current_modref->ldr.Flags & LDR_WINE_INTERNAL);
+    struct importer *importer = current_importer;
+    BOOL system = importer->modref->system || (importer->modref->ldr.Flags & LDR_WINE_INTERNAL);
     NTSTATUS status;
     WINE_MODREF *wmImp;
     HMODULE imp_mod;
@@ -1137,10 +1159,10 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
     {
         if (status == STATUS_DLL_NOT_FOUND)
             ERR("Library %s (which is needed by %s) not found\n",
-                name, debugstr_w(current_modref->ldr.FullDllName.Buffer));
+                name, debugstr_w(importer->modref->ldr.FullDllName.Buffer));
         else
             ERR("Loading library %s (which is needed by %s) failed (error %lx).\n",
-                name, debugstr_w(current_modref->ldr.FullDllName.Buffer), status);
+                name, debugstr_w(importer->modref->ldr.FullDllName.Buffer), status);
         return FALSE;
     }
 
@@ -1173,7 +1195,7 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
                 thunk_list->u1.Function = allocate_stub( name, (const char*)pe_name->Name );
             }
             WARN(" imported from %s, allocating stub %p\n",
-                 debugstr_w(current_modref->ldr.FullDllName.Buffer),
+                 debugstr_w(importer->modref->ldr.FullDllName.Buffer),
                  (void *)thunk_list->u1.Function );
             import_list++;
             thunk_list++;
@@ -1193,7 +1215,7 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
             {
                 thunk_list->u1.Function = allocate_stub( name, IntToPtr(ordinal) );
                 WARN("No implementation for %s.%d imported from %s, setting to %p\n",
-                     name, ordinal, debugstr_w(current_modref->ldr.FullDllName.Buffer),
+                     name, ordinal, debugstr_w(importer->modref->ldr.FullDllName.Buffer),
                      (void *)thunk_list->u1.Function );
             }
             TRACE_(imports)("--- Ordinal %s.%d = %p\n", name, ordinal, (void *)thunk_list->u1.Function );
@@ -1209,7 +1231,7 @@ static BOOL import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *descr, LP
             {
                 thunk_list->u1.Function = allocate_stub( name, (const char*)pe_name->Name );
                 WARN("No implementation for %s.%s imported from %s, setting to %p\n",
-                     name, pe_name->Name, debugstr_w(current_modref->ldr.FullDllName.Buffer),
+                     name, pe_name->Name, debugstr_w(importer->modref->ldr.FullDllName.Buffer),
                      (void *)thunk_list->u1.Function );
             }
             TRACE_(imports)("--- %s %s.%d = %p\n",
@@ -1396,21 +1418,21 @@ static void free_tls_slot( LDR_DATA_TABLE_ENTRY *mod )
  */
 static NTSTATUS fixup_imports_ilonly( WINE_MODREF *wm, LPCWSTR load_path, void **entry )
 {
+    struct importer importer;
     NTSTATUS status;
     void *proc;
     const char *name;
-    WINE_MODREF *prev, *imp;
+    WINE_MODREF *imp;
 
     if (!(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS)) return STATUS_SUCCESS;  /* already done */
     wm->ldr.Flags &= ~LDR_DONT_RESOLVE_REFS;
 
-    prev = current_modref;
-    current_modref = wm;
+    push_importer( &importer, wm );
     assert( !wm->ldr.DdagNode->Dependencies.Tail );
     if (!(status = load_dll( load_path, L"mscoree.dll", 0, &imp, FALSE ))
           && !add_module_dependency_after( wm->ldr.DdagNode, imp->ldr.DdagNode, NULL ))
         status = STATUS_NO_MEMORY;
-    current_modref = prev;
+    pop_importer( &importer );
     if (status)
     {
         ERR( "mscoree.dll not found, IL-only binary %s cannot be loaded\n",
@@ -1437,7 +1459,8 @@ static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
 {
     const IMAGE_IMPORT_DESCRIPTOR *imports;
     SINGLE_LIST_ENTRY *dep_after;
-    WINE_MODREF *prev, *imp;
+    struct importer importer;
+    WINE_MODREF *imp;
     int i, nb_imports;
     DWORD size;
     NTSTATUS status;
@@ -1463,8 +1486,7 @@ static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
     /* load the imported modules. They are automatically
      * added to the modref list of the process.
      */
-    prev = current_modref;
-    current_modref = wm;
+    push_importer( &importer, wm );
     status = STATUS_SUCCESS;
     for (i = 0; i < nb_imports; i++)
     {
@@ -1474,7 +1496,7 @@ static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
         else if (imp && imp->ldr.DdagNode != node_ntdll && imp->ldr.DdagNode != node_kernel32)
             add_module_dependency_after( wm->ldr.DdagNode, imp->ldr.DdagNode, dep_after );
     }
-    current_modref = prev;
+    pop_importer( &importer );
     if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
     return status;
 }
@@ -1745,8 +1767,9 @@ static NTSTATUS process_attach( LDR_DDAG_NODE *node, LPVOID lpReserved )
     /* Call DLL entry point */
     if (status == STATUS_SUCCESS)
     {
-        WINE_MODREF *prev = current_modref;
-        current_modref = wm;
+        struct importer importer;
+
+        push_importer( &importer, wm );
 
         call_ldr_notifications( LDR_DLL_NOTIFICATION_REASON_LOADED, &wm->ldr );
         status = MODULE_InitDLL( wm, DLL_PROCESS_ATTACH, lpReserved );
@@ -1763,7 +1786,8 @@ static NTSTATUS process_attach( LDR_DDAG_NODE *node, LPVOID lpReserved )
             last_failed_modref = wm;
             WARN("Initialization of %s failed\n", debugstr_w(wm->ldr.BaseDllName.Buffer));
         }
-        current_modref = prev;
+
+        pop_importer( &importer );
     }
 
     if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
