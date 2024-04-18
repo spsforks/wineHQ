@@ -1033,7 +1033,7 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL 
     return syscall_NtRaiseException( rec, &arm_ctx, first_chance );
 }
 
-NTSTATUS SYSCALL_API NtRaiseHardError( NTSTATUS status, ULONG count, UNICODE_STRING *params_mask,
+NTSTATUS SYSCALL_API NtRaiseHardError( NTSTATUS status, ULONG count, ULONG params_mask,
                                        void **params, HARDERROR_RESPONSE_OPTION option,
                                        HARDERROR_RESPONSE *response )
 {
