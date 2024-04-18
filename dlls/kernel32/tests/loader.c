@@ -2774,7 +2774,6 @@ static void subtest_export_forwarder_dep_chain( size_t num_chained_export_module
 
         /* FreeLibrary() should *not* unload the DLL immediately */
         module = GetModuleHandleA( temp_paths[i] );
-        todo_wine_if(i < ultimate_depender_index && i + 1 != importer_index)
         ok( module == modules[i], "modules[%Iu] expected %p, got %p (unloaded?) err=%lu\n",
             i, modules[i], module, GetLastError() );
     }
@@ -2786,7 +2785,6 @@ static void subtest_export_forwarder_dep_chain( size_t num_chained_export_module
     {
         HMODULE module = GetModuleHandleA( temp_paths[i] );
 
-        todo_wine_if(i < ultimate_depender_index && i + 1 != importer_index)
         ok( module == modules[i], "modules[%Iu] expected %p, got %p (unloaded?) err=%lu\n",
             i, modules[i], module, GetLastError() );
     }
