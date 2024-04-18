@@ -155,6 +155,7 @@ DWORD ddraw_allocate_handle(struct ddraw_handle_table *t, void *object, enum ddr
         t->free_entries = entry->object;
         entry->object = object;
         entry->type = type;
+        t->entry_count++;
 
         return idx;
     }
@@ -206,6 +207,7 @@ void *ddraw_free_handle(struct ddraw_handle_table *t, DWORD handle, enum ddraw_h
     entry->object = t->free_entries;
     entry->type = DDRAW_HANDLE_FREE;
     t->free_entries = entry;
+    t->entry_count--;
 
     return object;
 }
