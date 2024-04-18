@@ -785,7 +785,7 @@ static NTSTATUS build_import_name( WCHAR buffer[256], const char *import, int le
 {
     const API_SET_NAMESPACE *map = NtCurrentTeb()->Peb->ApiSetMap;
     const API_SET_NAMESPACE_ENTRY *entry;
-    const WCHAR *host = current_importer ? current_importer->modref->ldr.BaseDllName.Buffer : NULL;
+    const WCHAR *host = current_importer->modref->ldr.BaseDllName.Buffer;
     UNICODE_STRING str;
 
     while (len && import[len-1] == ' ') len--;  /* remove trailing spaces */
@@ -969,7 +969,7 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
         if (load_dll( load_path, mod_name, 0, &wm, imp->system ) == STATUS_SUCCESS &&
             !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
         {
-            if (!imports_fixup_done && current_importer)
+            if (!imports_fixup_done)
             {
                 add_module_dependency( current_importer->modref->ldr.DdagNode, wm->ldr.DdagNode );
             }
@@ -1039,12 +1039,12 @@ static FARPROC find_ordinal_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY
 
     if (TRACE_ON(snoop))
     {
-        const WCHAR *user = current_importer ? get_last_static_importer_modref()->ldr.BaseDllName.Buffer : NULL;
+        const WCHAR *user = get_last_static_importer_modref()->ldr.BaseDllName.Buffer;
         proc = SNOOP_GetProcAddress( module, exports, exp_size, proc, ordinal, user );
     }
     if (TRACE_ON(relay))
     {
-        const WCHAR *user = current_importer ? get_last_static_importer_modref()->ldr.BaseDllName.Buffer : NULL;
+        const WCHAR *user = get_last_static_importer_modref()->ldr.BaseDllName.Buffer;
         proc = RELAY_GetProcAddress( module, exports, exp_size, proc, ordinal, user );
     }
     return proc;
