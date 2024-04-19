@@ -437,6 +437,134 @@ static BOOL check_extension_support( TEB *teb, const char *extension, const char
     return FALSE;
 }
 
+static BOOL wgl_attrib_uses_layer( int attrib )
+{
+    switch (attrib)
+    {
+    case WGL_ACCELERATION_ARB:
+    case WGL_TRANSPARENT_ARB:
+    case WGL_SHARE_DEPTH_ARB:
+    case WGL_SHARE_STENCIL_ARB:
+    case WGL_SHARE_ACCUM_ARB:
+    case WGL_TRANSPARENT_RED_VALUE_ARB:
+    case WGL_TRANSPARENT_GREEN_VALUE_ARB:
+    case WGL_TRANSPARENT_BLUE_VALUE_ARB:
+    case WGL_TRANSPARENT_ALPHA_VALUE_ARB:
+    case WGL_TRANSPARENT_INDEX_VALUE_ARB:
+    case WGL_SUPPORT_OPENGL_ARB:
+    case WGL_DOUBLE_BUFFER_ARB:
+    case WGL_STEREO_ARB:
+    case WGL_PIXEL_TYPE_ARB:
+    case WGL_TYPE_COLORINDEX_ARB:
+    case WGL_COLOR_BITS_ARB:
+    case WGL_RED_BITS_ARB:
+    case WGL_RED_SHIFT_ARB:
+    case WGL_GREEN_BITS_ARB:
+    case WGL_GREEN_SHIFT_ARB:
+    case WGL_BLUE_BITS_ARB:
+    case WGL_BLUE_SHIFT_ARB:
+    case WGL_ALPHA_BITS_ARB:
+    case WGL_ALPHA_SHIFT_ARB:
+    case WGL_ACCUM_BITS_ARB:
+    case WGL_ACCUM_RED_BITS_ARB:
+    case WGL_ACCUM_GREEN_BITS_ARB:
+    case WGL_ACCUM_BLUE_BITS_ARB:
+    case WGL_ACCUM_ALPHA_BITS_ARB:
+    case WGL_DEPTH_BITS_ARB:
+    case WGL_STENCIL_BITS_ARB:
+    case WGL_AUX_BUFFERS_ARB:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static int wgl_pixel_format_get_attrib( const struct wgl_pixel_format *fmt, int attrib )
+{
+    switch (attrib)
+    {
+    case WGL_DRAW_TO_WINDOW_ARB: return fmt->draw_to_window;
+    case WGL_DRAW_TO_BITMAP_ARB: return fmt->draw_to_bitmap;
+    case WGL_ACCELERATION_ARB:
+        switch (fmt->acceleration)
+        {
+            case 0: return WGL_NO_ACCELERATION_ARB;
+            case 1: return WGL_GENERIC_ACCELERATION_ARB;
+            case 2: return WGL_FULL_ACCELERATION_ARB;
+        }
+        break;
+    case WGL_NEED_PALETTE_ARB: return fmt->need_palette;
+    case WGL_NEED_SYSTEM_PALETTE_ARB: return fmt->need_system_palette;
+    case WGL_SWAP_LAYER_BUFFERS_ARB: return fmt->swap_layer_buffers;
+    case WGL_SWAP_METHOD_ARB:
+        switch (fmt->swap_method)
+        {
+            case 0: return WGL_SWAP_EXCHANGE_ARB;
+            case 1: return WGL_SWAP_COPY_ARB;
+            case 2: return WGL_SWAP_UNDEFINED_ARB;
+        }
+        break;
+    case WGL_NUMBER_OVERLAYS_ARB: return fmt->number_overlays;
+    case WGL_NUMBER_UNDERLAYS_ARB: return fmt->number_underlays;
+    case WGL_TRANSPARENT_ARB: return fmt->transparent;
+    case WGL_SHARE_DEPTH_ARB:
+    case WGL_SHARE_STENCIL_ARB:
+    case WGL_SHARE_ACCUM_ARB:
+        /* We support only a main plane at the moment which by definition
+         * shares the depth/stencil/accum buffers with itself. */
+        return GL_TRUE;
+    case WGL_SUPPORT_GDI_ARB: return fmt->support_gdi;
+    case WGL_SUPPORT_OPENGL_ARB: return fmt->support_opengl;
+    case WGL_DOUBLE_BUFFER_ARB: return fmt->double_buffer;
+    case WGL_STEREO_ARB: return fmt->stereo;
+    case WGL_PIXEL_TYPE_ARB:
+        switch (fmt->pixel_type)
+        {
+            case 0: return WGL_TYPE_RGBA_ARB;
+            case 1: return WGL_TYPE_COLORINDEX_ARB;
+            case 2: return WGL_TYPE_RGBA_UNSIGNED_FLOAT_EXT;
+            case 3: return WGL_TYPE_RGBA_FLOAT_ARB;
+        }
+        break;
+    case WGL_COLOR_BITS_ARB: return fmt->color_bits;
+    case WGL_RED_BITS_ARB: return fmt->red_bits;
+    case WGL_RED_SHIFT_ARB: return fmt->red_shift;
+    case WGL_GREEN_BITS_ARB: return fmt->green_bits;
+    case WGL_GREEN_SHIFT_ARB: return fmt->green_shift;
+    case WGL_BLUE_BITS_ARB: return fmt->blue_bits;
+    case WGL_BLUE_SHIFT_ARB: return fmt->blue_shift;
+    case WGL_ALPHA_BITS_ARB: return fmt->alpha_bits;
+    case WGL_ALPHA_SHIFT_ARB: return fmt->alpha_shift;
+    case WGL_ACCUM_BITS_ARB: return fmt->accum_bits;
+    case WGL_ACCUM_RED_BITS_ARB: return fmt->accum_red_bits;
+    case WGL_ACCUM_GREEN_BITS_ARB: return fmt->accum_green_bits;
+    case WGL_ACCUM_BLUE_BITS_ARB: return fmt->accum_blue_bits;
+    case WGL_ACCUM_ALPHA_BITS_ARB: return fmt->accum_alpha_bits;
+    case WGL_DEPTH_BITS_ARB: return fmt->depth_bits;
+    case WGL_STENCIL_BITS_ARB: return fmt->stencil_bits;
+    case WGL_AUX_BUFFERS_ARB: return fmt->aux_buffers;
+    case WGL_DRAW_TO_PBUFFER_ARB: return fmt->draw_to_pbuffer;
+    case WGL_MAX_PBUFFER_PIXELS_ARB: return fmt->max_pbuffer_pixels;
+    case WGL_MAX_PBUFFER_WIDTH_ARB: return fmt->max_pbuffer_width;
+    case WGL_MAX_PBUFFER_HEIGHT_ARB: return fmt->max_pbuffer_height;
+    case WGL_TRANSPARENT_RED_VALUE_ARB: return fmt->transparent_red_value;
+    case WGL_TRANSPARENT_GREEN_VALUE_ARB: return fmt->transparent_green_value;
+    case WGL_TRANSPARENT_BLUE_VALUE_ARB: return fmt->transparent_blue_value;
+    case WGL_TRANSPARENT_ALPHA_VALUE_ARB: return fmt->transparent_alpha_value;
+    case WGL_TRANSPARENT_INDEX_VALUE_ARB: return fmt->transparent_index_value;
+    case WGL_SAMPLE_BUFFERS_ARB: return fmt->sample_buffers;
+    case WGL_SAMPLES_ARB: return fmt->samples;
+    case WGL_BIND_TO_TEXTURE_RGB_ARB: return fmt->bind_to_texture_rgb;
+    case WGL_BIND_TO_TEXTURE_RGBA_ARB: return fmt->bind_to_texture_rgba;
+    case WGL_BIND_TO_TEXTURE_RECTANGLE_RGB_NV: return fmt->bind_to_texture_rectangle_rgb;
+    case WGL_BIND_TO_TEXTURE_RECTANGLE_RGBA_NV: return fmt->bind_to_texture_rectangle_rgba;
+    case WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB: return fmt->framebuffer_srgb_capable;
+    default: FIXME( "unsupported 0x%x WGL attribute\n", attrib );
+    }
+
+    return 0;
+}
+
 static void wrap_glGetIntegerv( TEB *teb, GLenum pname, GLint *data )
 {
     const struct opengl_funcs *funcs = teb->glTable;
@@ -798,6 +926,234 @@ static HGLRC wrap_wglCreateContextAttribsARB( HDC hdc, HGLRC share, const int *a
     return ret;
 }
 
+enum attrib_match
+{
+    ATTRIB_MATCH_IGNORE,
+    ATTRIB_MATCH_EXACT,
+    ATTRIB_MATCH_MINIMUM,
+};
+
+static enum attrib_match wgl_attrib_match_criteria( int attrib )
+{
+    switch (attrib)
+    {
+    case WGL_DRAW_TO_WINDOW_ARB:
+    case WGL_DRAW_TO_BITMAP_ARB:
+    case WGL_ACCELERATION_ARB:
+    case WGL_NEED_PALETTE_ARB:
+    case WGL_NEED_SYSTEM_PALETTE_ARB:
+    case WGL_SWAP_LAYER_BUFFERS_ARB:
+    case WGL_SWAP_METHOD_ARB:
+    case WGL_SHARE_DEPTH_ARB:
+    case WGL_SHARE_STENCIL_ARB:
+    case WGL_SHARE_ACCUM_ARB:
+    case WGL_SUPPORT_GDI_ARB:
+    case WGL_SUPPORT_OPENGL_ARB:
+    case WGL_DOUBLE_BUFFER_ARB:
+    case WGL_STEREO_ARB:
+    case WGL_PIXEL_TYPE_ARB:
+        return ATTRIB_MATCH_EXACT;
+    case WGL_NUMBER_OVERLAYS_ARB:
+    case WGL_NUMBER_UNDERLAYS_ARB:
+    case WGL_COLOR_BITS_ARB:
+    case WGL_RED_BITS_ARB:
+    case WGL_GREEN_BITS_ARB:
+    case WGL_BLUE_BITS_ARB:
+    case WGL_ALPHA_BITS_ARB:
+    case WGL_ACCUM_BITS_ARB:
+    case WGL_ACCUM_RED_BITS_ARB:
+    case WGL_ACCUM_GREEN_BITS_ARB:
+    case WGL_ACCUM_BLUE_BITS_ARB:
+    case WGL_ACCUM_ALPHA_BITS_ARB:
+    case WGL_DEPTH_BITS_ARB:
+    case WGL_STENCIL_BITS_ARB:
+    case WGL_AUX_BUFFERS_ARB:
+        return ATTRIB_MATCH_MINIMUM;
+    default:
+        return ATTRIB_MATCH_IGNORE;
+    }
+}
+
+static void filter_format_array( const struct wgl_pixel_format **array,
+                                 UINT num_formats, int attrib, int value )
+{
+    UINT i;
+    enum attrib_match match = wgl_attrib_match_criteria( attrib );
+
+    TRACE( "filtering formats for attrib=0x%x value=%d\n", attrib, value );
+
+    for (i = 0; i < num_formats; ++i)
+    {
+        int fmt_value;
+        if (!array[i]) continue;
+        fmt_value = wgl_pixel_format_get_attrib( array[i], attrib );
+        if (match == ATTRIB_MATCH_EXACT)
+        {
+            if (fmt_value != value)
+            {
+                TRACE( "  removing id=%d value=%d != %d\n", array[i]->id, fmt_value, value );
+                array[i] = NULL;
+            }
+        }
+        else if (match == ATTRIB_MATCH_MINIMUM)
+        {
+            if (fmt_value < value)
+            {
+                TRACE( "  removing id=%d value=%d < %d\n", array[i]->id, fmt_value, value );
+                array[i] = NULL;
+            }
+        }
+    }
+}
+
+struct compare_formats_ctx
+{
+    BOOL r, g, b, a, d;
+    BOOL accum_r, accum_g, accum_b, accum_a;
+};
+
+static void update_compare_formats_ctx( struct compare_formats_ctx *ctx,
+                                       int attrib, int value )
+{
+    switch (attrib)
+    {
+        case WGL_RED_BITS_ARB: if (value > 0) ctx->r = TRUE;  break;
+        case WGL_GREEN_BITS_ARB: if (value > 0) ctx->g = TRUE;  break;
+        case WGL_BLUE_BITS_ARB: if (value > 0) ctx->b = TRUE;  break;
+        case WGL_ALPHA_BITS_ARB: if (value > 0) ctx->a = TRUE;  break;
+        case WGL_ACCUM_RED_BITS_ARB: if (value > 0) ctx->accum_r = TRUE;  break;
+        case WGL_ACCUM_GREEN_BITS_ARB: if (value > 0) ctx->accum_g = TRUE;  break;
+        case WGL_ACCUM_BLUE_BITS_ARB: if (value > 0) ctx->accum_b = TRUE;  break;
+        case WGL_ACCUM_ALPHA_BITS_ARB: if (value > 0) ctx->accum_a = TRUE;  break;
+        case WGL_DEPTH_BITS_ARB: if (value > 0) ctx->d = TRUE;  break;
+    }
+}
+
+static int compare_formats( const void *a, const void *b, void *arg )
+{
+    const struct wgl_pixel_format *fmt_a = *(void**)a, *fmt_b = *(void**)b;
+    struct compare_formats_ctx *ctx = arg;
+    int bits_a = 0, bits_b = 0;
+    int accum_bits_a = 0, accum_bits_b = 0;
+
+    if (!fmt_a) return 1;
+    if (!fmt_b) return -1;
+
+#define ORDER_BY_DECREASING(field) \
+    do { if (fmt_a->field != fmt_b->field) return fmt_b->field - fmt_a->field; } while(0)
+#define ORDER_BY_INCREASING(field) \
+    do { if (fmt_a->field != fmt_b->field) return fmt_a->field - fmt_b->field; } while(0)
+#define ORDER_BY_DECREASING_RELEVANT_BITS(p) \
+    if (!ctx || ctx->p##r) { p##bits_a += fmt_a->p##red_bits; bits_b += fmt_b->p##red_bits; } \
+    if (!ctx || ctx->p##g) { p##bits_a += fmt_a->p##green_bits; bits_b += fmt_b->p##green_bits; } \
+    if (!ctx || ctx->p##b) { p##bits_a += fmt_a->p##blue_bits; bits_b += fmt_b->p##blue_bits; } \
+    if (!ctx || ctx->p##a) { p##bits_a += fmt_a->p##alpha_bits; bits_b += fmt_b->p##alpha_bits; } \
+    if (p##bits_a != p##bits_b) return p##bits_b - p##bits_a;
+
+    /* Window renderable first. */
+    ORDER_BY_DECREASING(draw_to_window);
+    /* Larger total number of relevant color bits first. */
+    ORDER_BY_DECREASING_RELEVANT_BITS();
+    /* Smaller buffer size first. */
+    ORDER_BY_INCREASING(color_bits);
+    /* Smaller sample buffers size first. */
+    ORDER_BY_INCREASING(sample_buffers);
+    /* Smaller samples size first. */
+    ORDER_BY_INCREASING(samples);
+    /* GLX places larger depths first. EGL places smaller depths first.
+     * For now use what WineX11 does: larger depths first, except if no depth
+     * is specified in which case smaller depths first. */
+    if (ctx && ctx->d)
+        ORDER_BY_DECREASING(depth_bits);
+    else
+        ORDER_BY_INCREASING(depth_bits);
+    /* Smaller stencil bits size first. */
+    ORDER_BY_INCREASING(stencil_bits);
+    /* Larger total number of relevant accum bits first. */
+    ORDER_BY_DECREASING_RELEVANT_BITS(accum_);
+
+#undef ORDER_BY_DECREASING
+#undef ORDER_BY_INCREASING
+#undef ORDER_BY_DECREASING_RELEVANT_BITS
+
+    return fmt_a->id - fmt_b->id;
+}
+
+#if defined(__FreeBSD__) && __FreeBSD__ < 14
+/* FreeBSD versions < 14 place the context argument first. */
+static int compare_formats_freebsd( void *arg, const void *a, const void *b )
+{
+    return compare_formats( a, b, arg );
+}
+#endif
+
+#if !defined(_GNU_SOURCE) && !defined(__FreeBSD__)
+static int compare_formats_no_ctx( const void *a, const void *b )
+{
+    return compare_formats( a, b, NULL );
+}
+#endif
+
+static BOOL wrap_wglChoosePixelFormatARB( HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList,
+                                          UINT nMaxFormats, int *piFormats, UINT *nNumFormats )
+{
+    const struct opengl_funcs *funcs = get_dc_funcs( hdc );
+    const struct wgl_pixel_format *formats;
+    UINT num_formats;
+    UINT i;
+    const int *attribi = piAttribIList;
+    const FLOAT *attribf = pfAttribFList;
+    const struct wgl_pixel_format **format_array;
+    struct compare_formats_ctx ctx = {0};
+
+    TRACE( "(%p, %p, %p, %d, %p, %p)\n",
+           hdc, piAttribIList, pfAttribFList, nMaxFormats, piFormats, nNumFormats );
+
+    /* Initialize the format_array with (pointers to) all formats. */
+    num_formats = funcs->wgl.p_get_pixel_formats( &formats );
+    format_array = malloc( num_formats * sizeof(*format_array) );
+    if (!format_array) return FALSE;
+    for (i = 0; i < num_formats; i++) format_array[i] = &formats[i];
+
+    /* Remove formats that are not acceptable. */
+    for (; attribi && *attribi; attribi += 2)
+    {
+        filter_format_array( format_array, num_formats, attribi[0], attribi[1] );
+        update_compare_formats_ctx( &ctx, attribi[0], attribi[1] );
+    }
+    for (; attribf && *attribf; attribf += 2)
+    {
+        filter_format_array( format_array, num_formats, attribf[0], attribf[1] );
+        update_compare_formats_ctx( &ctx, attribf[0], attribf[1] );
+    }
+
+    /* Sort formats based on attributes. */
+#if defined(_GNU_SOURCE) || __FreeBSD__ >= 14
+    qsort_r( format_array, num_formats, sizeof(*format_array), compare_formats, &ctx );
+#elif defined(__FreeBSD__)
+    qsort_r( format_array, num_formats, sizeof(*format_array), ctx, compare_formats_freebsd );
+#else
+    qsort( format_array, num_formats, sizeof(*format_array), compare_formats_no_ctx );
+#endif
+
+    TRACE( "Sorted formats (max=%d): ", nMaxFormats );
+    for (i = 0; i < num_formats && format_array[i]; i++)
+        TRACE("%d, ", format_array[i]->id);
+    TRACE( "\n" );
+
+    /* Return the best nMaxFormats format ids. */
+    *nNumFormats = 0;
+    for (i = 0; i < num_formats && i < nMaxFormats && format_array[i]; i++)
+    {
+        (*nNumFormats)++;
+        piFormats[i] = format_array[i]->id;
+    }
+
+    free( format_array );
+
+    return TRUE;
+}
+
 static HPBUFFERARB wrap_wglCreatePbufferARB( HDC hdc, int format, int width, int height, const int *attribs )
 {
     HPBUFFERARB ret;
@@ -826,6 +1182,78 @@ static HDC wrap_wglGetPbufferDCARB( HPBUFFERARB handle )
     struct wgl_handle *ptr;
     if (!(ptr = get_handle_ptr( handle, HANDLE_PBUFFER ))) return 0;
     return ptr->funcs->ext.p_wglGetPbufferDCARB( ptr->u.pbuffer );
+}
+
+static BOOL wrap_wglGetPixelFormatAttribivARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+                                               UINT nAttributes, const int *piAttributes, INT *piValues )
+{
+    const struct opengl_funcs *funcs = get_dc_funcs( hdc );
+    const struct wgl_pixel_format *formats, *format;
+    UINT num_formats;
+    UINT i;
+
+    TRACE( "(%p, %d, %d, %d, %p, %p)\n", hdc, iPixelFormat, iLayerPlane, nAttributes, piAttributes, piValues );
+
+    num_formats = funcs->wgl.p_get_pixel_formats( &formats );
+
+    if (iPixelFormat > 0 && iPixelFormat - 1 < num_formats)
+        format = &formats[iPixelFormat - 1];
+    else
+        format = NULL;
+
+    for (i = 0; i < nAttributes; ++i)
+    {
+        int attrib = piAttributes[i];
+        switch (attrib)
+        {
+        case WGL_NUMBER_PIXEL_FORMATS_ARB:
+            piValues[i] = num_formats;
+            break;
+        default:
+            if (format && (iLayerPlane == 0 || !wgl_attrib_uses_layer( attrib )))
+                piValues[i] = wgl_pixel_format_get_attrib( format, attrib );
+            else
+                return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+static BOOL wrap_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+                                               UINT nAttributes, const int *pfAttributes, FLOAT *pfValues )
+{
+    const struct opengl_funcs *funcs = get_dc_funcs( hdc );
+    const struct wgl_pixel_format *formats, *format;
+    UINT num_formats;
+    UINT i;
+
+    TRACE( "(%p, %d, %d, %d, %p, %p)\n", hdc, iPixelFormat, iLayerPlane, nAttributes, pfAttributes, pfValues );
+
+    num_formats = funcs->wgl.p_get_pixel_formats( &formats );
+
+    if (iPixelFormat > 0 && iPixelFormat - 1 < num_formats)
+        format = &formats[iPixelFormat - 1];
+    else
+        format = NULL;
+
+    for (i = 0; i < nAttributes; ++i)
+    {
+        int attrib = pfAttributes[i];
+        switch (attrib)
+        {
+        case WGL_NUMBER_PIXEL_FORMATS_ARB:
+            pfValues[i] = num_formats;
+            break;
+        default:
+            if (format && (iLayerPlane == 0 || !wgl_attrib_uses_layer( attrib )))
+                pfValues[i] = wgl_pixel_format_get_attrib( format, attrib );
+            else
+                return FALSE;
+        }
+    }
+
+    return TRUE;
 }
 
 static BOOL wrap_wglMakeContextCurrentARB( TEB *teb, HDC draw_hdc, HDC read_hdc, HGLRC hglrc )
@@ -1064,6 +1492,49 @@ NTSTATUS ext_wglBindTexImageARB( void *args )
     return STATUS_SUCCESS;
 }
 
+NTSTATUS ext_wglChoosePixelFormatARB( void *args )
+{
+    struct wglChoosePixelFormatARB_params *params = args;
+    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+    UINT i;
+
+    if (!funcs) return STATUS_NOT_IMPLEMENTED;
+
+    if (funcs->ext.p_wglChoosePixelFormatARB &&
+        funcs->ext.p_wglChoosePixelFormatARB != (void *)1)
+    {
+        params->ret =
+            funcs->ext.p_wglChoosePixelFormatARB( params->hdc, params->piAttribIList,
+                                                  params->pfAttribFList, params->nMaxFormats,
+                                                  params->piFormats, params->nNumFormats );
+        TRACE("Formats from driver impl (max=%d): ", params->nMaxFormats);
+        for (i = 0; i < *params->nNumFormats; i++)
+            TRACE("%d, ", params->piFormats[i]);
+        TRACE("\n");
+    }
+
+
+    if (funcs->wgl.p_get_pixel_formats)
+    {
+        params->ret =
+            wrap_wglChoosePixelFormatARB( params->hdc, params->piAttribIList,
+                                          params->pfAttribFList, params->nMaxFormats,
+                                          params->piFormats, params->nNumFormats );
+        TRACE("Formats from opengl32 impl (max=%d): ", params->nMaxFormats);
+        for (i = 0; i < *params->nNumFormats; i++)
+            TRACE("%d, ", params->piFormats[i]);
+        TRACE("\n");
+    }
+
+    /*
+    else
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+    */
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS ext_wglCreateContextAttribsARB( void *args )
 {
     struct wglCreateContextAttribsARB_params *params = args;
@@ -1097,6 +1568,64 @@ NTSTATUS ext_wglGetPbufferDCARB( void *args )
     pthread_mutex_lock( &wgl_lock );
     params->ret = wrap_wglGetPbufferDCARB( params->hPbuffer );
     pthread_mutex_unlock( &wgl_lock );
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args )
+{
+    struct wglGetPixelFormatAttribivARB_params *params = args;
+    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+
+    if (!funcs) return STATUS_NOT_IMPLEMENTED;
+
+    if (funcs->ext.p_wglGetPixelFormatAttribivARB &&
+        funcs->ext.p_wglGetPixelFormatAttribivARB != (void *)1)
+    {
+        params->ret =
+            funcs->ext.p_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat,
+                                                       params->iLayerPlane, params->nAttributes,
+                                                       params->piAttributes, params->piValues );
+    }
+    else if (funcs->wgl.p_get_pixel_formats)
+    {
+        params->ret = wrap_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat,
+                                                         params->iLayerPlane, params->nAttributes,
+                                                         params->piAttributes, params->piValues );
+    }
+    else
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args )
+{
+    struct wglGetPixelFormatAttribfvARB_params *params = args;
+    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
+
+    if (!funcs) return STATUS_NOT_IMPLEMENTED;
+
+    if (funcs->ext.p_wglGetPixelFormatAttribfvARB &&
+        funcs->ext.p_wglGetPixelFormatAttribfvARB != (void *)1)
+    {
+        params->ret =
+            funcs->ext.p_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat,
+                                                       params->iLayerPlane, params->nAttributes,
+                                                       params->piAttributes, params->pfValues );
+    }
+    else if (funcs->wgl.p_get_pixel_formats)
+    {
+        params->ret = wrap_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat,
+                                                         params->iLayerPlane, params->nAttributes,
+                                                         params->piAttributes, params->pfValues );
+    }
+    else
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
     return STATUS_SUCCESS;
 }
 

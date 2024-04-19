@@ -7,10 +7,63 @@
 #define WINE_GLAPI
 #endif
 
-#define WINE_WGL_DRIVER_VERSION 23
+#define WINE_WGL_DRIVER_VERSION 24
 
 struct wgl_context;
 struct wgl_pbuffer;
+
+struct wgl_pixel_format
+{
+    unsigned int id;
+    unsigned int draw_to_window:1;
+    unsigned int draw_to_bitmap:1;
+    unsigned int acceleration:2; /* 0=No, 1=Generic, 2=Full */
+    unsigned int need_palette:1;
+    unsigned int need_system_palette:1;
+    unsigned int swap_layer_buffers:1;
+    unsigned int swap_method:2; /* 0=Exchange, 1=Copy, 2=Undefined */
+    unsigned int number_overlays:8;
+    unsigned int number_underlays:8;
+    unsigned int transparent:1;
+    unsigned int support_gdi:1;
+    unsigned int support_opengl:1;
+    unsigned int double_buffer:1;
+    unsigned int stereo:1;
+    unsigned int pixel_type:2; /* 0=RGBA, 1=ColorIndex, 2=RGBA_UNSIGNED_FLOAT 3=RGBA_FLOAT */
+    unsigned int color_bits:11;
+    unsigned int red_bits:8;
+    unsigned int red_shift:8;
+    unsigned int green_bits:8;
+    unsigned int green_shift:8;
+    unsigned int blue_bits:8;
+    unsigned int blue_shift:8;
+    unsigned int alpha_bits:8;
+    unsigned int alpha_shift:8;
+    unsigned int accum_bits:8;
+    unsigned int accum_red_bits:8;
+    unsigned int accum_green_bits:8;
+    unsigned int accum_blue_bits:8;
+    unsigned int accum_alpha_bits:8;
+    unsigned int depth_bits:8;
+    unsigned int stencil_bits:8;
+    unsigned int aux_buffers:8;
+    unsigned int draw_to_pbuffer:1;
+    unsigned int max_pbuffer_pixels;
+    unsigned int max_pbuffer_width;
+    unsigned int max_pbuffer_height;
+    unsigned int transparent_red_value;
+    unsigned int transparent_green_value;
+    unsigned int transparent_blue_value;
+    unsigned int transparent_alpha_value;
+    unsigned int transparent_index_value;
+    unsigned int sample_buffers:1;
+    unsigned int samples:8;
+    unsigned int bind_to_texture_rgb:1;
+    unsigned int bind_to_texture_rgba:1;
+    unsigned int bind_to_texture_rectangle_rgb:1;
+    unsigned int bind_to_texture_rectangle_rgba:1;
+    unsigned int framebuffer_srgb_capable:1;
+};
 
 struct opengl_funcs
 {
@@ -26,6 +79,7 @@ struct opengl_funcs
         BOOL       (WINE_GLAPI *p_wglSetPixelFormat)( HDC hdc, int ipfd, const PIXELFORMATDESCRIPTOR *ppfd );
         BOOL       (WINE_GLAPI *p_wglShareLists)( struct wgl_context * hrcSrvShare, struct wgl_context * hrcSrvSource );
         BOOL       (WINE_GLAPI *p_wglSwapBuffers)( HDC hdc );
+        UINT       (WINE_GLAPI *p_get_pixel_formats)( const struct wgl_pixel_format ** formats );
     } wgl;
 
     struct

@@ -37,10 +37,13 @@ extern NTSTATUS ext_glDebugMessageCallbackAMD( void *args );
 extern NTSTATUS ext_glDebugMessageCallbackARB( void *args );
 extern NTSTATUS ext_glGetStringi( void *args );
 extern NTSTATUS ext_wglBindTexImageARB( void *args );
+extern NTSTATUS ext_wglChoosePixelFormatARB( void *args );
 extern NTSTATUS ext_wglCreateContextAttribsARB( void *args );
 extern NTSTATUS ext_wglCreatePbufferARB( void *args );
 extern NTSTATUS ext_wglDestroyPbufferARB( void *args );
 extern NTSTATUS ext_wglGetPbufferDCARB( void *args );
+extern NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args );
+extern NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args );
 extern NTSTATUS ext_wglMakeContextCurrentARB( void *args );
 extern NTSTATUS ext_wglQueryPbufferARB( void *args );
 extern NTSTATUS ext_wglReleasePbufferDCARB( void *args );
@@ -24083,15 +24086,6 @@ static NTSTATUS ext_wglAllocateMemoryNV( void *args )
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS ext_wglChoosePixelFormatARB( void *args )
-{
-    struct wglChoosePixelFormatARB_params *params = args;
-    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
-    if (!funcs || !funcs->ext.p_wglChoosePixelFormatARB) return STATUS_NOT_IMPLEMENTED;
-    params->ret = funcs->ext.p_wglChoosePixelFormatARB( params->hdc, params->piAttribIList, params->pfAttribFList, params->nMaxFormats, params->piFormats, params->nNumFormats );
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS ext_wglFreeMemoryNV( void *args )
 {
     struct wglFreeMemoryNV_params *params = args;
@@ -24122,24 +24116,6 @@ NTSTATUS ext_wglGetExtensionsStringEXT( void *args )
     struct wglGetExtensionsStringEXT_params *params = args;
     const struct opengl_funcs *funcs = params->teb->glTable;
     params->ret = funcs->ext.p_wglGetExtensionsStringEXT();
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS ext_wglGetPixelFormatAttribfvARB( void *args )
-{
-    struct wglGetPixelFormatAttribfvARB_params *params = args;
-    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
-    if (!funcs || !funcs->ext.p_wglGetPixelFormatAttribfvARB) return STATUS_NOT_IMPLEMENTED;
-    params->ret = funcs->ext.p_wglGetPixelFormatAttribfvARB( params->hdc, params->iPixelFormat, params->iLayerPlane, params->nAttributes, params->piAttributes, params->pfValues );
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS ext_wglGetPixelFormatAttribivARB( void *args )
-{
-    struct wglGetPixelFormatAttribivARB_params *params = args;
-    const struct opengl_funcs *funcs = get_dc_funcs( params->hdc );
-    if (!funcs || !funcs->ext.p_wglGetPixelFormatAttribivARB) return STATUS_NOT_IMPLEMENTED;
-    params->ret = funcs->ext.p_wglGetPixelFormatAttribivARB( params->hdc, params->iPixelFormat, params->iLayerPlane, params->nAttributes, params->piAttributes, params->piValues );
     return STATUS_SUCCESS;
 }
 
