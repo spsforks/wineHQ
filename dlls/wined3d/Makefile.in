@@ -1,6 +1,6 @@
 MODULE    = wined3d.dll
 IMPORTLIB = wined3d
-IMPORTS   = $(VKD3D_PE_LIBS) dxguid opengl32 user32 gdi32 advapi32
+IMPORTS   = $(VKD3D_PE_LIBS) dxguid opengl32 user32 gdi32 advapi32 d3dcompiler
 EXTRAINCL = $(VKD3D_PE_CFLAGS)
 
 SOURCES = \
@@ -22,6 +22,7 @@ SOURCES = \
 	palette.c \
 	query.c \
 	resource.c \
+	resource.rc \
 	sampler.c \
 	shader.c \
 	shader_sm1.c \
