@@ -46,6 +46,14 @@ static const struct user_driver_funcs waylanddrv_funcs =
     .pwine_get_wgl_driver = WAYLAND_wine_get_wgl_driver,
 };
 
+BOOL waylanddrv_unaccelerated_pointer;
+
+static NTSTATUS waylanddrv_unix_set_unaccelerated_pointer(void *arg)
+{
+    waylanddrv_unaccelerated_pointer = arg ? *((BOOL *)arg) : FALSE;
+    return 0;
+}
+
 static NTSTATUS waylanddrv_unix_init(void *arg)
 {
     /* Set the user driver functions now so that they are available during
@@ -75,6 +83,7 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
 {
     waylanddrv_unix_init,
     waylanddrv_unix_read_events,
+    waylanddrv_unix_set_unaccelerated_pointer,
 };
 
 C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == waylanddrv_unix_func_count);
@@ -85,6 +94,7 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
     waylanddrv_unix_init,
     waylanddrv_unix_read_events,
+    waylanddrv_unix_set_unaccelerated_pointer,
 };
 
 C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == waylanddrv_unix_func_count);

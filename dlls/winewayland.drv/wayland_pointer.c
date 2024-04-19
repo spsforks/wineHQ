@@ -34,6 +34,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
 
+extern BOOL waylanddrv_unaccelerated_pointer;
+
 static HWND wayland_pointer_get_focused_hwnd(void)
 {
     struct wayland_pointer *pointer = &process_wayland.pointer;
@@ -259,15 +261,28 @@ static void relative_pointer_v1_relative_motion(void *data,
     POINT screen, origin;
     struct wayland_surface *surface;
     RECT window_rect;
+    double delta_x;
+    double delta_y;
 
     if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
     if (!(surface = wayland_surface_lock_hwnd(hwnd))) return;
 
     window_rect = surface->window.rect;
 
+    if(waylanddrv_unaccelerated_pointer)
+    {
+        delta_x = wl_fixed_to_double(dx_unaccel);
+        delta_y = wl_fixed_to_double(dy_unaccel);
+    }
+    else
+    {
+        delta_x = wl_fixed_to_double(dx);
+        delta_y = wl_fixed_to_double(dy);
+    }
+
     wayland_surface_coords_to_window(surface,
-                                     wl_fixed_to_double(dx),
-                                     wl_fixed_to_double(dy),
+                                     delta_x,
+                                     delta_y,
                                      (int *)&screen.x, (int *)&screen.y);
 
     pthread_mutex_unlock(&surface->mutex);
@@ -313,8 +328,8 @@ static void relative_pointer_v1_relative_motion(void *data,
     input.mi.dy = screen.y;
     input.mi.dwFlags = MOUSEEVENTF_MOVE;
 
-    TRACE("hwnd=%p wayland_dxdy=%.2f,%.2f screen_dxdy=%d,%d\n",
-          hwnd, wl_fixed_to_double(dx), wl_fixed_to_double(dy),
+    TRACE("hwnd=%p unaccelerated_pointer=%d wayland_dxdy=%.2f,%.2f screen_dxdy=%d,%d\n",
+          hwnd, waylanddrv_unaccelerated_pointer, delta_x, delta_y,
           (int)screen.x, (int)screen.y);
 
     NtUserSendHardwareInput(hwnd, 0, &input, 0);

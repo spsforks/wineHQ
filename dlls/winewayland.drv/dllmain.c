@@ -20,6 +20,7 @@
 
 #include "waylanddrv_dll.h"
 
+#include "winreg.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
@@ -38,11 +39,51 @@ static DWORD WINAPI wayland_read_events_thread(void *arg)
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
 {
     DWORD tid;
+    DWORD regRes;
+    DWORD regValueSize;
+    LPWSTR regValue = NULL;
+    HKEY hSubKey = NULL;
+    BOOL unaccelerated_pointer = FALSE;
 
     if (reason != DLL_PROCESS_ATTACH) return TRUE;
 
     DisableThreadLibraryCalls(instance);
     if (__wine_init_unix_call()) return FALSE;
+
+    regRes = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Wine\\Wayland Driver", 0, KEY_READ, &hSubKey);
+    if (regRes != ERROR_SUCCESS)
+    {
+        WINE_TRACE("Registry key HKCU\\Software\\Wine\\Wayland Driver not exist.\n");
+        goto close_registry;
+    }
+
+    regRes = RegQueryValueExW(hSubKey, L"unaccelerated_pointer", NULL, NULL, NULL, &regValueSize);
+    if (regRes != ERROR_SUCCESS)
+    {
+        WINE_ERR("Can't get value size for HKCU\\Software\\Wine\\Wayland Driver\\unaccelerated_pointer. Error: %ld\n", regRes);
+        goto close_registry;
+    }
+
+    regValue = calloc(regValueSize + 1, sizeof(*regValue));
+
+    regRes = RegQueryValueExW(hSubKey, L"unaccelerated_pointer", NULL, NULL, (LPBYTE)regValue, &regValueSize);
+    if (regRes != ERROR_SUCCESS)
+    {
+        WINE_ERR("Can't get value for HKCU\\Software\\Wine\\Wayland Driver\\unaccelerated_pointer. Error: %ld\n", regRes);
+        free(regValue);
+        goto close_registry;
+    }
+
+    WINE_TRACE("Registry HKCU\\Software\\Wine\\Wayland Driver\\unaccelerated_pointer value=%hs.\n", regValue);
+    if(*regValue)
+        unaccelerated_pointer = TRUE;
+
+    free(regValue);
+
+close_registry:
+    RegCloseKey(hSubKey);
+
+    WAYLANDDRV_UNIX_CALL(set_unaccelerated_pointer, &unaccelerated_pointer);
 
     if (WAYLANDDRV_UNIX_CALL(init, NULL))
         return FALSE;
