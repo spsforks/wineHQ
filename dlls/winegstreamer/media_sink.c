@@ -91,6 +91,7 @@ struct media_sink
 
     IMFByteStream *bytestream;
     IMFMediaEventQueue *event_queue;
+    IMFPresentationClock *clock;
 
     struct list stream_sinks;
 
@@ -445,6 +446,7 @@ static HRESULT WINAPI stream_sink_type_handler_SetCurrentMediaType(IMFMediaTypeH
 static HRESULT WINAPI stream_sink_type_handler_GetCurrentMediaType(IMFMediaTypeHandler *iface, IMFMediaType **type)
 {
     struct stream_sink *stream_sink = impl_from_IMFMediaTypeHandler(iface);
+    HRESULT hr;
 
     TRACE("iface %p, type %p.\n", iface, type);
 
@@ -453,16 +455,27 @@ static HRESULT WINAPI stream_sink_type_handler_GetCurrentMediaType(IMFMediaTypeH
     if (!stream_sink->type)
         return MF_E_NOT_INITIALIZED;
 
-    IMFMediaType_AddRef((*type = stream_sink->type));
+    if (FAILED(hr = MFCreateMediaType(type)))
+        return hr;
 
-    return S_OK;
+    if (FAILED(hr = IMFMediaType_CopyAllItems(stream_sink->type, (IMFAttributes *)*type)))
+        IMFMediaType_Release(*type);
+
+    return hr;
 }
 
 static HRESULT WINAPI stream_sink_type_handler_GetMajorType(IMFMediaTypeHandler *iface, GUID *type)
 {
-    FIXME("iface %p, type %p.\n", iface, type);
+    struct stream_sink *stream_sink = impl_from_IMFMediaTypeHandler(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, type %p.\n", iface, type);
+
+    if (!type)
+        return E_POINTER;
+    if (!stream_sink->type)
+        return MF_E_NOT_INITIALIZED;
+
+    return IMFMediaType_GetGUID(stream_sink->type, &MF_MT_MAJOR_TYPE, type);
 }
 
 static const IMFMediaTypeHandlerVtbl stream_sink_type_handler_vtbl =
@@ -586,7 +599,12 @@ static HRESULT media_sink_start(struct media_sink *media_sink)
 
     media_sink->state = STATE_STARTED;
 
-    return media_sink_queue_stream_event(media_sink, MEStreamSinkStarted);
+    if (FAILED(hr = media_sink_queue_stream_event(media_sink, MEStreamSinkStarted)))
+        TRACE("Queueing MEStreamSinkStarted failed\n");
+    else if (FAILED(hr = media_sink_queue_stream_event(media_sink, MEStreamSinkRequestSample)))
+        TRACE("Queueing MEStreamSinkRequestSample failed\n");
+
+    return hr;
 }
 
 static HRESULT media_sink_stop(struct media_sink *media_sink)
@@ -604,6 +622,7 @@ static HRESULT media_sink_pause(struct media_sink *media_sink)
 
 static HRESULT media_sink_process(struct media_sink *media_sink, IMFSample *sample, UINT32 stream_id)
 {
+    struct stream_sink *stream_sink = NULL;
     wg_muxer_t muxer = media_sink->muxer;
     struct wg_sample *wg_sample;
     LONGLONG time, duration;
@@ -635,6 +654,18 @@ static HRESULT media_sink_process(struct media_sink *media_sink, IMFSample *samp
 
     hr = wg_muxer_push_sample(muxer, wg_sample, stream_id);
     wg_sample_release(wg_sample);
+
+    if (SUCCEEDED(hr))
+    {
+        LIST_FOR_EACH_ENTRY(stream_sink, &media_sink->stream_sinks, struct stream_sink, entry)
+        {
+            if (stream_sink->id == stream_id)
+            {
+                hr = IMFMediaEventQueue_QueueEventParamVar(stream_sink->event_queue, MEStreamSinkRequestSample, &GUID_NULL, S_OK, NULL);
+                break;
+            }
+        }
+    }
 
     return hr;
 }
@@ -763,6 +794,9 @@ static HRESULT WINAPI media_sink_AddStreamSink(IMFFinalizableMediaSink *iface, D
     TRACE("iface %p, stream_sink_id %#lx, media_type %p, stream_sink %p.\n",
             iface, stream_sink_id, media_type, stream_sink);
 
+    if (stream_sink)
+        *stream_sink = NULL;
+
     EnterCriticalSection(&media_sink->cs);
 
     if (media_sink_get_stream_sink_by_id(media_sink, stream_sink_id))
@@ -877,16 +911,64 @@ static HRESULT WINAPI media_sink_GetStreamSinkById(IMFFinalizableMediaSink *ifac
 
 static HRESULT WINAPI media_sink_SetPresentationClock(IMFFinalizableMediaSink *iface, IMFPresentationClock *clock)
 {
-    FIXME("iface %p, clock %p stub!\n", iface, clock);
+    struct media_sink *media_sink = impl_from_IMFFinalizableMediaSink(iface);
+    HRESULT hr = S_OK;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, clock %p\n", iface, clock);
+
+    EnterCriticalSection(&media_sink->cs);
+
+    if (media_sink->state == STATE_SHUTDOWN)
+    {
+        hr = MF_E_SHUTDOWN;
+        goto done;
+    }
+
+    if (media_sink->clock)
+    {
+        hr = IMFPresentationClock_RemoveClockStateSink(media_sink->clock, &media_sink->IMFClockStateSink_iface);
+        if (FAILED(hr))
+            goto done;
+        IMFPresentationClock_Release(media_sink->clock);
+        media_sink->clock = NULL;
+    }
+
+    if (clock)
+    {
+        hr = IMFPresentationClock_AddClockStateSink(clock, &media_sink->IMFClockStateSink_iface);
+        if (FAILED(hr))
+            goto done;
+        IMFPresentationClock_AddRef(clock);
+        media_sink->clock = clock;
+    }
+
+done:
+    LeaveCriticalSection(&media_sink->cs);
+    return hr;
 }
 
 static HRESULT WINAPI media_sink_GetPresentationClock(IMFFinalizableMediaSink *iface, IMFPresentationClock **clock)
 {
-    FIXME("iface %p, clock %p stub!\n", iface, clock);
+    struct media_sink *media_sink = impl_from_IMFFinalizableMediaSink(iface);
+    HRESULT hr = S_OK;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, clock %p\n", iface, clock);
+
+    if (!clock)
+        return E_POINTER;
+
+    EnterCriticalSection(&media_sink->cs);
+
+    if (media_sink->state == STATE_SHUTDOWN)
+        hr = MF_E_SHUTDOWN;
+    else if (media_sink->clock)
+        IMFPresentationClock_AddRef(*clock = media_sink->clock);
+    else
+        hr = MF_E_NO_CLOCK;
+
+    LeaveCriticalSection(&media_sink->cs);
+
+    return hr;
 }
 
 static HRESULT WINAPI media_sink_Shutdown(IMFFinalizableMediaSink *iface)
@@ -913,6 +995,11 @@ static HRESULT WINAPI media_sink_Shutdown(IMFFinalizableMediaSink *iface)
 
     IMFMediaEventQueue_Shutdown(media_sink->event_queue);
     IMFByteStream_Close(media_sink->bytestream);
+    if (media_sink->clock)
+    {
+        IMFPresentationClock_RemoveClockStateSink(media_sink->clock, &media_sink->IMFClockStateSink_iface);
+        IMFPresentationClock_Release(media_sink->clock);
+    }
 
     media_sink->state = STATE_SHUTDOWN;
 
@@ -1337,6 +1424,14 @@ static HRESULT WINAPI mpeg4_sink_class_factory_CreateMediaSink(IMFSinkClassFacto
     return sink_class_factory_create_media_sink(iface, bytestream, format, video_type, audio_type, out);
 }
 
+static HRESULT WINAPI adts_sink_class_factory_CreateMediaSink(IMFSinkClassFactory *iface, IMFByteStream *bytestream,
+        IMFMediaType *video_type, IMFMediaType *audio_type, IMFMediaSink **out)
+{
+    const char *format = "application/x-gst-av-adts";
+
+    return sink_class_factory_create_media_sink(iface, bytestream, format, video_type, audio_type, out);
+}
+
 static const IMFSinkClassFactoryVtbl mp3_sink_class_factory_vtbl =
 {
     sink_class_factory_QueryInterface,
@@ -1353,8 +1448,17 @@ static const IMFSinkClassFactoryVtbl mpeg4_sink_class_factory_vtbl =
     mpeg4_sink_class_factory_CreateMediaSink,
 };
 
+static const IMFSinkClassFactoryVtbl aac_sink_class_factory_vtbl =
+{
+    sink_class_factory_QueryInterface,
+    sink_class_factory_AddRef,
+    sink_class_factory_Release,
+    adts_sink_class_factory_CreateMediaSink,
+};
+
 static IMFSinkClassFactory mp3_sink_class_factory = { &mp3_sink_class_factory_vtbl };
 static IMFSinkClassFactory mpeg4_sink_class_factory = { &mpeg4_sink_class_factory_vtbl };
+static IMFSinkClassFactory aac_sink_class_factory = { &aac_sink_class_factory_vtbl };
 
 HRESULT mp3_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 {
@@ -1365,5 +1469,11 @@ HRESULT mp3_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 HRESULT mpeg4_sink_class_factory_create(IUnknown *outer, IUnknown **out)
 {
     *out = (IUnknown *)&mpeg4_sink_class_factory;
+    return S_OK;
+}
+
+HRESULT adts_sink_class_factory_create(IUnknown *outer, IUnknown **out)
+{
+    *out = (IUnknown *)&aac_sink_class_factory;
     return S_OK;
 }

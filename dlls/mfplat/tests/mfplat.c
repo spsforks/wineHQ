@@ -84,6 +84,8 @@ DEFINE_MEDIATYPE_GUID(MFVideoFormat_IMC2, MAKEFOURCC('I','M','C','2'));
 DEFINE_MEDIATYPE_GUID(MFVideoFormat_IMC3, MAKEFOURCC('I','M','C','3'));
 DEFINE_MEDIATYPE_GUID(MFVideoFormat_IMC4, MAKEFOURCC('I','M','C','4'));
 
+DEFINE_MEDIATYPE_GUID(MFAudioFormat_RAW_AAC,WAVE_FORMAT_RAW_AAC1);
+
 DEFINE_MEDIATYPE_GUID(MEDIASUBTYPE_AVC1,MAKEFOURCC('A','V','C','1'));
 DEFINE_MEDIATYPE_GUID(MEDIASUBTYPE_MP42,MAKEFOURCC('M','P','4','2'));
 DEFINE_MEDIATYPE_GUID(MEDIASUBTYPE_mp42,MAKEFOURCC('m','p','4','2'));
@@ -5133,8 +5135,12 @@ static void test_MFCreateWaveFormatExFromMFMediaType(void)
     }
     wave_fmt_tests[] =
     {
-        { &MFAudioFormat_PCM,   WAVE_FORMAT_PCM, },
-        { &MFAudioFormat_Float, WAVE_FORMAT_IEEE_FLOAT, },
+        { &MFAudioFormat_PCM,     WAVE_FORMAT_PCM, },
+        { &MFAudioFormat_Float,   WAVE_FORMAT_IEEE_FLOAT, },
+        { &MFAudioFormat_AAC,     WAVE_FORMAT_MPEG_HEAAC, },
+        { &MFAudioFormat_RAW_AAC, WAVE_FORMAT_RAW_AAC1, },
+        { &MFAudioFormat_MP3,     WAVE_FORMAT_MPEGLAYER3, },
+        { &MFAudioFormat_Opus,    WAVE_FORMAT_OPUS, },
     };
     WAVEFORMATEXTENSIBLE *format_ext;
     IMFMediaType *mediatype;

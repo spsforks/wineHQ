@@ -974,7 +974,7 @@ static void pad_added_cb(GstElement *element, GstPad *pad, gpointer user)
     if (!(stream = create_stream(parser)))
         return;
 
-    caps = gst_pad_query_caps(pad, NULL);
+    caps = gst_caps_fixate(gst_pad_query_caps(pad, NULL));
     wg_format_from_caps(&stream->codec_format, caps);
     gst_caps_unref(caps);
 
@@ -1871,6 +1871,8 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
     X(wg_muxer_push_sample),
     X(wg_muxer_read_data),
     X(wg_muxer_finalize),
+
+    X(wg_create_aac_codec_data),
 };
 
 C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == unix_wg_funcs_count);
@@ -2204,6 +2206,8 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
     X64(wg_muxer_push_sample),
     X64(wg_muxer_read_data),
     X(wg_muxer_finalize),
+
+    X(wg_create_aac_codec_data),
 };
 
 C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_wg_funcs_count);
