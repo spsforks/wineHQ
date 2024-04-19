@@ -6201,6 +6201,7 @@ static void thread_detach(void)
 {
     struct user_thread_info *thread_info = get_user_thread_info();
 
+    vulkan_thread_detach();
     user_driver->pThreadDetach();
 
     free( thread_info->key_state );
