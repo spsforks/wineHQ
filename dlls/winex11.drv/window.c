@@ -1818,6 +1818,8 @@ static void destroy_whole_window( struct x11drv_win_data *data, BOOL already_des
             }
             return;
         }
+        if (data->client_window && !already_destroyed)
+            XSync( data->display, False );
     }
     else
     {
