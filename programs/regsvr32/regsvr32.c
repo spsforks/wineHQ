@@ -240,6 +240,76 @@ static int UnregisterDll(const WCHAR* strDll, BOOL firstDll)
     return 0;
 }
 
+static int RegisterExe(const WCHAR* strExe)
+{
+    WCHAR app[MAX_PATH];
+    WCHAR registerW[] = L" /regserver";
+    WCHAR *cmdline;
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi;
+
+    wcscat(app, strExe);
+
+    TRACE("registering %s\n", debugstr_w(strExe));
+
+    cmdline = HeapAlloc(GetProcessHeap(), 0,
+                        (wcslen(app)+wcslen(registerW)+1)*sizeof(WCHAR));
+
+    wcscpy(cmdline, app);
+    wcscat(cmdline, registerW);
+
+    si.cb = sizeof(si);
+
+    if (CreateProcessW(app, cmdline, NULL, NULL, !Silent, 0, NULL, NULL, &si, &pi))
+    {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        output_write(FALSE, STRING_REGISTER_SUCCESSFUL, strExe);
+        HeapFree(GetProcessHeap(), 0, cmdline);
+        return 0;
+    }
+    else
+    {
+        HeapFree(GetProcessHeap(), 0, cmdline);
+        output_write(FALSE, STRING_REGISTER_FAILED, strExe);
+        return DLLSERVER_FAILED; /* FIXME: Is this the right value to return? */
+    }
+}
+
+static int UnregisterExe(const WCHAR* strExe)
+{
+    WCHAR app[MAX_PATH];
+    WCHAR unregisterW[] = L" /unregserver";
+    WCHAR *cmdline;
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi;
+
+    wcscat(app, strExe);
+
+    TRACE("unregistering %s\n", debugstr_w(strExe));
+
+    cmdline = HeapAlloc(GetProcessHeap(), 0,
+                        (wcslen(app)+wcslen(unregisterW)+1)*sizeof(WCHAR));
+
+    wcscpy(cmdline, app);
+    wcscat(cmdline, unregisterW);
+
+    si.cb = sizeof(si);
+
+    if (CreateProcessW(app, cmdline, NULL, NULL, !Silent, 0, NULL, NULL, &si, &pi))
+    {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        output_write(FALSE, STRING_UNREGISTER_SUCCESSFUL, strExe);
+        HeapFree(GetProcessHeap(), 0, cmdline);
+        return 0;
+    }
+    else
+    {
+        HeapFree(GetProcessHeap(), 0, cmdline);
+        output_write(FALSE, STRING_UNREGISTER_FAILED, strExe);
+        return DLLSERVER_FAILED; /* FIXME: Is this the right value to return? */
+    }
+}
+
 static int InstallDll(BOOL install, const WCHAR *strDll, const WCHAR *command_line, BOOL firstDll)
 {
     HRESULT hr;
@@ -301,10 +371,18 @@ int __cdecl wmain(int argc, WCHAR* argv[])
     BOOL            CallInstall = FALSE;
     BOOL            Unregister = FALSE;
     BOOL            DllFound = FALSE;
+    BOOL            ExeRegister = FALSE;
+    BOOL            ExeUnregister = FALSE;
     WCHAR*          wsCommandLine = NULL;
     WCHAR           EmptyLine[] = L"";
 
     OleInitialize(NULL);
+
+    TRACE("Arguments:\n");
+    for (i = 1; i < argc; i++)
+    {
+        TRACE("%s\n", wine_dbgstr_w(argv[i]));
+    }
 
     /* We mirror the Microsoft version by processing all of the flags before
      * the files (e.g. regsvr32 file1 /s file2 is silent even for file1).
@@ -320,6 +398,19 @@ int __cdecl wmain(int argc, WCHAR* argv[])
         {
             if (!argv[i][1])
                 return INVALID_ARG;
+
+            if (!wcscmp(wcslwr(argv[i] + 1), L"regserver"))
+            {
+               ExeRegister = TRUE;
+               argv[i] = NULL;
+               continue;
+            }
+            else if (!wcscmp(wcslwr(argv[i] + 1), L"unregserver"))
+            {
+               ExeUnregister = TRUE;
+               argv[i] = NULL;
+               continue;
+            }
 
             if (argv[i][2] && argv[i][2] != ':')
                 continue;
@@ -369,6 +460,14 @@ int __cdecl wmain(int argc, WCHAR* argv[])
             {
                 ret = res;
                 continue;
+            }
+
+            if (ExeRegister || ExeUnregister)
+            {
+                if (ExeRegister)
+                   res = RegisterExe(DllName);
+                else
+                   res = UnregisterExe(DllName);
             }
 
             if (!CallInstall || CallRegister)
