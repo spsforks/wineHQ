@@ -35,6 +35,74 @@ WINE_DEFAULT_DEBUG_CHANNEL(int31);
 
 static void* lastvalloced = NULL;
 
+/* Structure for real-mode callbacks */
+typedef struct
+{
+    DWORD edi;
+    DWORD esi;
+    DWORD ebp;
+    DWORD reserved;
+    DWORD ebx;
+    DWORD edx;
+    DWORD ecx;
+    DWORD eax;
+    WORD  fl;
+    WORD  es;
+    WORD  ds;
+    WORD  fs;
+    WORD  gs;
+    WORD  ip;
+    WORD  cs;
+    WORD  sp;
+    WORD  ss;
+} REALMODECALL;
+
+/**********************************************************************
+ *         INT_GetRealModeContext
+ */
+static void INT_GetRealModeContext( REALMODECALL *call, CONTEXT *context )
+{
+    context->Eax    = call->eax;
+    context->Ebx    = call->ebx;
+    context->Ecx    = call->ecx;
+    context->Edx    = call->edx;
+    context->Esi    = call->esi;
+    context->Edi    = call->edi;
+    context->Ebp    = call->ebp;
+    context->EFlags = call->fl | V86_FLAG;
+    context->Eip    = call->ip;
+    context->Esp    = call->sp;
+    context->SegCs  = call->cs;
+    context->SegDs  = call->ds;
+    context->SegEs  = call->es;
+    context->SegFs  = call->fs;
+    context->SegGs  = call->gs;
+    context->SegSs  = call->ss;
+}
+
+/**********************************************************************
+ *         INT_SetRealModeContext
+ */
+static void INT_SetRealModeContext( REALMODECALL *call, CONTEXT *context )
+{
+    call->eax = context->Eax;
+    call->ebx = context->Ebx;
+    call->ecx = context->Ecx;
+    call->edx = context->Edx;
+    call->esi = context->Esi;
+    call->edi = context->Edi;
+    call->ebp = context->Ebp;
+    call->fl  = LOWORD(context->EFlags);
+    call->ip  = LOWORD(context->Eip);
+    call->sp  = LOWORD(context->Esp);
+    call->cs  = context->SegCs;
+    call->ds  = context->SegDs;
+    call->es  = context->SegEs;
+    call->fs  = context->SegFs;
+    call->gs  = context->SegGs;
+    call->ss  = context->SegSs;
+}
+
 /**********************************************************************
  *          DPMI_xalloc
  * special virtualalloc, allocates linearly monoton growing memory.
@@ -395,7 +463,17 @@ void WINAPI DOSVM_Int31Handler( CONTEXT *context )
         break;
 
     case 0x0300:  /* Simulate real mode interrupt */
-        TRACE( "Simulate real mode interrupt %02x - not supported\n", BL_reg(context));
+        TRACE( "Simulate real mode interrupt %02x\n", BL_reg(context) );
+        {
+            CONTEXT realmode_ctx;
+            REALMODECALL *call = CTX_SEG_OFF_TO_LIN( context,
+                                                     context->SegEs,
+                                                     context->Edi );
+            INT_GetRealModeContext( call, &realmode_ctx );
+            RESET_CFLAG( context );
+            DOSVM_CallBuiltinHandler( &realmode_ctx, BL_reg(context) );
+            INT_SetRealModeContext( call, &realmode_ctx );
+        }
         break;
 
     case 0x0301:  /* Call real mode procedure with far return */

@@ -41,7 +41,11 @@ typedef void (WINAPI *INTPROC)(CONTEXT*);
 extern WORD DOSVM_psp;     /* psp of current DOS task */
 extern WORD int16_sel;
 
+#define V86_FLAG 0x00020000
+
 #define ADD_LOWORD(dw,val)  ((dw) = ((dw) & 0xffff0000) | LOWORD((DWORD)(dw)+(val)))
+
+#define PTR_REAL_TO_LIN(seg,off) ((void*)(((unsigned int)(seg) << 4) + LOWORD(off)))
 
 /* NOTE: Interrupts might get called from four modes: real mode, 16-bit,
  *       32-bit segmented (DPMI32) and 32-bit linear (via DeviceIoControl).
@@ -62,7 +66,8 @@ extern WORD int16_sel;
  *       segmented mode is recognized by checking whether 'seg' is 32-bit
  *       selector which is neither system selector nor zero.
  */
-#define CTX_SEG_OFF_TO_LIN(context,seg,off) (ldt_get_ptr((seg),(off)))
+#define CTX_SEG_OFF_TO_LIN(context,seg,off) \
+    (ISV86(context) ? PTR_REAL_TO_LIN((seg),(off)) : ldt_get_ptr((seg),(off)))
 
 #define INT_BARF(context,num) \
     ERR( "int%x: unknown/not implemented parameters:\n" \
@@ -99,6 +104,7 @@ extern WORD int16_sel;
 #define RESET_CFLAG(context) ((context)->EFlags &= ~0x0001)
 #define SET_ZFLAG(context)   ((context)->EFlags |= 0x0040)
 #define RESET_ZFLAG(context) ((context)->EFlags &= ~0x0040)
+#define ISV86(context)       ((context)->EFlags & 0x00020000)
 
 #define SET_AX(context,val)  ((void)((context)->Eax = ((context)->Eax & ~0xffff) | (WORD)(val)))
 #define SET_BX(context,val)  ((void)((context)->Ebx = ((context)->Ebx & ~0xffff) | (WORD)(val)))
@@ -236,6 +242,7 @@ extern void WINAPI DOSVM_Int31Handler(CONTEXT*);
 
 /* interrupts.c */
 extern void WINAPI __wine_call_int_handler16( BYTE, CONTEXT * );
+extern void        DOSVM_CallBuiltinHandler( CONTEXT *, BYTE );
 extern BOOL        DOSVM_EmulateInterruptPM( CONTEXT *, BYTE );
 extern FARPROC16   DOSVM_GetPMHandler16( BYTE );
 extern void        DOSVM_SetPMHandler16( BYTE, FARPROC16 );
