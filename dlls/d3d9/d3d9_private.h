@@ -34,6 +34,7 @@
 #include "wine/debug.h"
 
 #include "d3d9.h"
+#include "d3d9on12.h"
 #include "wine/wined3d.h"
 
 #define D3D9_MAX_VERTEX_SHADER_CONSTANTF 256
@@ -57,11 +58,20 @@ unsigned int wined3dmapflags_from_d3dmapflags(unsigned int flags, unsigned int u
 void present_parameters_from_wined3d_swapchain_desc(D3DPRESENT_PARAMETERS *present_parameters,
         const struct wined3d_swapchain_desc *swapchain_desc, DWORD presentation_interval);
 
+struct d3d9on12
+{
+    IDirect3DDevice9On12 IDirect3DDevice9On12_iface;
+    LONG refcount;
+    struct D3D9ON12_ARGS *override_list;
+    UINT override_entries;
+};
+
 struct d3d9
 {
     IDirect3D9Ex IDirect3D9Ex_iface;
     LONG refcount;
     struct wined3d *wined3d;
+    struct d3d9on12 *d3d9on12;
     struct wined3d_output **wined3d_outputs;
     unsigned int wined3d_output_count;
     BOOL extended;
@@ -70,6 +80,7 @@ struct d3d9
 void d3d9_caps_from_wined3dcaps(const struct d3d9 *d3d9, unsigned int adapter_ordinal,
         D3DCAPS9 *caps, const struct wined3d_caps *wined3d_caps);
 BOOL d3d9_init(struct d3d9 *d3d9, BOOL extended);
+HRESULT d3d9on12_init(struct d3d9on12 **d3d9on12, D3D9ON12_ARGS *override_list, UINT override_entries);
 
 struct fvf_declaration
 {

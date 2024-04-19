@@ -623,6 +623,23 @@ static HRESULT WINAPI d3d9_device_QueryInterface(IDirect3DDevice9Ex *iface, REFI
         return S_OK;
     }
 
+    if (IsEqualGUID(riid, &IID_IDirect3DDevice9On12))
+    {
+        struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
+
+        if (!device->d3d_parent->d3d9on12)
+        {
+            WARN("IDirect3D9 instance wasn't created with D3D9On12 enabled, returning E_NOINTERFACE.\n");
+            *out = NULL;
+            return E_NOINTERFACE;
+        }
+
+        FIXME("pD3D12Device value is not being checked if it matches the d3d9 device\n");
+
+        IDirect3DDevice9On12_QueryInterface(&device->d3d_parent->d3d9on12->IDirect3DDevice9On12_iface, riid, out);
+        return S_OK;
+    }
+
     WARN("%s not implemented, returning E_NOINTERFACE.\n", debugstr_guid(riid));
 
     *out = NULL;
