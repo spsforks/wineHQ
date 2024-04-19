@@ -48,6 +48,7 @@ static HRESULT (WINAPI *pLoadLibraryShim)(LPCWSTR, LPCWSTR, LPVOID, HMODULE*);
 static HRESULT (WINAPI *pCreateConfigStream)(LPCWSTR, IStream**);
 static HRESULT (WINAPI *pCreateInterface)(REFCLSID, REFIID, VOID**);
 static HRESULT (WINAPI *pCLRCreateInstance)(REFCLSID, REFIID, VOID**);
+static HANDLE (WINAPI *pGetProcessExecutableHeap)(void);
 
 static BOOL no_legacy_runtimes;
 
@@ -69,6 +70,7 @@ static BOOL init_functionpointers(void)
     pCreateConfigStream = (void *)GetProcAddress(hmscoree, "CreateConfigStream");
     pCreateInterface =  (void *)GetProcAddress(hmscoree, "CreateInterface");
     pCLRCreateInstance = (void *)GetProcAddress(hmscoree, "CLRCreateInstance");
+    pGetProcessExecutableHeap = (void *)GetProcAddress(hmscoree, "GetProcessExecutableHeap");
 
     if (!pGetCORVersion || !pGetCORSystemDirectory || !pGetRequestedRuntimeInfo || !pLoadLibraryShim ||
         !pCreateInterface || !pCLRCreateInstance || !pCorIsLatestSvc
@@ -808,6 +810,19 @@ static void test_loadpaths(BOOL neutral)
     ok(ret, "DeleteFileW failed: %lu\n", GetLastError());
 }
 
+static void test_getprocessexecutableheap(void)
+{
+    HANDLE heap;
+    void *buf;
+
+    heap = pGetProcessExecutableHeap();
+    ok(!!heap, "GetProcessExecutableHeap returned null\n");
+
+    buf = HeapAlloc(heap, 0, 4);
+    ok(!!buf, "HeapAlloc returned null\n");
+    HeapFree(heap, 0, buf);
+}
+
 static void test_createdomain(void)
 {
     static const WCHAR test_name[] = {'t','e','s','t',0};
@@ -914,6 +929,7 @@ START_TEST(mscoree)
     test_loadlibraryshim();
     test_createconfigstream();
     test_createinstance();
+    test_getprocessexecutableheap();
 
     if (runtime_is_usable())
     {
