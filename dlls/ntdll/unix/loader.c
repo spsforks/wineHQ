@@ -36,6 +36,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -2139,6 +2140,13 @@ DECLSPEC_EXPORT void __wine_main( int argc, char *argv[], char *envp[] )
             static char noexec[] = "WINELOADERNOEXEC=1";
             char **new_argv = malloc( (argc + 2) * sizeof(*argv) );
 
+#ifdef _WIN64
+            {
+                Dl_info info = { 0 };
+                dladdr(&__wine_main, &info);
+                setenv("LD_PRELOAD", info.dli_fname, 1);
+            }
+#endif
             memcpy( new_argv + 1, argv, (argc + 1) * sizeof(*argv) );
             putenv( noexec );
             loader_exec( new_argv, current_machine );
@@ -2161,3 +2169,49 @@ DECLSPEC_EXPORT void __wine_main( int argc, char *argv[], char *envp[] )
 #endif
     start_main_thread();
 }
+
+#ifdef _WIN64
+
+#if MAP_32BIT
+
+void *mmap64(void *addr, size_t length, int prot, int flags, int fd, off64_t offset)
+{
+    return (void*)syscall(SYS_mmap, addr, length, prot, flags | MAP_32BIT, fd, offset);
+}
+
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+    return mmap64(addr, length, prot, flags, fd, offset);
+}
+
+#else
+
+void *mmap64(void *addr, size_t length, int prot, int flags, int fd, off64_t offset)
+{
+    if (wow_peb)
+    {
+        NtAllocateVirtualMemory(GetCurrentProcess(), &addr, 0xffffffff, &length, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        flags |= MAP_FIXED;
+    }
+    return (void*)syscall(SYS_mmap, addr, length, prot, flags, fd, offset);
+}
+
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+    return mmap64(addr, length, prot, flags, fd, offset);
+}
+
+int munmap(void *addr, size_t length)
+{
+    int ret = (int)syscall(SYS_munmap, addr, length);
+    if (wow_peb)
+    {
+        length = 0;
+        NtFreeVirtualMemory(GetCurrentProcess(), &addr, &length, MEM_RELEASE);
+    }
+    return ret;
+}
+
+#endif
+
+#endif
