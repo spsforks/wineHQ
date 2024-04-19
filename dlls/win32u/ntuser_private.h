@@ -80,6 +80,7 @@ typedef struct tagWND
     struct tagDIALOGINFO *dlgInfo;    /* Dialog additional info (dialogs only) */
     int                pixel_format;  /* Pixel format set by the graphics driver */
     int                internal_pixel_format; /* Internal pixel format set via WGL_WINE_pixel_format_passthrough */
+    unsigned int       real_class_id; /* "Real" window class ID, set by user32 standard control window procedures. */
     int                cbWndExtra;    /* class cbWndExtra at window creation */
     DWORD_PTR          userdata;      /* User private data */
     DWORD              wExtra[1];     /* Window extra bytes */
@@ -169,6 +170,13 @@ enum builtin_winprocs
     WINPROC_MESSAGE,
     NB_BUILTIN_WINPROCS,
     NB_BUILTIN_AW_WINPROCS = WINPROC_DESKTOP
+};
+
+/* Real window class ID values. */
+enum wine_real_class_id
+{
+    REAL_CLASS_ID_NONE = 0,
+    REAL_CLASS_ID_STATIC,
 };
 
 /* FIXME: make it private to scroll.c */

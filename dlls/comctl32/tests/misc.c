@@ -384,6 +384,46 @@ static void test_LoadIconWithScaleDown(void)
     FreeLibrary(hinst);
 }
 
+#define SUPER_CLASS_NAME_A "SuperClass Test"
+static WNDPROC real_class_wndproc;
+static const char *real_class_str;
+static LRESULT WINAPI super_class_test_win_proc_a(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT lr = 0;
+
+    /*
+     * Passing through WM_GETTEXT to the WC_IPADDRESSA procedure will cause an
+     * access violation on Windows 7 64-bit.
+     */
+    if ((msg == WM_GETTEXT) && !strcmp(real_class_str, WC_IPADDRESSA))
+        return lr;
+
+    lr = CallWindowProcA(real_class_wndproc, hwnd, msg, wparam, lparam);
+    if (msg == WM_NCCREATE)
+        lr = 1;
+
+    return lr;
+}
+
+#define test_hwnd_real_class_name_str( hwnd, exp_real_class_name_str ) \
+        test_hwnd_real_class_name_str_( (hwnd), (exp_real_class_name_str), __FILE__, __LINE__ )
+static void test_hwnd_real_class_name_str_(HWND hwnd, const char *exp_real_class_name_str, const char *file, int line)
+{
+    WCHAR exp_real_class_name_w[256] = { 0 };
+    WCHAR real_class_name_w[256] = { 0 };
+    char real_class_name_a[256] = { 0 };
+    ULONG len;
+
+    len = RealGetWindowClassA(hwnd, real_class_name_a, ARRAY_SIZE(real_class_name_a));
+    ok(!strcmp(real_class_name_a, exp_real_class_name_str), "got %s\n", real_class_name_a);
+    ok(len == strlen(exp_real_class_name_str), "got %ld, expected %d\n", len, lstrlenA(exp_real_class_name_str));
+
+    MultiByteToWideChar(CP_ACP, 0, exp_real_class_name_str, -1, exp_real_class_name_w, ARRAY_SIZE(exp_real_class_name_w));
+    len = RealGetWindowClassW(hwnd, real_class_name_w, ARRAY_SIZE(real_class_name_w));
+    ok(!lstrcmpW(real_class_name_w, exp_real_class_name_w), "got %s\n", debugstr_w(real_class_name_w));
+    ok(len == lstrlenW(exp_real_class_name_w), "got %ld, expected %d\n", len, lstrlenW(exp_real_class_name_w));
+}
+
 static void check_class( const char *name, int must_exist, UINT style, UINT ignore, BOOL v6 )
 {
     WNDCLASSA wc;
@@ -410,6 +450,21 @@ static void check_class( const char *name, int must_exist, UINT style, UINT igno
         GetClassNameA(hwnd, buff, ARRAY_SIZE(buff));
         ok( !strcmp(name, buff), "Unexpected class name %s, expected %s.\n", buff, name );
         DestroyWindow(hwnd);
+
+        real_class_wndproc = wc.lpfnWndProc;
+        real_class_str = name;
+        wc.lpfnWndProc = super_class_test_win_proc_a;
+        wc.hInstance = GetModuleHandleA(NULL);
+        wc.lpszClassName = SUPER_CLASS_NAME_A;
+        RegisterClassA(&wc);
+
+        hwnd = CreateWindowA(SUPER_CLASS_NAME_A, 0, 0, 0, 0, 0, 0, 0, NULL, GetModuleHandleA(NULL), 0);
+        test_hwnd_real_class_name_str(hwnd, SUPER_CLASS_NAME_A);
+
+        DestroyWindow(hwnd);
+        UnregisterClassA(SUPER_CLASS_NAME_A, GetModuleHandleA(NULL));
+        real_class_wndproc = NULL;
+        real_class_str = NULL;
     }
     else
         ok( !must_exist, "System class %s does not exist\n", name );

@@ -126,6 +126,20 @@ static void test_window_props(void)
     DestroyWindow( hwnd );
 }
 
+static WNDPROC real_class_wndproc;
+static LRESULT WINAPI real_class_test_win_proc_w(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT lr = 0;
+
+    if (real_class_wndproc)
+        lr = CallWindowProcW(real_class_wndproc, hwnd, msg, wparam, lparam);
+
+    if (msg == WM_NCCREATE)
+        lr = 1;
+
+    return lr;
+}
+
 static void test_class(void)
 {
     UNICODE_STRING name;
@@ -219,6 +233,48 @@ static void test_class(void)
         "NtUserGetAtomName returned %lx %lu\n", ret, GetLastError() );
     ok( buf[0] == 0xcccc, "buf = %s\n", debugstr_w(buf) );
 
+    memset( &cls, 0, sizeof(cls) );
+    ret = GetClassInfoW( NULL, L"Static", &cls );
+    ok( ret, "GetClassInfoW failed: %lu\n", GetLastError() );
+
+    real_class_wndproc = cls.lpfnWndProc;
+    cls.lpfnWndProc = real_class_test_win_proc_w;
+    cls.hInstance = GetModuleHandleW( NULL );
+    cls.lpszClassName = L"test";
+
+    class = RegisterClassW( &cls );
+    ok( class, "RegisterClassW failed: %lu\n", GetLastError() );
+
+    hwnd = CreateWindowW( L"test", L"test name", WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL,
+                          CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, 0, 0, NULL, 0 );
+
+    /* Get real class, in this case Static. */
+    memset( buf, 0xcc, sizeof(buf) );
+    name.Buffer = buf;
+    name.Length = 0xdead;
+    name.MaximumLength = sizeof(buf);
+    ret = NtUserGetClassName( hwnd, TRUE, &name );
+    ok( ret == 6, "NtUserGetClassName returned %lu\n", ret );
+    ok( name.Length == 0xdead, "Length = %u\n", name.Length );
+    ok( name.MaximumLength == sizeof(buf), "MaximumLength = %u\n", name.MaximumLength );
+    ok( !wcscmp( buf, L"Static" ), "buf = %s\n", debugstr_w(buf) );
+
+    /* Get normal class instead of real class. */
+    memset( buf, 0xcc, sizeof(buf) );
+    name.Buffer = buf;
+    name.Length = 0xdead;
+    name.MaximumLength = sizeof(buf);
+    ret = NtUserGetClassName( hwnd, FALSE, &name );
+    ok( ret == 4, "NtUserGetClassName returned %lu\n", ret );
+    ok( name.Length == 0xdead, "Length = %u\n", name.Length );
+    ok( name.MaximumLength == sizeof(buf), "MaximumLength = %u\n", name.MaximumLength );
+    ok( !wcscmp( buf, L"test" ), "buf = %s\n", debugstr_w(buf) );
+
+    DestroyWindow( hwnd );
+
+    ret = UnregisterClassW( L"test", GetModuleHandleW(NULL) );
+    ok( ret, "UnregisterClassW failed: %lu\n", GetLastError() );
+    real_class_wndproc = NULL;
 }
 
 static void test_NtUserCreateInputContext(void)

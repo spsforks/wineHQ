@@ -324,6 +324,7 @@ LRESULT StaticWndProc_common( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     LONG style = full_style & SS_TYPEMASK;
 
     if (!IsWindow( hwnd )) return 0;
+    if (uMsg != WM_NCCREATE) NtUserMessageCall( hwnd, uMsg, wParam, lParam, 0, NtUserStaticWndProc, !unicode );
 
     switch (uMsg)
     {
@@ -467,8 +468,7 @@ LRESULT StaticWndProc_common( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             /* SS_ENHMETAFILE: Despite what MSDN says, Windows does not load
                the enhanced metafile that was specified as the window text. */
         }
-        return unicode ? DefWindowProcW(hwnd, uMsg, wParam, lParam) :
-                         DefWindowProcA(hwnd, uMsg, wParam, lParam);
+        return NtUserMessageCall( hwnd, uMsg, wParam, lParam, 0, NtUserStaticWndProc, !unicode );
 
     case WM_SETTEXT:
         if (hasTextStyle( full_style ))

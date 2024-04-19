@@ -92,6 +92,7 @@ struct window
     int              prop_inuse;      /* number of in-use window properties */
     int              prop_alloc;      /* number of allocated window properties */
     struct property *properties;      /* window properties array */
+    unsigned int     real_class_id;   /* Real window class ID. */
     int              nb_extra_bytes;  /* number of extra bytes */
     char            *extra_bytes;     /* extra bytes storage */
 };
@@ -582,6 +583,7 @@ static struct window *create_window( struct window *parent, struct window *owner
     win->prop_inuse     = 0;
     win->prop_alloc     = 0;
     win->properties     = NULL;
+    win->real_class_id  = 0;
     win->nb_extra_bytes = 0;
     win->extra_bytes    = NULL;
     win->window_rect = win->visible_rect = win->surface_rect = win->client_rect = empty_rect;
@@ -3009,4 +3011,23 @@ DECL_HANDLER(set_window_layered_info)
         if (!was_layered) redraw_window( win, 0, 1, RDW_ALLCHILDREN | RDW_INVALIDATE | RDW_ERASE | RDW_FRAME );
     }
     else set_win32_error( ERROR_INVALID_WINDOW_HANDLE );
+}
+
+/* Get class name atom/real class ID for a window. */
+DECL_HANDLER(get_window_class_name)
+{
+    struct window *win = get_window( req->handle );
+
+    if (!win) return;
+    reply->base_atom = get_class_atom(win->class);
+    reply->real_class_id = win->real_class_id;
+}
+
+/* Set real window class ID value for a window. */
+DECL_HANDLER(set_real_window_class_id)
+{
+    struct window *win = get_window( req->handle );
+
+    if (!win) return;
+    win->real_class_id = req->real_class_id;
 }
