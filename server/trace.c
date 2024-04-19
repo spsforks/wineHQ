@@ -1359,6 +1359,40 @@ static void dump_varargs_handle_infos( const char *prefix, data_size_t size )
     fputc( '}', stderr );
 }
 
+static void dump_varargs_directory_entries( const char *prefix, data_size_t size )
+{
+    fprintf( stderr, "%s{", prefix );
+    while (size)
+    {
+        const struct directory_entry *entry = cur_data;
+        data_size_t entry_size;
+        const char *next;
+
+        if (size < sizeof(*entry) ||
+            (size - sizeof(*entry) < entry->name_len) ||
+            (size - sizeof(*entry) - entry->name_len < entry->type_len))
+        {
+            fprintf( stderr, "***invalid***}" );
+            remove_data( size );
+            return;
+        }
+
+        next = (const char *)(entry + 1);
+        fprintf( stderr, "{name=L\"" );
+        dump_strW( (const WCHAR *)next, entry->name_len, stderr, "\"\"" );
+        next += entry->name_len;
+        fprintf( stderr, "\",type=L\"" );
+        dump_strW( (const WCHAR *)next, entry->type_len, stderr, "\"\"" );
+        fprintf( stderr, "\"}" );
+
+        entry_size = min( size, (sizeof(*entry) + entry->name_len + entry->type_len + 3) & ~3 );
+        size -= entry_size;
+        remove_data( entry_size );
+        if (size) fputc( ',', stderr );
+    }
+    fputc( '}', stderr );
+}
+
 typedef void (*dump_func)( const void *req );
 
 /* Everything below this line is generated automatically by tools/make_requests */
