@@ -463,6 +463,8 @@ unsigned int wg_format_get_max_size(const struct wg_format *format)
             return 0;
 
         case WG_MAJOR_TYPE_UNKNOWN:
+        case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+        case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
             FIXME("Cannot guess maximum sample size for unknown format.\n");
             return 0;
     }
@@ -721,6 +723,8 @@ bool amt_from_wg_format(AM_MEDIA_TYPE *mt, const struct wg_format *format, bool 
         FIXME("Format %u not implemented!\n", format->major_type);
         /* fallthrough */
     case WG_MAJOR_TYPE_UNKNOWN:
+    case WG_MAJOR_TYPE_UNKNOWN_AUDIO:
+    case WG_MAJOR_TYPE_UNKNOWN_VIDEO:
         return false;
 
     case WG_MAJOR_TYPE_AUDIO:
