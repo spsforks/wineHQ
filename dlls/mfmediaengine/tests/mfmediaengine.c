@@ -1376,6 +1376,126 @@ done:
     IMFMediaEngineNotify_Release(&notify->IMFMediaEngineNotify_iface);
 }
 
+static void test_OnVideoStreamTick(void)
+{
+    struct test_transfer_notify *notify;
+    ID3D11Texture2D *texture = NULL;
+    IMFMediaEngineEx *media_engine = NULL;
+    IMFDXGIDeviceManager *manager;
+    D3D11_TEXTURE2D_DESC desc;
+    IMFByteStream *stream;
+    ID3D11Device *device;
+    RECT dst_rect;
+    UINT token;
+    HRESULT hr;
+    DWORD res;
+    BSTR url;
+    LONGLONG pts;
+
+    stream = load_resource(L"i420-64x64.avi", L"video/avi");
+
+    notify = create_transfer_notify();
+
+    if (!(device = create_d3d11_device()))
+    {
+        skip("Failed to create a D3D11 device, skipping tests.\n");
+        goto done;
+    }
+
+    hr = pMFCreateDXGIDeviceManager(&token, &manager);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFDXGIDeviceManager_ResetDevice(manager, (IUnknown *)device, token);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    create_media_engine(&notify->IMFMediaEngineNotify_iface, manager, DXGI_FORMAT_B8G8R8X8_UNORM,
+            &IID_IMFMediaEngineEx, (void **)&media_engine);
+
+    IMFDXGIDeviceManager_Release(manager);
+
+    if (!(notify->media_engine = media_engine))
+        goto done;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.Width = 64;
+    desc.Height = 64;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8X8_UNORM;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    desc.SampleDesc.Count = 1;
+    hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    url = SysAllocString(L"i420-64x64.avi");
+    hr = IMFMediaEngineEx_SetSourceFromByteStream(media_engine, stream, url);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    SysFreeString(url);
+
+    res = WaitForSingleObject(notify->frame_ready_event, 5000);
+    ok(!res, "Unexpected res %#lx.\n", res);
+
+    if (FAILED(notify->error))
+    {
+        win_skip("Media engine reported error %#lx, skipping tests.\n", notify->error);
+        goto done;
+    }
+
+    res = 0;
+    hr = IMFMediaEngineEx_GetNumberOfStreams(media_engine, &res);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(res == 2, "Unexpected stream count %lu.\n", res);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    SetRect(&dst_rect, 0, 0, desc.Width, desc.Height);
+    hr = IMFMediaEngineEx_TransferVideoFrame(notify->media_engine, (IUnknown *)texture, NULL, &dst_rect, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    todo_wine
+    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
+
+    /* sleep until second frame is ready */
+    while (IMFMediaEngineEx_GetCurrentTime(notify->media_engine) < 1./30.)
+        Sleep(1);
+    
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineEx_TransferVideoFrame(notify->media_engine, (IUnknown *)texture, NULL, &dst_rect, NULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    todo_wine
+    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
+
+    /* sleep until third frame is ready */
+    while (IMFMediaEngineEx_GetCurrentTime(notify->media_engine) < 2./30.)
+        Sleep(1);
+
+    hr = IMFMediaEngineEx_OnVideoStreamTick(notify->media_engine, &pts);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+done:
+    if (media_engine)
+    {
+        IMFMediaEngineEx_Shutdown(media_engine);
+        IMFMediaEngineEx_Release(media_engine);
+    }
+
+    if (texture)
+        ID3D11Texture2D_Release(texture);
+    if (device)
+        ID3D11Device_Release(device);
+
+    IMFMediaEngineNotify_Release(&notify->IMFMediaEngineNotify_iface);
+
+    IMFByteStream_Release(stream);
+}
+
 struct test_transform
 {
     IMFTransform IMFTransform_iface;
@@ -2666,6 +2786,49 @@ done:
     IMFByteStream_Release(stream);
 }
 
+static void test_audio_only(void)
+{
+    struct media_engine_notify *notify;
+    IMFMediaEngine *media_engine;
+    IMFAttributes *attributes;
+    LONGLONG timestamp;
+    ULONG refcount;
+    HRESULT hr;
+
+    notify = create_callback();
+
+    hr = MFCreateAttributes(&attributes, 2);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFAttributes_SetUnknown(attributes, &MF_MEDIA_ENGINE_CALLBACK, (IUnknown *)&notify->IMFMediaEngineNotify_iface);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFAttributes_SetUINT32(attributes, &MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, DXGI_FORMAT_UNKNOWN);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngineClassFactory_CreateInstance(factory, MF_MEDIA_ENGINE_AUDIOONLY, attributes, &media_engine);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_OnVideoStreamTick(media_engine, NULL);
+    ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_OnVideoStreamTick(media_engine, &timestamp);
+    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaEngine_Shutdown(media_engine);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    IMFAttributes_Release(attributes);
+
+    /* IMFMediaEngineEx_Shutdown can release media_engine in parallel. A small sleep allows this test to pass more
+     * often than not. But given its a matter of timing, this test is marked flaky */
+    Sleep(10);
+    refcount = IMFMediaEngine_Release(media_engine);
+    flaky
+    ok(!refcount, "Unexpected refcount %lu.\n", refcount);
+
+    IMFMediaEngineNotify_Release(&notify->IMFMediaEngineNotify_iface);
+}
+
 START_TEST(mfmediaengine)
 {
     HRESULT hr;
@@ -2697,11 +2860,13 @@ START_TEST(mfmediaengine)
     test_SetSourceFromByteStream();
     test_audio_configuration();
     test_TransferVideoFrame();
+    test_OnVideoStreamTick();
     test_effect();
     test_GetDuration();
     test_GetSeekable();
     test_media_extension();
     test_SetCurrentTime();
+    test_audio_only();
 
     IMFMediaEngineClassFactory_Release(factory);
 
