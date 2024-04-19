@@ -160,9 +160,9 @@ extern int retina_on;       /* Whether Retina mode is currently active (enabled 
 extern int enable_app_nap;
 extern int eager_dock_icon_hiding;
 
-static inline CGRect cgrect_mac_from_win(CGRect rect)
+static inline CGRect cgrect_mac_from_win(CGRect rect, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         rect.origin.x /= 2;
         rect.origin.y /= 2;
@@ -173,9 +173,9 @@ static inline CGRect cgrect_mac_from_win(CGRect rect)
     return rect;
 }
 
-static inline CGRect cgrect_win_from_mac(CGRect rect)
+static inline CGRect cgrect_win_from_mac(CGRect rect, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         rect.origin.x *= 2;
         rect.origin.y *= 2;
@@ -186,9 +186,9 @@ static inline CGRect cgrect_win_from_mac(CGRect rect)
     return rect;
 }
 
-static inline CGSize cgsize_mac_from_win(CGSize size)
+static inline CGSize cgsize_mac_from_win(CGSize size, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         size.width /= 2;
         size.height /= 2;
@@ -197,20 +197,9 @@ static inline CGSize cgsize_mac_from_win(CGSize size)
     return size;
 }
 
-static inline CGSize cgsize_win_from_mac(CGSize size)
+static inline CGPoint cgpoint_mac_from_win(CGPoint point, int retina_scale)
 {
-    if (retina_on)
-    {
-        size.width *= 2;
-        size.height *= 2;
-    }
-
-    return size;
-}
-
-static inline CGPoint cgpoint_mac_from_win(CGPoint point)
-{
-    if (retina_on)
+    if (retina_scale)
     {
         point.x /= 2;
         point.y /= 2;
@@ -219,9 +208,9 @@ static inline CGPoint cgpoint_mac_from_win(CGPoint point)
     return point;
 }
 
-static inline CGPoint cgpoint_win_from_mac(CGPoint point)
+static inline CGPoint cgpoint_win_from_mac(CGPoint point, int retina_scale)
 {
-    if (retina_on)
+    if (retina_scale)
     {
         point.x *= 2;
         point.y *= 2;

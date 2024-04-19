@@ -927,7 +927,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         if ([window.queue query:query timeout:0.3 flags:WineQueryNoPreemptWait])
         {
             aRange = NSMakeRange(query->ime_char_rect.range.location, query->ime_char_rect.range.length);
-            ret = NSRectFromCGRect(cgrect_mac_from_win(query->ime_char_rect.rect));
+            ret = NSRectFromCGRect(cgrect_mac_from_win(query->ime_char_rect.rect, retina_on));
             [[WineApplicationController sharedController] flipRect:&ret];
         }
         else
@@ -2224,7 +2224,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                                forWindow:self];
 
         event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
-        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
         event->window_frame_changed.fullscreen = isFullscreen;
         event->window_frame_changed.in_resize = resizing;
         event->window_frame_changed.skip_size_move_loop = skipSizeMove;
@@ -2604,7 +2604,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
                     event = macdrv_create_event(WINDOW_RESTORE_REQUESTED, self);
                     event->window_restore_requested.keep_frame = TRUE;
-                    event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+                    event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
                     [queue postEvent:event];
                     macdrv_release_event(event);
 
@@ -3128,13 +3128,13 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             query = macdrv_create_query();
             query->type = QUERY_RESIZE_SIZE;
             query->window = (macdrv_window)[self retain];
-            query->resize_size.rect = cgrect_win_from_mac(NSRectToCGRect(rect));
+            query->resize_size.rect = cgrect_win_from_mac(NSRectToCGRect(rect), retina_on);
             query->resize_size.from_left = resizingFromLeft;
             query->resize_size.from_top = resizingFromTop;
 
             if ([self.queue query:query timeout:0.1])
             {
-                rect = NSRectFromCGRect(cgrect_mac_from_win(query->resize_size.rect));
+                rect = NSRectFromCGRect(cgrect_mac_from_win(query->resize_size.rect, retina_on));
                 rect = [self frameRectForContentRect:rect];
                 frameSize = rect.size;
             }
@@ -3158,7 +3158,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
             event = macdrv_create_event(WINDOW_RESTORE_REQUESTED, self);
             event->window_restore_requested.keep_frame = TRUE;
-            event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+            event->window_restore_requested.frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
             [queue postEvent:event];
             macdrv_release_event(event);
         }
@@ -3258,7 +3258,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         NSDragOperation ret;
         NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
-        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt));
+        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt), retina_on);
         NSPasteboard* pb = [sender draggingPasteboard];
 
         macdrv_query* query = macdrv_create_query();
@@ -3281,7 +3281,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         BOOL ret;
         NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
-        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt));
+        CGPoint cgpt = cgpoint_win_from_mac(NSPointToCGPoint(pt), retina_on);
         NSPasteboard* pb = [sender draggingPasteboard];
 
         macdrv_query* query = macdrv_create_query();
@@ -3320,7 +3320,7 @@ macdrv_window macdrv_create_cocoa_window(const struct macdrv_window_features* wf
 
     OnMainThread(^{
         window = [[WineWindow createWindowWithFeatures:wf
-                                           windowFrame:NSRectFromCGRect(cgrect_mac_from_win(frame))
+                                           windowFrame:NSRectFromCGRect(cgrect_mac_from_win(frame, retina_on))
                                                   hwnd:hwnd
                                                  queue:(WineEventQueue*)queue] retain];
     });
@@ -3465,7 +3465,7 @@ void macdrv_set_cocoa_window_frame(macdrv_window w, const CGRect* new_frame)
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window setFrameFromWine:NSRectFromCGRect(cgrect_mac_from_win(*new_frame))];
+        [window setFrameFromWine:NSRectFromCGRect(cgrect_mac_from_win(*new_frame, retina_on))];
     });
 }
 
@@ -3483,7 +3483,7 @@ void macdrv_get_cocoa_window_frame(macdrv_window w, CGRect* out_frame)
 
         frame = [window contentRectForFrameRect:[window wine_fractionalFrame]];
         [[WineApplicationController sharedController] flipRect:&frame];
-        *out_frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+        *out_frame = cgrect_win_from_mac(NSRectToCGRect(frame), retina_on);
     });
 }
 
@@ -3531,7 +3531,7 @@ void macdrv_window_needs_display(macdrv_window w, CGRect rect)
     WineWindow* window = (WineWindow*)w;
 
     OnMainThreadAsync(^{
-        [[window contentView] setNeedsDisplayInRect:NSRectFromCGRect(cgrect_mac_from_win(rect))];
+        [[window contentView] setNeedsDisplayInRect:NSRectFromCGRect(cgrect_mac_from_win(rect, retina_on))];
     });
 }
 }
@@ -3561,7 +3561,7 @@ void macdrv_set_window_shape(macdrv_window w, const CGRect *rects, int count)
 
             path = CGPathCreateMutable();
             for (i = 0; i < count; i++)
-                CGPathAddRect(path, NULL, cgrect_mac_from_win(rects[i]));
+                CGPathAddRect(path, NULL, cgrect_mac_from_win(rects[i], retina_on));
             [window setShape:path];
             CGPathRelease(path);
         }
@@ -3660,7 +3660,7 @@ void macdrv_set_window_min_max_sizes(macdrv_window w, CGSize min_size, CGSize ma
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window setWineMinSize:NSSizeFromCGSize(cgsize_mac_from_win(min_size)) maxSize:NSSizeFromCGSize(cgsize_mac_from_win(max_size))];
+        [window setWineMinSize:NSSizeFromCGSize(cgsize_mac_from_win(min_size, retina_on)) maxSize:NSSizeFromCGSize(cgsize_mac_from_win(max_size, retina_on))];
     });
 }
 
@@ -3682,7 +3682,7 @@ macdrv_view macdrv_create_view(CGRect rect)
     OnMainThread(^{
         NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
 
-        view = [[WineContentView alloc] initWithFrame:NSRectFromCGRect(cgrect_mac_from_win(rect))];
+        view = [[WineContentView alloc] initWithFrame:NSRectFromCGRect(cgrect_mac_from_win(rect, retina_on))];
         [view setAutoresizingMask:NSViewNotSizable];
         [view setHidden:YES];
         [view setWantsBestResolutionOpenGLSurface:retina_on];
@@ -3740,7 +3740,7 @@ void macdrv_set_view_frame(macdrv_view v, CGRect rect)
     if (CGRectIsNull(rect)) rect = CGRectZero;
 
     OnMainThreadAsync(^{
-        NSRect newFrame = NSRectFromCGRect(cgrect_mac_from_win(rect));
+        NSRect newFrame = NSRectFromCGRect(cgrect_mac_from_win(rect, retina_on));
         NSRect oldFrame = [view frame];
 
         if (!NSEqualRects(oldFrame, newFrame))
