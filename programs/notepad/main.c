@@ -37,33 +37,32 @@ NOTEPAD_GLOBALS Globals;
 static ATOM aFINDMSGSTRING;
 static RECT main_rect;
 
-static const WCHAR notepad_reg_key[] = {'S','o','f','t','w','a','r','e','\\',
-                                        'M','i','c','r','o','s','o','f','t','\\','N','o','t','e','p','a','d','\0'};
-static const WCHAR value_fWrap[]            = {'f','W','r','a','p','\0'};
-static const WCHAR value_iPointSize[]       = {'i','P','o','i','n','t','S','i','z','e','\0'};
-static const WCHAR value_iWindowPosDX[]     = {'i','W','i','n','d','o','w','P','o','s','D','X','\0'};
-static const WCHAR value_iWindowPosDY[]     = {'i','W','i','n','d','o','w','P','o','s','D','Y','\0'};
-static const WCHAR value_iWindowPosX[]      = {'i','W','i','n','d','o','w','P','o','s','X','\0'};
-static const WCHAR value_iWindowPosY[]      = {'i','W','i','n','d','o','w','P','o','s','Y','\0'};
-static const WCHAR value_lfCharSet[]        = {'l','f','C','h','a','r','S','e','t','\0'};
-static const WCHAR value_lfClipPrecision[]  = {'l','f','C','l','i','p','P','r','e','c','i','s','i','o','n','\0'};
-static const WCHAR value_lfEscapement[]     = {'l','f','E','s','c','a','p','e','m','e','n','t','\0'};
-static const WCHAR value_lfItalic[]         = {'l','f','I','t','a','l','i','c','\0'};
-static const WCHAR value_lfOrientation[]    = {'l','f','O','r','i','e','n','t','a','t','i','o','n','\0'};
-static const WCHAR value_lfOutPrecision[]   = {'l','f','O','u','t','P','r','e','c','i','s','i','o','n','\0'};
-static const WCHAR value_lfPitchAndFamily[] = {'l','f','P','i','t','c','h','A','n','d','F','a','m','i','l','y','\0'};
-static const WCHAR value_lfQuality[]        = {'l','f','Q','u','a','l','i','t','y','\0'};
-static const WCHAR value_lfStrikeOut[]      = {'l','f','S','t','r','i','k','e','O','u','t','\0'};
-static const WCHAR value_lfUnderline[]      = {'l','f','U','n','d','e','r','l','i','n','e','\0'};
-static const WCHAR value_lfWeight[]         = {'l','f','W','e','i','g','h','t','\0'};
-static const WCHAR value_lfFaceName[]       = {'l','f','F','a','c','e','N','a','m','e','\0'};
-static const WCHAR value_iMarginTop[]       = {'i','M','a','r','g','i','n','T','o','p','\0'};
-static const WCHAR value_iMarginBottom[]    = {'i','M','a','r','g','i','n','B','o','t','t','o','m','\0'};
-static const WCHAR value_iMarginLeft[]      = {'i','M','a','r','g','i','n','L','e','f','t','\0'};
-static const WCHAR value_iMarginRight[]     = {'i','M','a','r','g','i','n','R','i','g','h','t','\0'};
-static const WCHAR value_szHeader[]         = {'s','z','H','e','a','d','e','r','\0'};
-static const WCHAR value_szFooter[]         = {'s','z','T','r','a','i','l','e','r','\0'};
-static const WCHAR value_bStatusBar[]       = {'b','S','t','a','t','u','s','B','a','r','\0'};
+static const WCHAR notepad_reg_key[] = L"Software\\Microsoft\\Notepad";
+static const WCHAR value_fWrap[]            = L"fWrap";
+static const WCHAR value_iPointSize[]       = L"iPointSize";
+static const WCHAR value_iWindowPosDX[]     = L"iWindowPosDX";
+static const WCHAR value_iWindowPosDY[]     = L"iWindowPosDY";
+static const WCHAR value_iWindowPosX[]      = L"iWindowPosX";
+static const WCHAR value_iWindowPosY[]      = L"iWindowPosY";
+static const WCHAR value_lfCharSet[]        = L"lfCharSet";
+static const WCHAR value_lfClipPrecision[]  = L"lfClipPrecision";
+static const WCHAR value_lfEscapement[]     = L"lfEscapement";
+static const WCHAR value_lfItalic[]         = L"lfItalic";
+static const WCHAR value_lfOrientation[]    = L"lfOrientation";
+static const WCHAR value_lfOutPrecision[]   = L"lfOutPrecision";
+static const WCHAR value_lfPitchAndFamily[] = L"lfPitchAndFamily";
+static const WCHAR value_lfQuality[]        = L"lfQuality";
+static const WCHAR value_lfStrikeOut[]      = L"lfStrikeOut";
+static const WCHAR value_lfUnderline[]      = L"lfUnderline";
+static const WCHAR value_lfWeight[]         = L"lfWeight";
+static const WCHAR value_lfFaceName[]       = L"lfFaceName";
+static const WCHAR value_iMarginTop[]       = L"iMarginTop";
+static const WCHAR value_iMarginBottom[]    = L"iMarginBottom";
+static const WCHAR value_iMarginLeft[]      = L"iMarginLeft";
+static const WCHAR value_iMarginRight[]     = L"iMarginRight";
+static const WCHAR value_szHeader[]         = L"szHeader";
+static const WCHAR value_szFooter[]         = L"szFooter";
+static const WCHAR value_bStatusBar[]       = L"bStatusBar";
 
 /***********************************************************************
  *
@@ -207,7 +206,7 @@ static VOID NOTEPAD_SaveSettingToRegistry(void)
  */
 static VOID NOTEPAD_LoadSettingFromRegistry(void)
 {
-    static const WCHAR systemW[] = { 'S','y','s','t','e','m','\0' };
+    static const WCHAR systemW[] = L"System";
     HKEY hkey;
     INT base_length, dx, dy;
 
@@ -353,16 +352,14 @@ static int NOTEPAD_MenuCommand(WPARAM wParam)
 static VOID NOTEPAD_InitData(VOID)
 {
     LPWSTR p = Globals.szFilter;
-    static const WCHAR txt_files[] = { '*','.','t','x','t',0 };
-    static const WCHAR all_files[] = { '*','.','*',0 };
 
     LoadStringW(Globals.hInstance, STRING_TEXT_FILES_TXT, p, MAX_STRING_LEN);
     p += lstrlenW(p) + 1;
-    lstrcpyW(p, txt_files);
+    lstrcpyW(p, L"*.txt");
     p += lstrlenW(p) + 1;
     LoadStringW(Globals.hInstance, STRING_ALL_FILES, p, MAX_STRING_LEN);
     p += lstrlenW(p) + 1;
-    lstrcpyW(p, all_files);
+    lstrcpyW(p, L"*.*");
     p += lstrlenW(p) + 1;
     *p = '\0';
     Globals.hDevMode = NULL;
@@ -587,7 +584,6 @@ static LRESULT WINAPI NOTEPAD_WndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
     case WM_CREATE:
     {
-        static const WCHAR editW[] = { 'e','d','i','t',0 };
         DWORD dwStyle = WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
                         ES_AUTOVSCROLL | ES_MULTILINE | ES_NOHIDESEL;
         RECT rc;
@@ -595,7 +591,7 @@ static LRESULT WINAPI NOTEPAD_WndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
         if (!Globals.bWrapLongLines) dwStyle |= WS_HSCROLL | ES_AUTOHSCROLL;
 
-        Globals.hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, editW, NULL,
+        Globals.hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"edit", NULL,
                              dwStyle, 0, 0, rc.right, rc.bottom, hWnd,
                              NULL, Globals.hInstance, NULL);
 
@@ -755,7 +751,7 @@ static void HandleCommandLine(LPWSTR cmdline)
         }
         else
         {
-            static const WCHAR txtW[] = { '.','t','x','t',0 };
+            static const WCHAR txtW[] = L".txt";
 
             /* try to find file with ".txt" extension */
             if (wcschr(PathFindFileNameW(cmdline), '.'))
@@ -819,8 +815,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE prev, LPSTR cmdline, int show)
     HMONITOR monitor;
     MONITORINFO info;
     INT x, y;
-    static const WCHAR className[] = {'N','o','t','e','p','a','d',0};
-    static const WCHAR winName[]   = {'N','o','t','e','p','a','d',0};
+    static const WCHAR name[] = L"Notepad";
 
     InitCommonControls();
 
@@ -841,7 +836,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE prev, LPSTR cmdline, int show)
     class.hCursor       = LoadCursorW(0, (LPCWSTR)IDC_ARROW);
     class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     class.lpszMenuName  = MAKEINTRESOURCEW(MAIN_MENU);
-    class.lpszClassName = className;
+    class.lpszClassName = name;
 
     if (!RegisterClassExW(&class)) return FALSE;
 
@@ -860,7 +855,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE prev, LPSTR cmdline, int show)
         x = y = CW_USEDEFAULT;
 
     Globals.hMainWnd =
-        CreateWindowW(className, winName, WS_OVERLAPPEDWINDOW, x, y,
+        CreateWindowW(name, name, WS_OVERLAPPEDWINDOW, x, y,
                       main_rect.right - main_rect.left, main_rect.bottom - main_rect.top,
                       NULL, NULL, Globals.hInstance, NULL);
     if (!Globals.hMainWnd)

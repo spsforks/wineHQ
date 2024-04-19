@@ -37,7 +37,7 @@
 #define SPACES_IN_TAB 8
 #define PRINT_LEN_MAX 500
 
-static const WCHAR helpfileW[] = { 'n','o','t','e','p','a','d','.','h','l','p',0 };
+static const WCHAR helpfileW[] = L"notepad.hlp";
 
 static INT_PTR WINAPI DIALOG_PAGESETUP_DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -102,7 +102,7 @@ VOID ShowLastError(void)
  */
 void UpdateWindowCaption(void)
 {
-  static const WCHAR hyphenW[] = { ' ','-',' ',0 };
+  static const WCHAR hyphenW[] = L" - ";
   WCHAR szNotepad[64];
   WCHAR szCaption[ARRAY_SIZE(Globals.szFileTitle) + ARRAY_SIZE(hyphenW) + ARRAY_SIZE(szNotepad)];
 
@@ -358,7 +358,7 @@ static inline ENCODING detect_encoding_of_buffer(const void* buffer, int size)
 
 void DoOpenFile(LPCWSTR szFileName, ENCODING enc)
 {
-    static const WCHAR dotlog[] = { '.','L','O','G',0 };
+    static const WCHAR dotlog[] = L".LOG";
     HANDLE hFile;
     LPSTR pTemp;
     DWORD size;
@@ -531,8 +531,8 @@ static ENCODING detect_encoding_of_file(LPCWSTR szFileName)
 static LPWSTR dialog_print_to_file(HWND hMainWnd)
 {
     OPENFILENAMEW ofn;
-    static WCHAR file[MAX_PATH] = {'o','u','t','p','u','t','.','p','r','n',0};
-    static const WCHAR defExt[] = {'p','r','n',0};
+    static WCHAR file[MAX_PATH] = L"output.prn";
+    static const WCHAR defExt[] = L"prn";
 
     ZeroMemory(&ofn, sizeof(ofn));
 
@@ -613,8 +613,8 @@ VOID DIALOG_FileOpen(VOID)
 {
     OPENFILENAMEW openfilename;
     WCHAR szPath[MAX_PATH];
-    static const WCHAR szDefaultExt[] = { 't','x','t',0 };
-    static const WCHAR txt_files[] = { '*','.','t','x','t',0 };
+    static const WCHAR szDefaultExt[] = L"txt";
+    static const WCHAR txt_files[] = L"*.txt";
 
     ZeroMemory(&openfilename, sizeof(openfilename));
 
@@ -660,8 +660,8 @@ BOOL DIALOG_FileSaveAs(VOID)
 {
     OPENFILENAMEW saveas;
     WCHAR szPath[MAX_PATH];
-    static const WCHAR szDefaultExt[] = { 't','x','t',0 };
-    static const WCHAR txt_files[] = { '*','.','t','x','t',0 };
+    static const WCHAR szDefaultExt[] = L"txt";
+    static const WCHAR txt_files[] = L"*.txt";
 
     ZeroMemory(&saveas, sizeof(saveas));
 
@@ -793,8 +793,8 @@ static BOOL notepad_print_page(HDC hdc, RECT *rc, BOOL dopage, int page, LPTEXTI
     {
         if (StartPage(hdc) <= 0)
         {
-            static const WCHAR failedW[] = { 'S','t','a','r','t','P','a','g','e',' ','f','a','i','l','e','d',0 };
-            static const WCHAR errorW[] = { 'P','r','i','n','t',' ','E','r','r','o','r',0 };
+            static const WCHAR failedW[] = L"StartPage failed";
+            static const WCHAR errorW[] = L"Print Error";
             MessageBoxW(Globals.hMainWnd, failedW, errorW, MB_ICONEXCLAMATION);
             HeapFree(GetProcessHeap(), 0, footer_text);
             return FALSE;
@@ -1061,7 +1061,7 @@ VOID DIALOG_EditTimeDate(VOID)
 {
     SYSTEMTIME   st;
     WCHAR        szDate[MAX_STRING_LEN];
-    static const WCHAR spaceW[] = { ' ',0 };
+    static const WCHAR spaceW[] = L" ";
 
     GetLocalTime(&st);
 
@@ -1077,7 +1077,6 @@ VOID DIALOG_EditTimeDate(VOID)
 VOID DIALOG_EditWrap(VOID)
 {
     BOOL modify = FALSE;
-    static const WCHAR editW[] = { 'e','d','i','t',0 };
     DWORD dwStyle = WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
                     ES_AUTOVSCROLL | ES_MULTILINE;
     RECT rc;
@@ -1096,7 +1095,7 @@ VOID DIALOG_EditWrap(VOID)
     DestroyWindow(Globals.hEdit);
     GetClientRect(Globals.hMainWnd, &rc);
     if( Globals.bWrapLongLines ) dwStyle |= WS_HSCROLL | ES_AUTOHSCROLL;
-    Globals.hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, editW, NULL, dwStyle,
+    Globals.hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"edit", NULL, dwStyle,
                          0, 0, rc.right, rc.bottom, Globals.hMainWnd,
                          NULL, Globals.hInstance, NULL);
     SendMessageW(Globals.hEdit, WM_SETFONT, (WPARAM)Globals.hFont, FALSE);
@@ -1200,7 +1199,7 @@ VOID DIALOG_HelpContents(VOID)
 
 VOID DIALOG_HelpAboutNotepad(VOID)
 {
-    static const WCHAR notepadW[] = { 'W','i','n','e',' ','N','o','t','e','p','a','d',0 };
+    static const WCHAR notepadW[] = L"Wine Notepad";
     WCHAR szNotepad[MAX_STRING_LEN];
     HICON icon = LoadImageW(Globals.hInstance, MAKEINTRESOURCEW(IDI_NOTEPAD),
                             IMAGE_ICON, 48, 48, LR_SHARED);
@@ -1254,8 +1253,8 @@ static INT_PTR WINAPI DIALOG_PAGESETUP_DlgProc(HWND hDlg, UINT msg, WPARAM wPara
         case IDHELP:
         {
           /* FIXME: Bring this to work */
-          static const WCHAR sorryW[] = { 'S','o','r','r','y',',',' ','n','o',' ','h','e','l','p',' ','a','v','a','i','l','a','b','l','e',0 };
-          static const WCHAR helpW[] = { 'H','e','l','p',0 };
+          static const WCHAR sorryW[] = L"Sorry, no help available";
+          static const WCHAR helpW[] = L"Help";
           MessageBoxW(Globals.hMainWnd, sorryW, helpW, MB_ICONEXCLAMATION);
           return TRUE;
         }
