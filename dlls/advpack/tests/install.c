@@ -66,7 +66,12 @@ static void create_inf_file(LPCSTR filename)
         "Signature=\"$Chicago$\"\n"
         "AdvancedINF=2.5\n"
         "[DefaultInstall]\n"
-        "CheckAdminRights=1\n";
+        "CheckAdminRights=1\n"
+        "[OcxInstall]\n"
+        "RegisterOCXs=OCXsToRegister\n"
+        "[OCXsToRegister]\n"
+        "@foobar\n"
+        "@foobaz\n";
 
     WriteFile(hf, data, sizeof(data) - 1, &dwNumberOfBytesWritten, NULL);
     CloseHandle(hf);
@@ -262,6 +267,19 @@ static void test_LaunchINFSectionEx(void)
     DeleteFileA("test.inf");
 }
 
+static void test_RegisterOCXs(void)
+{
+    static char section[] = "test.inf,OcxInstall,4,0";
+    HRESULT hr;
+
+    create_inf_file("test.inf");
+
+    hr = pLaunchINFSection(NULL, NULL, section, 0);
+    ok(hr == S_OK, "Expected 0, got %ld\n", hr);
+
+    DeleteFileA("test.inf");
+}
+
 START_TEST(install)
 {
     DWORD len;
@@ -289,6 +307,7 @@ START_TEST(install)
     test_RunSetupCommand();
     test_LaunchINFSection();
     test_LaunchINFSectionEx();
+    test_RegisterOCXs();
 
     FreeLibrary(hAdvPack);
     SetCurrentDirectoryA(prev_path);
