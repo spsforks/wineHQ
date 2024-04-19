@@ -406,7 +406,13 @@ static const builtin_info_t Map_prototype_info = {
     ARRAY_SIZE(Map_prototype_props),
     Map_prototype_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t Map_info = {
@@ -415,9 +421,13 @@ static const builtin_info_t Map_info = {
     ARRAY_SIZE(Map_props),
     Map_props,
     Map_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     Map_gc_traverse
 };
@@ -565,7 +575,13 @@ static const builtin_info_t Set_prototype_info = {
     ARRAY_SIZE(Set_prototype_props),
     Set_prototype_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t Set_info = {
@@ -574,9 +590,13 @@ static const builtin_info_t Set_info = {
     ARRAY_SIZE(Map_props),
     Map_props,
     Map_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     Map_gc_traverse
 };
@@ -862,7 +882,13 @@ static const builtin_info_t WeakMap_prototype_info = {
     ARRAY_SIZE(WeakMap_prototype_props),
     WeakMap_prototype_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t WeakMap_info = {
@@ -871,9 +897,13 @@ static const builtin_info_t WeakMap_info = {
     0,
     NULL,
     WeakMap_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     WeakMap_gc_traverse
 };

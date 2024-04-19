@@ -187,7 +187,13 @@ static const builtin_info_t Enumerator_info = {
     ARRAY_SIZE(Enumerator_props),
     Enumerator_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_info_t EnumeratorInst_info = {
@@ -196,9 +202,13 @@ static const builtin_info_t EnumeratorInst_info = {
     0,
     NULL,
     Enumerator_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     Enumerator_gc_traverse
 };
@@ -329,7 +339,13 @@ static const builtin_info_t EnumeratorConstr_info = {
     0,
     NULL,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 HRESULT create_enumerator_constr(script_ctx_t *ctx, jsdisp_t *object_prototype, jsdisp_t **ret)

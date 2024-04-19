@@ -953,7 +953,13 @@ static const builtin_info_t JSON_info = {
     ARRAY_SIZE(JSON_props),
     JSON_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 HRESULT create_json(script_ctx_t *ctx, jsdisp_t **ret)

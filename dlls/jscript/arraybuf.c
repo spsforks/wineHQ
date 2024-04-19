@@ -126,7 +126,13 @@ static const builtin_info_t ArrayBuffer_info = {
     ARRAY_SIZE(ArrayBuffer_props),
     ArrayBuffer_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static const builtin_prop_t ArrayBufferInst_props[] = {
@@ -139,7 +145,13 @@ static const builtin_info_t ArrayBufferInst_info = {
     ARRAY_SIZE(ArrayBufferInst_props),
     ArrayBufferInst_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static HRESULT create_arraybuf(script_ctx_t *ctx, DWORD size, ArrayBufferInstance **ret)
@@ -219,7 +231,13 @@ static const builtin_info_t ArrayBufferConstr_info = {
     ARRAY_SIZE(ArrayBufferConstr_props),
     ArrayBufferConstr_props,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 static inline DataViewInstance *dataview_this(jsval_t vthis)
@@ -615,9 +633,13 @@ static const builtin_info_t DataView_info = {
     ARRAY_SIZE(DataView_props),
     DataView_props,
     DataView_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     DataView_gc_traverse
 };
@@ -628,9 +650,13 @@ static const builtin_info_t DataViewInst_info = {
     0,
     NULL,
     DataView_destructor,
-    NULL,
-    NULL,
-    NULL,
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
     NULL,
     DataView_gc_traverse
 };
@@ -706,7 +732,13 @@ static const builtin_info_t DataViewConstr_info = {
     0,
     NULL,
     NULL,
-    NULL
+    dispex_prop_get,
+    dispex_prop_put,
+    dispex_prop_invoke,
+    dispex_prop_delete,
+    dispex_prop_get_desc,
+    dispex_prop_get_name,
+    dispex_prop_define,
 };
 
 HRESULT init_arraybuf_constructors(script_ctx_t *ctx)
