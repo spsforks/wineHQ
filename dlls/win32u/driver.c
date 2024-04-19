@@ -741,6 +741,11 @@ static BOOL nulldrv_SystrayDockRemove( HWND hwnd )
     return FALSE;
 }
 
+static BOOL nulldrv_SystrayShowBalloon( HWND hwnd, UINT uID, BOOL hidden, struct systray_balloon *icon )
+{
+    return FALSE;
+}
+
 static void nulldrv_UpdateClipboard(void)
 {
 }
@@ -1156,6 +1161,11 @@ static BOOL loaderdrv_SystrayDockRemove( HWND hwnd )
     return load_driver()->pSystrayDockRemove( hwnd );
 }
 
+static BOOL loaderdrv_SystrayShowBalloon( HWND hwnd, UINT uID, BOOL hidden, struct systray_balloon *icon )
+{
+    return load_driver()->pSystrayShowBalloon( hwnd, uID, hidden, icon );
+}
+
 static LRESULT nulldrv_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
 {
     return 0;
@@ -1248,6 +1258,7 @@ static const struct user_driver_funcs lazy_load_driver =
     loaderdrv_SystrayDockInsert,
     loaderdrv_SystrayDockClear,
     loaderdrv_SystrayDockRemove,
+    loaderdrv_SystrayShowBalloon,
     /* clipboard functions */
     nulldrv_ClipboardWindowProc,
     loaderdrv_UpdateClipboard,
@@ -1337,6 +1348,7 @@ void __wine_set_user_driver( const struct user_driver_funcs *funcs, UINT version
     SET_USER_FUNC(SystrayDockInsert);
     SET_USER_FUNC(SystrayDockClear);
     SET_USER_FUNC(SystrayDockRemove);
+    SET_USER_FUNC(SystrayShowBalloon);
     SET_USER_FUNC(ClipboardWindowProc);
     SET_USER_FUNC(UpdateClipboard);
     SET_USER_FUNC(ChangeDisplaySettings);
