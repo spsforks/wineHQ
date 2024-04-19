@@ -2135,7 +2135,7 @@ BOOL WINAPI SetupDiGetClassDescriptionExA(
     dwLength = ClassDescriptionSize;
     ret = !RegQueryValueExA( hKey, NULL, NULL, NULL,
                              (LPBYTE)ClassDescription, &dwLength );
-    if (RequiredSize) *RequiredSize = dwLength;
+    if (ret && RequiredSize) *RequiredSize = dwLength;
     RegCloseKey(hKey);
     return ret;
 }
@@ -2169,7 +2169,7 @@ BOOL WINAPI SetupDiGetClassDescriptionExW(
     dwLength = ClassDescriptionSize * sizeof(WCHAR);
     ret = !RegQueryValueExW( hKey, NULL, NULL, NULL,
                              (LPBYTE)ClassDescription, &dwLength );
-    if (RequiredSize) *RequiredSize = dwLength / sizeof(WCHAR);
+    if (ret && RequiredSize) *RequiredSize = dwLength / sizeof(WCHAR);
     RegCloseKey(hKey);
     return ret;
 }
