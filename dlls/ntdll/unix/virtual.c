@@ -893,8 +893,7 @@ static BYTE get_page_vprot( const void *addr )
  * Return the size of the region with equal masked vprot byte.
  * Also return the protections for the first page.
  * The function assumes that base and size are page aligned,
- * base + size does not wrap around and the range is within view so
- * vprot bytes are allocated for the range. */
+ * base + size does not wrap around, and the range is within view. */
 static SIZE_T get_vprot_range_size( char *base, SIZE_T size, BYTE mask, BYTE *vprot )
 {
     static const UINT_PTR word_from_byte = (UINT_PTR)0x101010101010101;
@@ -912,11 +911,24 @@ static SIZE_T get_vprot_range_size( char *base, SIZE_T size, BYTE mask, BYTE *vp
     if (aligned_start_idx > end_idx) aligned_start_idx = end_idx;
 
 #ifdef _WIN64
-    vprot_ptr = pages_vprot[curr_idx >> pages_vprot_shift] + (curr_idx & pages_vprot_mask);
+    if (pages_vprot[curr_idx >> pages_vprot_shift])
+    {
+        vprot_ptr = pages_vprot[curr_idx >> pages_vprot_shift] + (curr_idx & pages_vprot_mask);
+        *vprot = *vprot_ptr;
+    }
+    else
+    {
+        *vprot = 0;
+        curr_idx = (curr_idx + pages_vprot_mask + 1) & ~pages_vprot_mask;
+        if (curr_idx > end_idx)
+            return size;
+        vprot_ptr = pages_vprot[curr_idx >> pages_vprot_shift];
+        assert(curr_idx >= aligned_start_idx);
+    }
 #else
     vprot_ptr = pages_vprot + curr_idx;
-#endif
     *vprot = *vprot_ptr;
+#endif
 
     /* Page count page table is at least the multiples of sizeof(UINT_PTR)
      * so we don't have to worry about crossing the boundary on unaligned idx values. */
@@ -929,7 +941,17 @@ static SIZE_T get_vprot_range_size( char *base, SIZE_T size, BYTE mask, BYTE *vp
     for (; curr_idx < end_idx; curr_idx += sizeof(UINT_PTR), vprot_ptr += sizeof(UINT_PTR))
     {
 #ifdef _WIN64
-        if (!(curr_idx & pages_vprot_mask)) vprot_ptr = pages_vprot[curr_idx >> pages_vprot_shift];
+        if (!(curr_idx & pages_vprot_mask))
+        {
+            while (!(vprot_ptr = pages_vprot[curr_idx >> pages_vprot_shift]))
+            {
+                if (!(vprot_word & mask_word))
+                    return (curr_idx - start_idx) << page_shift;
+                curr_idx += pages_vprot_mask + 1;
+                if (curr_idx >= end_idx)
+                    return size;
+            }
+        }
 #endif
         if ((vprot_word ^ *(UINT_PTR *)vprot_ptr) & mask_word)
         {
@@ -940,6 +962,21 @@ static SIZE_T get_vprot_range_size( char *base, SIZE_T size, BYTE mask, BYTE *vp
     }
     return size;
 }
+
+#ifdef _WIN64
+/***********************************************************************
+ *           set_page_vprot_internal
+ *
+ * Helper function for set_page_vprot
+ */
+static void set_pages_vprot_internal( size_t idx, BYTE vprot, size_t len )
+{
+    if (pages_vprot[idx >> pages_vprot_shift])
+        memset(pages_vprot[idx >> pages_vprot_shift] + (idx & pages_vprot_mask), vprot, len);
+    else if (vprot)
+        ERR("vprot table missing entry at %x!\n", (unsigned int)(idx >> pages_vprot_shift));
+}
+#endif
 
 /***********************************************************************
  *           set_page_vprot
@@ -955,10 +992,10 @@ static void set_page_vprot( const void *addr, size_t size, BYTE vprot )
     while (idx >> pages_vprot_shift != end >> pages_vprot_shift)
     {
         size_t dir_size = pages_vprot_mask + 1 - (idx & pages_vprot_mask);
-        memset( pages_vprot[idx >> pages_vprot_shift] + (idx & pages_vprot_mask), vprot, dir_size );
+        set_pages_vprot_internal(idx, vprot, dir_size);
         idx += dir_size;
     }
-    memset( pages_vprot[idx >> pages_vprot_shift] + (idx & pages_vprot_mask), vprot, end - idx );
+    set_pages_vprot_internal(idx, vprot, end - idx);
 #else
     memset( pages_vprot + idx, vprot, end - idx );
 #endif
@@ -976,10 +1013,22 @@ static void set_page_vprot_bits( const void *addr, size_t size, BYTE set, BYTE c
     size_t end = ((size_t)addr + size + page_mask) >> page_shift;
 
 #ifdef _WIN64
-    for ( ; idx < end; idx++)
+    while (idx < end)
     {
-        BYTE *ptr = pages_vprot[idx >> pages_vprot_shift] + (idx & pages_vprot_mask);
-        *ptr = (*ptr & ~clear) | set;
+        size_t next = (idx + pages_vprot_mask + 1) & ~pages_vprot_mask;
+        BYTE *ptr = pages_vprot[idx >> pages_vprot_shift];
+        if (ptr)
+        {
+            size_t i = idx & pages_vprot_mask;
+            size_t table_end = min(next, end) - (idx & ~pages_vprot_mask);
+            for (; i < table_end; i++)
+                ptr[i] = (ptr[i] & ~clear) | set;
+        }
+        else if (set)
+        {
+            ERR("vprot table missing entry at %x!\n", (unsigned)(idx >> pages_vprot_shift));
+        }
+        idx = next;
     }
 #else
     for ( ; idx < end; idx++) pages_vprot[idx] = (pages_vprot[idx] & ~clear) | set;
@@ -1564,6 +1613,10 @@ static void register_view( struct file_view *view )
 static NTSTATUS create_view( struct file_view **view_ret, void *base, size_t size, unsigned int vprot )
 {
     struct file_view *view;
+    /* If uncommitted, delay allocation until commit so we don't make vprot tables for reservations,
+     * which can be as large as the address space allows (128TB).
+     * WRITEWATCH doesn't yet support allocating on commit, so make an exception for that. */
+    BOOL write_vprot = !!(vprot & (VPROT_COMMITTED | VPROT_WRITEWATCH));
     int unix_prot = get_unix_prot( vprot );
 
     assert( !((UINT_PTR)base & page_mask) );
@@ -1581,7 +1634,7 @@ static NTSTATUS create_view( struct file_view **view_ret, void *base, size_t siz
         delete_view( view );
     }
 
-    if (!alloc_pages_vprot( base, size )) return STATUS_NO_MEMORY;
+    if (write_vprot && !alloc_pages_vprot( base, size )) return STATUS_NO_MEMORY;
 
     /* Create the view structure */
 
@@ -1594,7 +1647,7 @@ static NTSTATUS create_view( struct file_view **view_ret, void *base, size_t siz
     view->base    = base;
     view->size    = size;
     view->protect = vprot;
-    set_page_vprot( base, size, vprot );
+    set_page_vprot( base, size, write_vprot ? vprot : 0 );
 
     register_view( view );
 
@@ -1732,6 +1785,8 @@ static BOOL set_vprot( struct file_view *view, void *base, size_t size, BYTE vpr
         return TRUE;
     }
     if (mprotect_exec( base, size, unix_prot )) return FALSE;
+    /* Reserved pages may not have table entries yet, make those now */
+    if (vprot && !alloc_pages_vprot( base, size )) return FALSE;
     set_page_vprot( base, size, vprot );
     return TRUE;
 }
@@ -2143,6 +2198,7 @@ done:
 static SIZE_T get_committed_size( struct file_view *view, void *base, BYTE *vprot, BYTE vprot_mask )
 {
     SIZE_T offset, size;
+    BYTE extra = 0;
 
     base = ROUND_ADDR( base, page_mask );
     offset = (char *)base - (char *)view->base;
@@ -2163,7 +2219,8 @@ static SIZE_T get_committed_size( struct file_view *view, void *base, BYTE *vpro
                 if (reply->committed)
                 {
                     *vprot |= VPROT_COMMITTED;
-                    set_page_vprot_bits( base, size, VPROT_COMMITTED, 0 );
+                    extra = VPROT_COMMITTED;
+                    vprot_mask &= ~VPROT_COMMITTED;
                 }
             }
         }
@@ -2173,7 +2230,9 @@ static SIZE_T get_committed_size( struct file_view *view, void *base, BYTE *vpro
     }
     else size = view->size - offset;
 
-    return get_vprot_range_size( base, size, vprot_mask, vprot );
+    size = get_vprot_range_size( base, size, vprot_mask, vprot );
+    *vprot |= extra;
+    return size;
 }
 
 

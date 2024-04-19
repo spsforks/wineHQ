@@ -2705,6 +2705,31 @@ static void test_query_image_information(void)
     NtClose( file );
 }
 
+static void test_massive_memory_reservation(void)
+{
+    /* Test to make sure large address space reservations don't use more ram than the system has.
+     * Most failures here will be the test getting killed by the OOM killer. */
+    int i;
+    for (i = 12; i < sizeof(void*) * 8; i++)
+    {
+        void* ptr;
+        BOOL is_ok;
+        SetLastError(0xdeadbeef);
+        ptr = VirtualAlloc(NULL, 1ull << i, MEM_RESERVE, PAGE_NOACCESS);
+        if (i < 40 && sizeof(void*) == 8) /* These should succeed */
+            is_ok = GetLastError() == 0xdeadbeef;
+        else if (i < 47) /* These might run out of address space */
+            is_ok = GetLastError() == 0xdeadbeef || GetLastError() == ERROR_NOT_ENOUGH_MEMORY;
+        else
+            is_ok = GetLastError() == ERROR_INVALID_PARAMETER;
+        ok(is_ok, "Unexpected error allocating 1 << %d: %lx.\n", i, GetLastError());
+        if (ptr)
+            VirtualFree(ptr, 1ull << i, MEM_RELEASE);
+        ptr = malloc(1ull << i);
+        free(ptr);
+    }
+}
+
 START_TEST(virtual)
 {
     HMODULE mod;
@@ -2755,4 +2780,5 @@ START_TEST(virtual)
     test_syscalls();
     test_query_region_information();
     test_query_image_information();
+    test_massive_memory_reservation();
 }
