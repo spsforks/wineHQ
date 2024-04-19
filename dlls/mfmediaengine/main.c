@@ -2290,6 +2290,7 @@ static HRESULT WINAPI media_engine_Shutdown(IMFMediaEngineEx *iface)
 {
     struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
     HRESULT hr = S_OK;
+    IMFMediaSession *session = NULL;
 
     TRACE("%p.\n", iface);
 
@@ -2300,10 +2301,16 @@ static HRESULT WINAPI media_engine_Shutdown(IMFMediaEngineEx *iface)
     {
         media_engine_set_flag(engine, FLAGS_ENGINE_SHUT_DOWN, TRUE);
         media_engine_clear_presentation(engine);
-        IMFMediaSession_Shutdown(engine->session);
+        session = engine->session;
+        IMFMediaSession_AddRef(session);
     }
     LeaveCriticalSection(&engine->cs);
 
+    if (session)
+    {
+        IMFMediaSession_Shutdown(session);
+        IMFMediaSession_Release(session);
+    }
     return hr;
 }
 
