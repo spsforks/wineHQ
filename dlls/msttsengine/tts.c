@@ -29,9 +29,17 @@
 #include "sapiddk.h"
 #include "sperror.h"
 
+#include "flite.h"
+
 #include "wine/debug.h"
 
+#include "initguid.h"
+
 WINE_DEFAULT_DEBUG_CHANNEL(msttsengine);
+
+DEFINE_GUID(SPDFID_WaveFormatEx, 0xc31adbae, 0x527f, 0x4ff5, 0xa2, 0x30, 0xf6, 0x2b, 0xb6, 0x1f, 0xf7, 0x0c);
+
+cst_voice *register_cmu_us_awb(const char *voxdir);
 
 struct ttsengine
 {
@@ -40,7 +48,10 @@ struct ttsengine
     LONG ref;
 
     ISpObjectToken *token;
+    cst_voice *voice;
 };
+
+static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
 
 static inline struct ttsengine *impl_from_ISpTTSEngine(ISpTTSEngine *iface)
 {
@@ -50,6 +61,12 @@ static inline struct ttsengine *impl_from_ISpTTSEngine(ISpTTSEngine *iface)
 static inline struct ttsengine *impl_from_ISpObjectWithToken(ISpObjectWithToken *iface)
 {
     return CONTAINING_RECORD(iface, struct ttsengine, ISpObjectWithToken_iface);
+}
+
+static BOOL WINAPI init_tts(INIT_ONCE *once, void *param, void **ctx)
+{
+    flite_init();
+    return TRUE;
 }
 
 static HRESULT WINAPI ttsengine_QueryInterface(ISpTTSEngine *iface, REFIID iid, void **obj)
@@ -101,22 +118,87 @@ static ULONG WINAPI ttsengine_Release(ISpTTSEngine *iface)
     return ref;
 }
 
+static int audio_stream_chunk_cb(const cst_wave *w, int start, int size, int last, cst_audio_streaming_info *asi)
+{
+    ISpTTSEngineSite *site = asi->userdata;
+
+    if (ISpTTSEngineSite_GetActions(site) & SPVES_ABORT)
+        return CST_AUDIO_STREAM_STOP;
+    if (FAILED(ISpTTSEngineSite_Write(site, w->samples + start, size * sizeof(w->samples[0]), NULL)))
+        return CST_AUDIO_STREAM_STOP;
+
+    return CST_AUDIO_STREAM_CONT;
+}
+
 static HRESULT WINAPI ttsengine_Speak(ISpTTSEngine *iface, DWORD flags, REFGUID fmtid,
                                       const WAVEFORMATEX *wfx, const SPVTEXTFRAG *frag_list,
                                       ISpTTSEngineSite *site)
 {
-    FIXME("(%p, %#lx, %s, %p, %p, %p): stub.\n", iface, flags, debugstr_guid(fmtid), wfx, frag_list, site);
+    struct ttsengine *This = impl_from_ISpTTSEngine(iface);
+    cst_audio_streaming_info *asi;
+    char *text = NULL;
+    size_t text_len;
+    cst_wave *wave;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %#lx, %s, %p, %p, %p).\n", iface, flags, debugstr_guid(fmtid), wfx, frag_list, site);
+
+    if (!This->voice)
+        return SPERR_UNINITIALIZED;
+
+    asi = new_audio_streaming_info();
+    asi->asc          = audio_stream_chunk_cb;
+    asi->min_buffsize = get_param_int(This->voice->features, "sample_rate", 16000) * 50 / 1000;
+    asi->userdata     = site;
+    feat_set(This->voice->features, "streaming_info", audio_streaming_info_val(asi));
+
+    for (; frag_list; frag_list = frag_list->pNext)
+    {
+        if (ISpTTSEngineSite_GetActions(site) & SPVES_ABORT)
+            return S_OK;
+
+        text_len = WideCharToMultiByte(CP_UTF8, 0, frag_list->pTextStart, frag_list->ulTextLen, NULL, 0, NULL, NULL);
+        if (!(text = malloc(text_len + 1)))
+            return E_OUTOFMEMORY;
+        WideCharToMultiByte(CP_UTF8, 0, frag_list->pTextStart, frag_list->ulTextLen, text, text_len, NULL, NULL);
+        text[text_len] = '\0';
+
+        if (!(wave = flite_text_to_wave(text, This->voice)))
+        {
+            free(text);
+            return E_FAIL;
+        }
+
+        delete_wave(wave);
+        free(text);
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI ttsengine_GetOutputFormat(ISpTTSEngine *iface, const GUID *fmtid,
                                                 const WAVEFORMATEX *wfx, GUID *out_fmtid,
                                                 WAVEFORMATEX **out_wfx)
 {
-    FIXME("(%p, %s, %p, %p, %p): stub.\n", iface, debugstr_guid(fmtid), wfx, out_fmtid, out_wfx);
+    struct ttsengine *This = impl_from_ISpTTSEngine(iface);
 
-    return E_NOTIMPL;
+    TRACE("(%p, %s, %p, %p, %p).\n", iface, debugstr_guid(fmtid), wfx, out_fmtid, out_wfx);
+
+    if (!This->voice)
+        return SPERR_UNINITIALIZED;
+
+    *out_fmtid = SPDFID_WaveFormatEx;
+    if (!(*out_wfx = CoTaskMemAlloc(sizeof(WAVEFORMATEX))))
+        return E_OUTOFMEMORY;
+
+    (*out_wfx)->wFormatTag      = WAVE_FORMAT_PCM;
+    (*out_wfx)->nChannels       = 1;
+    (*out_wfx)->nSamplesPerSec  = get_param_int(This->voice->features, "sample_rate", 16000);
+    (*out_wfx)->wBitsPerSample  = 16;
+    (*out_wfx)->nBlockAlign     = (*out_wfx)->nChannels * (*out_wfx)->wBitsPerSample / 8;
+    (*out_wfx)->nAvgBytesPerSec = (*out_wfx)->nSamplesPerSec * (*out_wfx)->nBlockAlign;
+    (*out_wfx)->cbSize          = 0;
+
+    return S_OK;
 }
 
 static ISpTTSEngineVtbl ttsengine_vtbl =
@@ -159,12 +241,15 @@ static HRESULT WINAPI objwithtoken_SetObjectToken(ISpObjectWithToken *iface, ISp
 {
     struct ttsengine *This = impl_from_ISpObjectWithToken(iface);
 
-    FIXME("(%p, %p): semi-stub.\n", iface, token);
+    TRACE("(%p, %p).\n", iface, token);
 
     if (!token)
         return E_INVALIDARG;
     if (This->token)
         return SPERR_ALREADY_INITIALIZED;
+
+    if (!(This->voice = register_cmu_us_awb(NULL)))
+        return E_FAIL;
 
     ISpObjectToken_AddRef(token);
     This->token = token;
@@ -204,6 +289,9 @@ HRESULT ttsengine_create(REFIID iid, void **obj)
     struct ttsengine *This;
     HRESULT hr;
 
+    if (!InitOnceExecuteOnce(&init_once, init_tts, NULL, NULL))
+        return E_FAIL;
+
     if (!(This = malloc(sizeof(*This))))
         return E_OUTOFMEMORY;
 
@@ -212,6 +300,7 @@ HRESULT ttsengine_create(REFIID iid, void **obj)
     This->ref = 1;
 
     This->token = NULL;
+    This->voice = NULL;
 
     hr = ISpTTSEngine_QueryInterface(&This->ISpTTSEngine_iface, iid, obj);
     ISpTTSEngine_Release(&This->ISpTTSEngine_iface);
