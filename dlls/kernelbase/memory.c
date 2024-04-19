@@ -537,7 +537,36 @@ BOOL WINAPI DECLSPEC_HOTPATCH VirtualUnlock( void *addr, SIZE_T size )
 BOOL WINAPI DECLSPEC_HOTPATCH WriteProcessMemory( HANDLE process, void *addr, const void *buffer,
                                                   SIZE_T size, SIZE_T *bytes_written )
 {
-    return set_ntstatus( NtWriteVirtualMemory( process, addr, buffer, size, bytes_written ));
+    NTSTATUS status, protect_status;
+    SIZE_T region_size = size;
+    ULONG old_prot;
+    void *base_addr = addr;
+
+    status = NtWriteVirtualMemory( process, addr, buffer, size, bytes_written );
+
+    if (NT_SUCCESS(status)) 
+    {
+        NtFlushInstructionCache( process, addr, size );
+        return set_ntstatus( status );
+    }
+
+    /* In the non-writeable code region case, Windows changes the protection to facilitate the write
+     * and then changes it back. */
+
+    protect_status = NtProtectVirtualMemory( process, &base_addr, &region_size, PAGE_EXECUTE_READWRITE, &old_prot );
+    if (!NT_SUCCESS(protect_status)) return set_ntstatus( protect_status );
+
+    if ((old_prot & PAGE_EXECUTE) == PAGE_EXECUTE ||
+        (old_prot & PAGE_EXECUTE_READ) == PAGE_EXECUTE_READ)
+    {
+        status = NtWriteVirtualMemory( process, addr, buffer, size, bytes_written );
+    }
+
+    protect_status = NtProtectVirtualMemory( process, &base_addr, &region_size, old_prot, &old_prot );
+    if (!NT_SUCCESS(protect_status)) return set_ntstatus( protect_status );
+
+    NtFlushInstructionCache( process, addr, size );
+    return set_ntstatus( status );
 }
 
 
