@@ -2356,10 +2356,51 @@ static HRESULT mpeg_splitter_sink_query_accept(struct strmbase_pin *iface, const
     return S_FALSE;
 }
 
+static HRESULT mpeg_splitter_sink_get_media_type(struct strmbase_pin *pin,
+        unsigned int index, AM_MEDIA_TYPE *mt)
+{
+    static const GUID* const subtypes[] = {
+        &MEDIASUBTYPE_MPEG1System,
+        &MEDIASUBTYPE_MPEG1VideoCD,
+        &MEDIASUBTYPE_MPEG1Video,
+        &MEDIASUBTYPE_MPEG1Audio,
+    };
+    if (index >= ARRAY_SIZE(subtypes))
+        return S_FALSE;
+
+    memset(mt, 0, sizeof(*mt));
+    mt->majortype = MEDIATYPE_Stream;
+    mt->subtype = *subtypes[index];
+    mt->bFixedSizeSamples = TRUE;
+    mt->bTemporalCompression = TRUE;
+    mt->lSampleSize = 1;
+
+    return S_OK;
+}
+
+static HRESULT mpeg_splitter_sink_connect(struct strmbase_sink *iface, IPin *peer, const AM_MEDIA_TYPE *pmt)
+{
+    struct parser *filter = impl_from_strmbase_sink(iface);
+    HRESULT hr = parser_sink_connect(iface, peer, pmt);
+
+    /* Seek the reader to the end. RE:D Cherish! depends on this. */
+    if (SUCCEEDED(hr)
+            && IsEqualGUID(&pmt->subtype, &MEDIASUBTYPE_MPEG1System)
+            && IsEqualGUID(&pmt->majortype, &MEDIATYPE_Stream))
+    {
+        LONGLONG file_size, unused;
+        IAsyncReader_Length(filter->reader, &file_size, &unused);
+        IAsyncReader_SyncRead(filter->reader, file_size, 0, NULL);
+    }
+
+    return hr;
+}
+
 static const struct strmbase_sink_ops mpeg_splitter_sink_ops =
 {
     .base.pin_query_accept = mpeg_splitter_sink_query_accept,
-    .sink_connect = parser_sink_connect,
+    .base.pin_get_media_type = mpeg_splitter_sink_get_media_type,
+    .sink_connect = mpeg_splitter_sink_connect,
     .sink_disconnect = parser_sink_disconnect,
 };
 
